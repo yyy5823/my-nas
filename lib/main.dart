@@ -18,6 +18,8 @@ import 'package:my_nas/core/services/native_log_bridge_service.dart';
 import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
+import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
+import 'package:my_nas/features/music/data/services/music_media_kit_handler.dart';
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -26,7 +28,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// 全局 AudioHandler 实例
 /// 用于音乐后台播放和系统媒体控制（锁屏、控制中心、蓝牙耳机等）
-late MusicAudioHandler audioHandler;
+///
+/// 支持两种引擎：
+/// - [MusicAudioHandler] - 基于 just_audio（平台原生解码器）
+/// - [MusicMediaKitAudioHandler] - 基于 media_kit（FFmpeg 解码器，支持 AC3/DTS 等）
+late IMusicAudioHandler audioHandler;
 
 Future<void> main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -147,6 +153,13 @@ Future<void> _initApp() async {
   // This fixes the just_audio_windows threading issue on Windows
   JustAudioMediaKit.ensureInitialized();
 
+  // Initialize Hive for local storage (需要在音频处理器之前初始化以读取设置)
+  await Hive.initFlutter();
+
+  // 初始化性能模式服务（需要 SharedPreferences，会打开 settings box）
+  await PerformanceModeService().init();
+  logger.i('PerformanceMode: ${PerformanceModeService.isPerformanceMode ? "enabled" : "disabled"}');
+
   // Initialize AudioSession for proper audio playback on iOS/Android
   // This is critical for just_audio to work correctly
   await _initAudioSession();
@@ -157,15 +170,7 @@ Future<void> _initApp() async {
   // - Android 通知栏媒体控制
   // - 蓝牙耳机/AirPods 按钮控制
   // - 后台音频稳定播放
-  audioHandler = await initAudioHandler();
-  logger.i('AudioHandler initialized for background audio and media controls');
-
-  // Initialize Hive for local storage
-  await Hive.initFlutter();
-
-  // 初始化性能模式服务（需要 SharedPreferences）
-  await PerformanceModeService().init();
-  logger.i('PerformanceMode: ${PerformanceModeService.isPerformanceMode ? "enabled" : "disabled"}');
+  audioHandler = await _initAudioHandler();
 
   // Configure dependency injection
   await configureDependencies();
@@ -270,6 +275,31 @@ LanguagePreference? _parseLanguagePreference(String jsonStr) {
     return result.isNotEmpty ? LanguagePreference.fromJson(result) : null;
   } on Exception catch (_) {
     return null;
+  }
+}
+
+/// 初始化音频处理器
+/// 根据用户设置选择 just_audio 或 media_kit 引擎
+Future<IMusicAudioHandler> _initAudioHandler() async {
+  try {
+    // 尝试读取音乐设置中的播放引擎配置
+    final box = await Hive.openBox<Map<dynamic, dynamic>>('music_settings');
+    final data = box.get('settings');
+    final engineIndex = data?['playerEngine'] as int? ?? 0;
+    final useMediaKit = engineIndex == MusicPlayerEngine.mediaKit.index;
+
+    if (useMediaKit) {
+      logger.i('初始化音频处理器: media_kit 引擎 (支持 AC3/DTS/Dolby)');
+      return initMediaKitAudioHandler();
+    } else {
+      logger.i('初始化音频处理器: just_audio 引擎 (平台原生解码器)');
+      return initAudioHandler();
+    }
+  } on Exception catch (e, st) {
+    // 如果读取设置失败，使用默认的 just_audio 引擎
+    AppError.ignore(e, st, '读取音乐播放引擎设置失败，使用默认引擎');
+    logger.i('初始化音频处理器: just_audio 引擎 (默认)');
+    return initAudioHandler();
   }
 }
 

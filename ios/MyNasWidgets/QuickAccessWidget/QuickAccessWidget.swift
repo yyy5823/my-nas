@@ -147,40 +147,36 @@ struct QuickAccessWidgetSmallView: View {
     @Environment(\.widgetFamily) var family
 
     var body: some View {
-        ZStack {
-            ContainerRelativeShape()
-                .fill(WidgetTheme.backgroundGradient)
-
-            VStack(spacing: 8) {
-                // Header
-                HStack {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(WidgetTheme.primaryColor)
-                    Text("快捷操作")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(WidgetTheme.textPrimary)
-                    Spacer()
-                }
-
-                Spacer()
-
-                // 2x2 Grid of items
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                ], spacing: 8) {
-                    ForEach(entry.items.prefix(4), id: \.rawValue) { item in
-                        Link(destination: item.urlScheme) {
-                            QuickAccessItemView(item: item, isSmall: true)
-                        }
-                    }
-                }
-
+        VStack(spacing: 8) {
+            // Header
+            HStack {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(WidgetTheme.primaryColor)
+                Text("快捷操作")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(WidgetTheme.textPrimary)
                 Spacer()
             }
-            .padding(12)
+
+            Spacer()
+
+            // 2x2 Grid of items
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+            ], spacing: 8) {
+                ForEach(entry.items.prefix(4), id: \.rawValue) { item in
+                    Link(destination: item.urlScheme) {
+                        QuickAccessItemView(item: item, isSmall: true)
+                    }
+                }
+            }
+
+            Spacer()
         }
+        .padding(12)
+        .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
     }
 }
 
@@ -188,46 +184,42 @@ struct QuickAccessWidgetMediumView: View {
     var entry: QuickAccessEntry
 
     var body: some View {
-        ZStack {
-            ContainerRelativeShape()
-                .fill(WidgetTheme.backgroundGradient)
+        VStack(spacing: 12) {
+            // Header
+            HStack {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(WidgetTheme.primaryColor)
+                Text("快捷操作")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(WidgetTheme.textPrimary)
 
-            VStack(spacing: 12) {
-                // Header
-                HStack {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(WidgetTheme.primaryColor)
-                    Text("快捷操作")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(WidgetTheme.textPrimary)
+                Spacer()
 
-                    Spacer()
-
-                    if let nasName = entry.nasName {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(entry.isConnected ? Color.green : Color.gray)
-                                .frame(width: 6, height: 6)
-                            Text(nasName)
-                                .font(.caption2)
-                                .foregroundColor(WidgetTheme.textSecondary)
-                        }
+                if let nasName = entry.nasName {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(entry.isConnected ? Color.green : Color.gray)
+                            .frame(width: 6, height: 6)
+                        Text(nasName)
+                            .font(.caption2)
+                            .foregroundColor(WidgetTheme.textSecondary)
                     }
                 }
-
-                // Horizontal row of items
-                HStack(spacing: 12) {
-                    ForEach(entry.items.prefix(5), id: \.rawValue) { item in
-                        Link(destination: item.urlScheme) {
-                            QuickAccessItemView(item: item, isSmall: false, showLabel: true)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity)
             }
-            .padding(16)
+
+            // Horizontal row of items
+            HStack(spacing: 12) {
+                ForEach(entry.items.prefix(5), id: \.rawValue) { item in
+                    Link(destination: item.urlScheme) {
+                        QuickAccessItemView(item: item, isSmall: false, showLabel: true)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
+        .padding(16)
+        .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
     }
 }
 
@@ -282,7 +274,14 @@ struct QuickAccessWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: QuickAccessProvider()) { entry in
-            QuickAccessWidgetEntryView(entry: entry)
+            if #available(iOS 17.0, *) {
+                QuickAccessWidgetEntryView(entry: entry)
+                    .containerBackground(for: .widget) {
+                        WidgetTheme.backgroundGradient
+                    }
+            } else {
+                QuickAccessWidgetEntryView(entry: entry)
+            }
         }
         .configurationDisplayName("快捷操作")
         .description("一键访问音乐、视频、图书")

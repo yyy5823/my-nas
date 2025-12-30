@@ -87,18 +87,28 @@ class NativeBlurPlatformView: NSObject, FlutterPlatformView {
         // 根据 iOS 版本选择效果
         if #available(iOS 26.0, *), useLiquidGlass {
             // iOS 26+: 使用 Liquid Glass 效果
-            let glassEffect = UIGlassEffect()
+            // 使用 .regular 样式创建玻璃效果
+            let glassEffect = UIGlassEffect(style: .regular)
             glassEffect.isInteractive = isInteractive
 
-            effectView = UIVisualEffectView(effect: glassEffect)
+            // 先创建空 effect 的视图，然后通过动画设置 effect
+            // 这样可以获得正确的 materialize 动画效果
+            effectView = UIVisualEffectView(effect: nil)
             effectView.frame = frame
             effectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
-            // 设置圆角 - 使用 layer.cornerRadius（兼容当前 SDK）
+            // 设置圆角
+            // 注意: UIGlassEffect 默认是 capsule 形状
+            // 自定义圆角需要使用 layer.cornerRadius
             if cornerRadius > 0 {
                 effectView.layer.cornerRadius = CGFloat(cornerRadius)
                 effectView.layer.cornerCurve = .continuous
                 effectView.clipsToBounds = true
+            }
+
+            // 使用动画设置 effect（materialize 动画）
+            UIView.animate(withDuration: 0.3) { [weak effectView] in
+                effectView?.effect = glassEffect
             }
         } else {
             // iOS 13-25: 使用传统模糊效果

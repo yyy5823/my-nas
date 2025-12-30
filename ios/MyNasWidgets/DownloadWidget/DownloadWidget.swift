@@ -46,10 +46,7 @@ struct DownloadWidgetSmallView: View {
     var entry: DownloadEntry
 
     var body: some View {
-        ZStack {
-            ContainerRelativeShape()
-                .fill(WidgetTheme.backgroundGradient)
-
+        Group {
             if !entry.data.hasActiveDownloads {
                 // 无下载任务
                 VStack(spacing: 8) {
@@ -105,6 +102,7 @@ struct DownloadWidgetSmallView: View {
                 .padding(12)
             }
         }
+        .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
         .widgetURL(URL(string: "mynas://downloads"))
     }
 }
@@ -113,10 +111,7 @@ struct DownloadWidgetMediumView: View {
     var entry: DownloadEntry
 
     var body: some View {
-        ZStack {
-            ContainerRelativeShape()
-                .fill(WidgetTheme.backgroundGradient)
-
+        Group {
             if !entry.data.hasActiveDownloads {
                 // 无下载任务
                 HStack(spacing: 20) {
@@ -175,6 +170,7 @@ struct DownloadWidgetMediumView: View {
                 .padding(16)
             }
         }
+        .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
         .widgetURL(URL(string: "mynas://downloads"))
     }
 }
@@ -263,7 +259,14 @@ struct DownloadWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: DownloadProvider()) { entry in
-            DownloadWidgetEntryView(entry: entry)
+            if #available(iOS 17.0, *) {
+                DownloadWidgetEntryView(entry: entry)
+                    .containerBackground(for: .widget) {
+                        WidgetTheme.backgroundGradient
+                    }
+            } else {
+                DownloadWidgetEntryView(entry: entry)
+            }
         }
         .configurationDisplayName("下载进度")
         .description("显示当前下载任务")

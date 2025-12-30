@@ -93,19 +93,7 @@ struct MediaWidgetSmallView: View {
     var entry: MediaEntry
 
     var body: some View {
-        ZStack {
-            // Background
-            if let coverImage = entry.coverImage {
-                Image(uiImage: coverImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .blur(radius: 20)
-                    .overlay(Color.black.opacity(0.5))
-            } else {
-                ContainerRelativeShape()
-                    .fill(WidgetTheme.backgroundGradient)
-            }
-
+        Group {
             if !entry.data.hasContent {
                 // 无播放内容
                 VStack(spacing: 8) {
@@ -159,6 +147,17 @@ struct MediaWidgetSmallView: View {
                 .padding(12)
             }
         }
+        .widgetCustomBackgroundCompat {
+            if let coverImage = entry.coverImage {
+                Image(uiImage: coverImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .blur(radius: 20)
+                    .overlay(Color.black.opacity(0.5))
+            } else {
+                WidgetTheme.backgroundGradient
+            }
+        }
         .widgetURL(URL(string: "mynas://music/player"))
     }
 }
@@ -167,19 +166,7 @@ struct MediaWidgetMediumView: View {
     var entry: MediaEntry
 
     var body: some View {
-        ZStack {
-            // Background
-            if let coverImage = entry.coverImage {
-                Image(uiImage: coverImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .blur(radius: 30)
-                    .overlay(Color.black.opacity(0.6))
-            } else {
-                ContainerRelativeShape()
-                    .fill(WidgetTheme.backgroundGradient)
-            }
-
+        Group {
             if !entry.data.hasContent {
                 // 无播放内容
                 HStack(spacing: 20) {
@@ -306,6 +293,17 @@ struct MediaWidgetMediumView: View {
                 .padding(16)
             }
         }
+        .widgetCustomBackgroundCompat {
+            if let coverImage = entry.coverImage {
+                Image(uiImage: coverImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .blur(radius: 30)
+                    .overlay(Color.black.opacity(0.6))
+            } else {
+                WidgetTheme.backgroundGradient
+            }
+        }
         .widgetURL(URL(string: "mynas://music/player"))
     }
 }
@@ -350,6 +348,7 @@ struct MediaWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: MediaProvider()) { entry in
+            // MediaWidget 有自定义背景（封面图片），在 View 层使用 widgetCustomBackgroundCompat 处理
             MediaWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("媒体播放")

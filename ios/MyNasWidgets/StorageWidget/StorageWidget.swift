@@ -45,10 +45,7 @@ struct StorageWidgetSmallView: View {
     var entry: StorageEntry
 
     var body: some View {
-        ZStack {
-            ContainerRelativeShape()
-                .fill(WidgetTheme.backgroundGradient)
-
+        Group {
             if !entry.data.isConnected || !entry.data.hasValidData {
                 NotConnectedView()
             } else {
@@ -89,6 +86,7 @@ struct StorageWidgetSmallView: View {
                 .padding(12)
             }
         }
+        .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
         .widgetURL(URL(string: "mynas://storage"))
     }
 }
@@ -97,10 +95,7 @@ struct StorageWidgetMediumView: View {
     var entry: StorageEntry
 
     var body: some View {
-        ZStack {
-            ContainerRelativeShape()
-                .fill(WidgetTheme.backgroundGradient)
-
+        Group {
             if !entry.data.isConnected || !entry.data.hasValidData {
                 NotConnectedView()
             } else {
@@ -165,6 +160,7 @@ struct StorageWidgetMediumView: View {
                 .padding(16)
             }
         }
+        .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
         .widgetURL(URL(string: "mynas://storage"))
     }
 }
@@ -256,7 +252,14 @@ struct StorageWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StorageProvider()) { entry in
-            StorageWidgetEntryView(entry: entry)
+            if #available(iOS 17.0, *) {
+                StorageWidgetEntryView(entry: entry)
+                    .containerBackground(for: .widget) {
+                        WidgetTheme.backgroundGradient
+                    }
+            } else {
+                StorageWidgetEntryView(entry: entry)
+            }
         }
         .configurationDisplayName("存储状态")
         .description("显示 NAS 存储使用情况")

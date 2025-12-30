@@ -53,6 +53,16 @@ import UIKit
       NativeBlurViewPlugin.register(with: registrar)
     }
 
+    // 注册 Liquid Glass 视图和通道
+    // iOS 26+: 使用原生 SwiftUI .glassEffect() 实现 Liquid Glass
+    // iOS < 26: 回退到 UIVisualEffectView
+    if let registrar = self.registrar(forPlugin: "LiquidGlassPlugin") {
+      LiquidGlassPlugin.register(with: registrar)
+    }
+    if let registrar = self.registrar(forPlugin: "LiquidGlassChannel") {
+      LiquidGlassChannel.register(with: registrar)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

@@ -11,6 +11,7 @@ import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/services/update_service.dart';
+import 'package:my_nas/shared/widgets/liquid_glass/liquid_glass.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 
 class MainScaffold extends ConsumerStatefulWidget {
@@ -62,32 +63,49 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       selectedIcon: Icons.movie_filter_rounded,
       label: '影视',
       route: Routes.video,
+      sfSymbol: 'film',
     ),
     _Destination(
       icon: Icons.library_music_outlined,
       selectedIcon: Icons.library_music_rounded,
       label: '曲库',
       route: Routes.music,
+      sfSymbol: 'music.note.list',
     ),
     _Destination(
       icon: Icons.photo_album_outlined,
       selectedIcon: Icons.photo_album_rounded,
       label: '相册',
       route: Routes.photo,
+      sfSymbol: 'photo.on.rectangle',
     ),
     _Destination(
       icon: Icons.menu_book_outlined,
       selectedIcon: Icons.menu_book_rounded,
       label: '阅读',
       route: Routes.reading,
+      sfSymbol: 'book',
     ),
     _Destination(
       icon: Icons.account_circle_outlined,
       selectedIcon: Icons.account_circle_rounded,
       label: '我的',
       route: Routes.mine,
+      sfSymbol: 'person.circle',
     ),
   ];
+
+  /// 转换为 LiquidGlassNavItem 列表
+  static List<LiquidGlassNavItem> get _liquidGlassItems => _destinations
+      .map(
+        (d) => LiquidGlassNavItem(
+          icon: d.icon,
+          selectedIcon: d.selectedIcon,
+          label: d.label,
+          sfSymbol: d.sfSymbol,
+        ),
+      )
+      .toList();
 
   int _getCurrentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
@@ -101,6 +119,13 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
 
   void _onDestinationSelected(BuildContext context, int index) {
     context.go(_destinations[index].route);
+  }
+
+  /// 是否使用 iOS 26 风格的悬浮导航栏
+  bool get _useFloatingNavBar {
+    if (kIsWeb) return false;
+    // 在 iOS 上始终使用悬浮导航栏（原生或回退都支持）
+    return Platform.isIOS;
   }
 
   @override
@@ -125,12 +150,56 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       );
     }
 
+    // iOS: 使用悬浮导航栏
+    if (_useFloatingNavBar) {
+      return Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : null,
+        extendBody: true,
+        body: _buildFloatingNavLayout(context, currentIndex, isDark),
+      );
+    }
+
+    // 其他平台: 使用传统底部导航栏
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
       // 玻璃模式下让内容延伸到导航栏下方
       extendBody: enableGlass,
       body: widget.child,
       bottomNavigationBar: _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
+    );
+  }
+
+  /// 构建悬浮导航栏布局 (iOS 26 风格)
+  Widget _buildFloatingNavLayout(BuildContext context, int currentIndex, bool isDark) {
+    final bottomSafeArea = MediaQuery.of(context).padding.bottom;
+    const horizontalPadding = 16.0;
+    const bottomPadding = 16.0;
+    const navBarHeight = 70.0;
+
+    return Stack(
+      children: [
+        // 主体内容
+        Positioned.fill(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: navBarHeight + bottomPadding + bottomSafeArea,
+            ),
+            child: widget.child,
+          ),
+        ),
+
+        // 悬浮导航栏
+        Positioned(
+          left: horizontalPadding,
+          right: horizontalPadding,
+          bottom: bottomPadding + bottomSafeArea,
+          child: LiquidGlassNavBar(
+            items: _liquidGlassItems,
+            selectedIndex: currentIndex,
+            onTap: (index) => _onDestinationSelected(context, index),
+          ),
+        ),
+      ],
     );
   }
 
@@ -399,10 +468,12 @@ class _Destination {
     required this.selectedIcon,
     required this.label,
     required this.route,
+    this.sfSymbol,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
   final String route;
+  final String? sfSymbol;
 }

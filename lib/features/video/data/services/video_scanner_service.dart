@@ -202,7 +202,10 @@ class VideoScannerService {
           ''');
         // 缓存 connections 并开始刮削
         _cachedConnections = connections;
-        unawaited(scrapeMetadata(connections: connections));
+        AppError.fireAndForget(
+          scrapeMetadata(connections: connections),
+          action: 'checkAndResumeScraping.scrapeMetadata',
+        );
       } else {
         // 没有待刮削视频时，检查并补充缺失的元数据
         // 延迟执行，避免影响启动性能
@@ -1009,6 +1012,388 @@ class VideoScannerService {
     } on Exception catch (e, st) {
       logger.e('VideoScannerService: 重试刮削失败', e, st);
     }
+  }
+
+  /// 快速增量同步媒体库
+  ///
+  /// 采用高效的分层检测策略，只扫描发生变化的目录分支。
+  /// 适合在 app 启动时调用，资源消耗极小。
+  ///
+  /// 工作流程：
+  /// 1. 快速检测根目录修改时间，无变化则直接跳过
+  /// 2. 分层向下检测，只遍历有变化的目录分支
+  /// 3. 对变化目录进行文件级别对比
+  /// 4. 支持中断和超时保护
+  ///
+  /// 返回 [IncrementalSyncResult] 包含同步统计信息
+  Future<IncrementalSyncResult?> incrementalSync({
+    required List<MediaLibraryPath> paths,
+    required Map<String, SourceConnection> connections,
+    void Function(String message)? onProgress,
+    Duration timeout = const Duration(minutes: 5),
+  }) async {
+    if (_isScanning) {
+      logger.w('VideoScannerService: 扫描正在进行中，跳过增量同步');
+      return null;
+    }
+
+    _isScanning = true;
+    _shouldStopScraping = false;
+    final startTime = DateTime.now();
+
+    try {
+      await _dbService.init();
+
+      var addedFiles = 0;
+      var deletedFiles = 0;
+      var changedFiles = 0;
+      var unchangedDirectories = 0;
+      var changedDirectories = 0;
+      var newDirectories = 0;
+      var deletedDirectories = 0;
+
+      for (final path in paths) {
+        // 中断检查
+        if (_shouldStopScraping) {
+          logger.i('VideoScannerService: 增量同步被中断');
+          break;
+        }
+
+        // 超时检查
+        if (DateTime.now().difference(startTime) > timeout) {
+          logger.w('VideoScannerService: 增量同步超时，已运行 ${timeout.inMinutes} 分钟');
+          break;
+        }
+
+        if (!path.isEnabled) continue;
+
+        final conn = connections[path.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) {
+          logger.w('VideoScannerService: 源 ${path.sourceId} 未连接，跳过增量同步');
+          continue;
+        }
+
+        final fileSystem = conn.adapter.fileSystem;
+
+        // 步骤1：快速检测根目录是否有变化
+        onProgress?.call('检查 ${path.path}...');
+
+        final rootDirRecord = await _dbService.getScanProgressItem(
+          path.sourceId,
+          path.path,
+        );
+
+        // 如果没有历史记录，跳过增量同步（需要全量扫描）
+        if (rootDirRecord == null) {
+          logger.i('VideoScannerService: ${path.path} 无历史记录，跳过增量同步');
+          continue;
+        }
+
+        // 获取根目录当前修改时间
+        DateTime? currentRootMtime;
+        try {
+          final rootInfo = await fileSystem.getFileInfo(path.path);
+          currentRootMtime = rootInfo.modifiedTime;
+        } on Exception catch (e) {
+          logger.w('VideoScannerService: 获取根目录信息失败 ${path.path}', e);
+          continue;
+        }
+
+        // 快速判断：如果根目录修改时间没变，整个目录树都没变化
+        if (rootDirRecord.dirModifiedTime != null &&
+            currentRootMtime != null &&
+            !currentRootMtime.isAfter(rootDirRecord.dirModifiedTime!)) {
+          logger.i('VideoScannerService: ${path.path} 根目录未变化，跳过');
+          unchangedDirectories++;
+          continue;
+        }
+
+        // 步骤2：分层检测变化的目录
+        onProgress?.call('检测变化...');
+
+        final syncResult = await _incrementalSyncDirectory(
+          fileSystem: fileSystem,
+          sourceId: path.sourceId,
+          rootPath: path.path,
+          onProgress: onProgress,
+          startTime: startTime,
+          timeout: timeout,
+        );
+
+        if (syncResult == null) continue;
+
+        addedFiles += syncResult.addedFiles;
+        deletedFiles += syncResult.deletedFiles;
+        changedFiles += syncResult.changedFiles;
+        unchangedDirectories += syncResult.unchangedDirectories;
+        changedDirectories += syncResult.changedDirectories;
+        newDirectories += syncResult.newDirectories;
+        deletedDirectories += syncResult.deletedDirectories;
+      }
+
+      final result = IncrementalSyncResult(
+        addedFiles: addedFiles,
+        deletedFiles: deletedFiles,
+        changedFiles: changedFiles,
+        unchangedDirectories: unchangedDirectories,
+        changedDirectories: changedDirectories,
+        newDirectories: newDirectories,
+        deletedDirectories: deletedDirectories,
+      );
+
+      if (result.hasChanges) {
+        logger.i('''
+VideoScannerService: 增量同步完成
+  - 新增文件: $addedFiles
+  - 删除文件: $deletedFiles
+  - 变化文件: $changedFiles
+  - 新增目录: $newDirectories
+  - 删除目录: $deletedDirectories
+''');
+
+        // 如果有新增文件，触发刮削
+        if (addedFiles > 0 || changedFiles > 0) {
+          AppError.fireAndForget(
+            scrapeMetadata(connections: connections),
+            action: 'incrementalSync.scrapeMetadata',
+          );
+        }
+      } else {
+        logger.i('VideoScannerService: 增量同步完成，无变化');
+      }
+
+      return result;
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'VideoScannerService.incrementalSync');
+      return null;
+    } finally {
+      _isScanning = false;
+    }
+  }
+
+  /// 分层增量同步单个目录树
+  ///
+  /// 从根目录开始，只遍历修改时间变化的目录分支
+  Future<IncrementalSyncResult?> _incrementalSyncDirectory({
+    required NasFileSystem fileSystem,
+    required String sourceId,
+    required String rootPath,
+    void Function(String message)? onProgress,
+    required DateTime startTime,
+    required Duration timeout,
+  }) async {
+    var addedFiles = 0;
+    var deletedFiles = 0;
+    var changedFiles = 0;
+    var unchangedDirectories = 0;
+    var changedDirectories = 0;
+    var newDirectories = 0;
+    var deletedDirectories = 0;
+
+    // 使用队列进行广度优先遍历（只遍历有变化的分支）
+    final dirsToCheck = <String>[rootPath];
+    final dirsToScan = <String>{}; // 需要扫描文件的目录
+    var checkedCount = 0;
+    const maxDirsToCheck = 1000; // 单次最多检查目录数，避免过载
+
+    while (dirsToCheck.isNotEmpty && checkedCount < maxDirsToCheck) {
+      // 中断检查
+      if (_shouldStopScraping) break;
+
+      // 超时检查
+      if (DateTime.now().difference(startTime) > timeout) break;
+
+      final currentDir = dirsToCheck.removeAt(0);
+      checkedCount++;
+
+      // 获取数据库中该目录的记录
+      final dbRecord = await _dbService.getScanProgressItem(sourceId, currentDir);
+
+      // 获取当前目录修改时间
+      DateTime? currentMtime;
+      try {
+        final dirInfo = await fileSystem.getFileInfo(currentDir);
+        currentMtime = dirInfo.modifiedTime;
+      } on Exception {
+        // 目录可能已被删除
+        if (dbRecord != null) {
+          deletedDirectories++;
+          // 删除该目录下的视频记录
+          final deleted = await _dbService.deleteByPath(sourceId, currentDir);
+          deletedFiles += deleted;
+          await _dbService.deleteScanProgressItem(sourceId, currentDir);
+        }
+        continue;
+      }
+
+      // 检查目录是否有变化
+      final hasChanged = dbRecord == null || // 新目录
+          dbRecord.dirModifiedTime == null || // 没有记录修改时间
+          (currentMtime != null && currentMtime.isAfter(dbRecord.dirModifiedTime!));
+
+      if (!hasChanged) {
+        unchangedDirectories++;
+        continue;
+      }
+
+      if (dbRecord == null) {
+        newDirectories++;
+      } else {
+        changedDirectories++;
+      }
+
+      // 标记需要扫描文件
+      dirsToScan.add(currentDir);
+
+      // 获取子目录并加入检查队列
+      try {
+        final items = await fileSystem.listDirectory(currentDir);
+        final subDirs = items
+            .where((f) => f.isDirectory && !f.isHidden && !_shouldSkipDirectory(f.name))
+            .map((f) => f.path)
+            .toList();
+        dirsToCheck.addAll(subDirs);
+      } on Exception catch (e) {
+        logger.w('VideoScannerService: 列出目录失败 $currentDir', e);
+      }
+    }
+
+    // 步骤3：扫描需要更新的目录
+    if (dirsToScan.isEmpty) {
+      return IncrementalSyncResult(
+        addedFiles: 0,
+        deletedFiles: deletedFiles,
+        changedFiles: 0,
+        unchangedDirectories: unchangedDirectories,
+        changedDirectories: changedDirectories,
+        newDirectories: newDirectories,
+        deletedDirectories: deletedDirectories,
+      );
+    }
+
+    onProgress?.call('扫描 ${dirsToScan.length} 个变化目录...');
+
+    // 分批扫描，避免一次性处理过多
+    const batchSize = 20;
+    final dirsList = dirsToScan.toList();
+
+    for (var i = 0; i < dirsList.length; i += batchSize) {
+      if (_shouldStopScraping) break;
+      if (DateTime.now().difference(startTime) > timeout) break;
+
+      final batch = dirsList.skip(i).take(batchSize).toList();
+
+      for (final dir in batch) {
+        final result = await _scanDirectoryForChanges(
+          fileSystem: fileSystem,
+          sourceId: sourceId,
+          dirPath: dir,
+          rootPath: rootPath,
+        );
+
+        addedFiles += result.addedFiles;
+        deletedFiles += result.deletedFiles;
+        changedFiles += result.changedFiles;
+      }
+    }
+
+    return IncrementalSyncResult(
+      addedFiles: addedFiles,
+      deletedFiles: deletedFiles,
+      changedFiles: changedFiles,
+      unchangedDirectories: unchangedDirectories,
+      changedDirectories: changedDirectories,
+      newDirectories: newDirectories,
+      deletedDirectories: deletedDirectories,
+    );
+  }
+
+  /// 扫描单个目录的文件变化
+  Future<({int addedFiles, int deletedFiles, int changedFiles})> _scanDirectoryForChanges({
+    required NasFileSystem fileSystem,
+    required String sourceId,
+    required String dirPath,
+    required String rootPath,
+  }) async {
+    var addedFiles = 0;
+    var deletedFiles = 0;
+    var changedFiles = 0;
+
+    try {
+      // 获取数据库中该目录的文件
+      final dbFiles = await _dbService.getVideoFilesInDirectory(sourceId, dirPath);
+
+      // 扫描当前目录
+      final items = await fileSystem.listDirectory(dirPath);
+      final videoItems = items.where((f) => !f.isDirectory && f.type == FileType.video).toList();
+
+      // 获取目录修改时间用于保存
+      DateTime? dirMtime;
+      try {
+        final dirInfo = await fileSystem.getFileInfo(dirPath);
+        dirMtime = dirInfo.modifiedTime;
+      } on Exception {
+        // 忽略
+      }
+
+      final currentFilePaths = <String>{};
+
+      for (final videoItem in videoItems) {
+        currentFilePaths.add(videoItem.path);
+        final dbFile = dbFiles[videoItem.path];
+
+        if (dbFile == null) {
+          // 新文件
+          final video = _ScannedVideo(
+            sourceId: sourceId,
+            file: videoItem,
+            hasNfoInDirectory: items.any((f) =>
+                !f.isDirectory && f.name.toLowerCase().endsWith('.nfo')),
+          );
+          await _saveBasicMetadataToDb([video]);
+          addedFiles++;
+        } else {
+          // 检查文件是否变化
+          final sizeChanged = dbFile.fileSize != videoItem.size;
+          final timeChanged = dbFile.fileModifiedTime != null &&
+              videoItem.modifiedTime != null &&
+              videoItem.modifiedTime!.isAfter(dbFile.fileModifiedTime!);
+
+          if (sizeChanged || timeChanged) {
+            // 文件已变化，更新记录
+            final video = _ScannedVideo(
+              sourceId: sourceId,
+              file: videoItem,
+              hasNfoInDirectory: items.any((f) =>
+                  !f.isDirectory && f.name.toLowerCase().endsWith('.nfo')),
+            );
+            await _saveBasicMetadataToDb([video]);
+            changedFiles++;
+          }
+        }
+      }
+
+      // 检测删除的文件
+      for (final dbFilePath in dbFiles.keys) {
+        if (!currentFilePaths.contains(dbFilePath)) {
+          await _dbService.deleteVideosBatch(sourceId, [dbFilePath]);
+          deletedFiles++;
+        }
+      }
+
+      // 更新目录扫描记录
+      await _dbService.upsertScanProgressItem(
+        sourceId: sourceId,
+        path: dirPath,
+        rootPath: rootPath,
+        videoCount: videoItems.length,
+        dirModifiedTime: dirMtime,
+      );
+    } on Exception catch (e) {
+      logger.w('VideoScannerService: 扫描目录变化失败 $dirPath', e);
+    }
+
+    return (addedFiles: addedFiles, deletedFiles: deletedFiles, changedFiles: changedFiles);
   }
 
   /// 检查是否是字幕文件

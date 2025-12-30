@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 
 /// 音乐播放设置
@@ -15,6 +16,7 @@ class MusicSettings {
     this.showLyrics = true,
     this.gaplessPlayback = true,
     this.dynamicIslandEnabled = true, // 默认开启，不在 UI 上显示开关
+    this.playerEngine = MusicPlayerEngine.justAudio, // 播放引擎
   });
 
   factory MusicSettings.fromMap(Map<dynamic, dynamic> map) => MusicSettings(
@@ -25,6 +27,7 @@ class MusicSettings {
         showLyrics: map['showLyrics'] as bool? ?? true,
         gaplessPlayback: map['gaplessPlayback'] as bool? ?? true,
         dynamicIslandEnabled: map['dynamicIslandEnabled'] as bool? ?? true,
+        playerEngine: MusicPlayerEngine.values[map['playerEngine'] as int? ?? 0],
       );
 
   final double volume;
@@ -34,6 +37,10 @@ class MusicSettings {
   final bool showLyrics; // 显示歌词
   final bool gaplessPlayback; // 无缝播放
   final bool dynamicIslandEnabled; // Android 灵动岛悬浮窗（默认开启，不在 UI 显示）
+  final MusicPlayerEngine playerEngine; // 播放引擎
+
+  /// 是否使用 media_kit 引擎
+  bool get useMediaKitEngine => playerEngine == MusicPlayerEngine.mediaKit;
 
   MusicSettings copyWith({
     double? volume,
@@ -43,6 +50,7 @@ class MusicSettings {
     bool? showLyrics,
     bool? gaplessPlayback,
     bool? dynamicIslandEnabled,
+    MusicPlayerEngine? playerEngine,
   }) =>
       MusicSettings(
         volume: volume ?? this.volume,
@@ -52,6 +60,7 @@ class MusicSettings {
         showLyrics: showLyrics ?? this.showLyrics,
         gaplessPlayback: gaplessPlayback ?? this.gaplessPlayback,
         dynamicIslandEnabled: dynamicIslandEnabled ?? this.dynamicIslandEnabled,
+        playerEngine: playerEngine ?? this.playerEngine,
       );
 
   Map<String, dynamic> toMap() => {
@@ -62,6 +71,7 @@ class MusicSettings {
         'showLyrics': showLyrics,
         'gaplessPlayback': gaplessPlayback,
         'dynamicIslandEnabled': dynamicIslandEnabled,
+        'playerEngine': playerEngine.index,
       };
 }
 
@@ -156,6 +166,17 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
     await _save();
     // 同步到播放器
     await _ref.read(musicPlayerControllerProvider.notifier).setDynamicIslandEnabled(enabled: enabled);
+  }
+
+  /// 设置播放引擎
+  ///
+  /// 注意：更改引擎需要重启应用才能生效
+  /// - [MusicPlayerEngine.justAudio] - 平台原生解码器（默认，灵动岛稳定）
+  /// - [MusicPlayerEngine.mediaKit] - FFmpeg 解码器（支持 AC3/DTS 等高级格式）
+  Future<void> setPlayerEngine(MusicPlayerEngine engine) async {
+    state = state.copyWith(playerEngine: engine);
+    await _save();
+    logger.i('MusicSettingsNotifier: 播放引擎已更改为 $engine，需要重启应用生效');
   }
 
   /// 重置设置

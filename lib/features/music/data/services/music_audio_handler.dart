@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:image/image.dart' as img;
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -21,7 +22,8 @@ import 'package:path_provider/path_provider.dart';
 /// - CarPlay 支持
 /// - 后台音频稳定播放
 class MusicAudioHandler extends BaseAudioHandler
-    with SeekHandler, WidgetsBindingObserver {
+    with SeekHandler, WidgetsBindingObserver
+    implements IMusicAudioHandler {
   MusicAudioHandler() {
     _init();
   }
@@ -47,15 +49,19 @@ class MusicAudioHandler extends BaseAudioHandler
   AudioPlayer get player => _player;
 
   /// 当前封面数据
+  @override
   Uint8List? get currentArtworkData => _currentArtworkData;
 
   /// 当前索引
+  @override
   int get currentIndex => _currentIndex;
 
   /// 获取当前音乐项
+  @override
   MusicItem? get currentMusicItem => _currentMusicItem;
 
   /// 外部切歌回调（用于处理复杂的音频源加载）
+  @override
   Future<void> Function(int index)? onSkipToIndex;
 
   Future<void> _init() async {
@@ -447,6 +453,7 @@ class MusicAudioHandler extends BaseAudioHandler
 
   /// 准备切换到新歌曲
   /// 在设置新歌曲之前调用，确保旧的播放状态被正确清理
+  @override
   Future<void> prepareForNewTrack() async {
     logger.i('MusicAudioHandler: 准备切换歌曲, 当前歌曲=${_currentMusicItem?.displayTitle}');
 
@@ -464,6 +471,7 @@ class MusicAudioHandler extends BaseAudioHandler
   }
 
   /// 设置当前播放的音乐（由 MusicPlayerNotifier 调用）
+  @override
   Future<void> setCurrentMusic(
     MusicItem music, {
     Uint8List? artworkData,
@@ -513,6 +521,7 @@ class MusicAudioHandler extends BaseAudioHandler
   }
 
   /// 更新封面图片（用于元数据加载完成后）
+  @override
   Future<void> updateArtwork(Uint8List artworkData) async {
     _currentArtworkData = artworkData;
 
@@ -533,6 +542,7 @@ class MusicAudioHandler extends BaseAudioHandler
   }
 
   /// 更新时长
+  @override
   void updateDuration(Duration duration) {
     if (mediaItem.value != null && duration > Duration.zero) {
       mediaItem.add(mediaItem.value!.copyWith(duration: duration));
@@ -540,6 +550,7 @@ class MusicAudioHandler extends BaseAudioHandler
   }
 
   /// 设置播放队列
+  @override
   void setQueue(List<MusicItem> items, {int startIndex = 0}) {
     _musicQueue
       ..clear()
@@ -562,6 +573,7 @@ class MusicAudioHandler extends BaseAudioHandler
   }
 
   /// 更新当前索引
+  @override
   void updateCurrentIndex(int index) {
     _currentIndex = index;
     // 触发状态更新
@@ -680,15 +692,62 @@ class MusicAudioHandler extends BaseAudioHandler
     // 由 MusicPlayerNotifier 处理
   }
 
+  /// 当前音量
+  double _volume = 1.0;
+
   /// 设置音量
+  @override
   Future<void> setVolume(double volume) async {
+    _volume = volume;
     await _player.setVolume(volume);
   }
+
+  /// 获取当前音量
+  @override
+  double get volume => _volume;
 
   /// 设置音频源
   Future<Duration?> setAudioSource(AudioSource source) => _player.setAudioSource(source);
 
+  // ==================== Stream 访问器 ====================
+
+  /// 播放位置流
+  @override
+  Stream<Duration> get positionStream => _player.positionStream;
+
+  /// 缓冲位置流
+  @override
+  Stream<Duration> get bufferedPositionStream => _player.bufferedPositionStream;
+
+  /// 时长流
+  @override
+  Stream<Duration> get durationStream =>
+      _player.durationStream.where((d) => d != null).map((d) => d!);
+
+  /// 播放状态流
+  @override
+  Stream<bool> get playingStream => _player.playingStream;
+
+  /// 缓冲状态流
+  @override
+  Stream<bool> get bufferingStream => _player.processingStateStream.map((state) =>
+      state == ProcessingState.buffering || state == ProcessingState.loading);
+
+  /// 播放完成流
+  @override
+  Stream<bool> get completedStream => _player.processingStateStream
+      .map((state) => state == ProcessingState.completed);
+
+  // ==================== 刷新 Now Playing ====================
+
+  /// 强制刷新 Now Playing / 灵动岛（公开方法）
+  @override
+  Future<void> refreshNowPlaying() async {
+    await _resetMediaItemForNowPlaying();
+  }
+
   /// 释放资源
+  @override
   Future<void> dispose() async {
     // 移除生命周期监听器
     WidgetsBinding.instance.removeObserver(this);

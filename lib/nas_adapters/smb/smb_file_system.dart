@@ -186,10 +186,14 @@ class SmbFileSystem implements NasFileSystem {
       final batch = paths.skip(i).take(maxConcurrency).toList();
       final futures = batch.map((path) async {
         try {
-          final conn = await pool.acquire(SmbConnectionType.general);
+          final conn = await pool.acquire(type: SmbConnectionType.general);
           try {
-            final info = await conn.stat(path);
-            return MapEntry(path, info.modified);
+            final smbFile = await conn.file(path);
+            // SmbFile.lastModified 是毫秒时间戳
+            final mtime = smbFile.lastModified > 0
+                ? DateTime.fromMillisecondsSinceEpoch(smbFile.lastModified)
+                : null;
+            return MapEntry(path, mtime);
           } finally {
             pool.release(conn);
           }

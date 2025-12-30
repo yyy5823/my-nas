@@ -12,6 +12,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/android_dynamic_island_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
+import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_favorites_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
@@ -211,10 +212,19 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 使用全局 AudioHandler（通过 audio_service 初始化）
   /// 这提供了后台音频播放和系统媒体控制（锁屏、控制中心、蓝牙耳机）
-  MusicAudioHandler get _audioHandler => audioHandler;
+  IMusicAudioHandler get _audioHandler => audioHandler;
 
-  /// 获取底层的 AudioPlayer
-  AudioPlayer get _player => _audioHandler.player;
+  /// 判断是否使用 just_audio 引擎
+  bool get _isJustAudioEngine => audioHandler is MusicAudioHandler;
+
+  /// 获取底层的 AudioPlayer（仅 just_audio 引擎可用）
+  /// 注意：media_kit 引擎需要不同的访问方式
+  AudioPlayer get _player {
+    if (audioHandler is MusicAudioHandler) {
+      return (audioHandler as MusicAudioHandler).player;
+    }
+    throw UnsupportedError('当前播放引擎不支持直接访问 AudioPlayer');
+  }
 
   // 媒体代理服务器（用于流式播放 NAS 文件）
   final MediaProxyServer _mediaProxyServer = MediaProxyServer();
@@ -263,7 +273,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   }
 
   void _initPlayer() {
-    logger.i('MusicPlayer: 使用全局 AudioHandler');
+    logger.i('MusicPlayer: 使用全局 AudioHandler (engine=${_isJustAudioEngine ? "just_audio" : "media_kit"})');
 
     // 设置 audioHandler 的切歌回调
     // 当用户通过锁屏、控制中心或蓝牙耳机点击上一首/下一首时调用
@@ -280,28 +290,27 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 初始化音频会话中断处理
     _initAudioSessionHandling();
 
-    // 监听播放状态
-    _player.playingStream.listen((playing) {
+    // 监听播放状态（使用接口提供的流，兼容两种引擎）
+    _audioHandler.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
       // 更新 Android 灵动岛播放状态
       unawaited(_updateDynamicIsland());
     });
 
-    // 监听缓冲状态
-    _player.processingStateStream.listen((processingState) {
-      state = state.copyWith(
-        isBuffering: processingState == ProcessingState.buffering ||
-            processingState == ProcessingState.loading,
-      );
+    // 监听缓冲状态（使用接口提供的流）
+    _audioHandler.bufferingStream.listen((buffering) {
+      state = state.copyWith(isBuffering: buffering);
+    });
 
-      // 播放完成时自动下一曲
-      if (processingState == ProcessingState.completed) {
+    // 监听播放完成（使用接口提供的流）
+    _audioHandler.completedStream.listen((completed) {
+      if (completed) {
         _onTrackCompleted();
       }
     });
 
     // 监听播放位置（使用播放器原生的 positionStream，无需定时器）
-    _player.positionStream.listen((position) {
+    _audioHandler.positionStream.listen((position) {
       state = state.copyWith(position: position);
       // 检查是否需要开始淡出（歌曲快结束时）
       _checkFadeOut(position);
@@ -310,25 +319,16 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     });
 
     // 监听总时长
-    _player.durationStream.listen((duration) {
-      if (duration != null && duration > Duration.zero) {
+    _audioHandler.durationStream.listen((duration) {
+      if (duration > Duration.zero) {
         state = state.copyWith(duration: duration);
       }
     });
 
     // 监听缓冲位置（边下边播时显示已下载进度）
-    _player.bufferedPositionStream.listen((bufferedPosition) {
+    _audioHandler.bufferedPositionStream.listen((bufferedPosition) {
       state = state.copyWith(bufferedPosition: bufferedPosition);
     });
-
-    // 监听播放错误（仅处理错误，不记录正常事件）
-    _player.playbackEventStream.listen(
-      null, // 正常事件无需处理，processingStateStream 已处理
-      onError: (Object e, StackTrace stackTrace) {
-        logger.e('MusicPlayer: playbackEventStream 错误', e, stackTrace);
-        state = state.copyWith(errorMessage: e.toString());
-      },
-    );
 
     // 初始化 Android 灵动岛服务
     _initDynamicIsland();

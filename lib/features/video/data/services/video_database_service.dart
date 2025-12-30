@@ -1338,7 +1338,7 @@ class VideoDatabaseService {
       where: '$_colYear = ?',
       whereArgs: [year],
       // 同年份内按标题排序
-      orderBy: '$_colTitle',
+      orderBy: _colTitle,
       limit: limit,
       offset: offset,
     );
@@ -4028,6 +4028,96 @@ class VideoDatabaseService {
   // 增量同步方法
   // ============================================
 
+  /// 获取单个目录的扫描进度记录
+  Future<ScanProgressItem?> getScanProgressItem(
+    String sourceId,
+    String path,
+  ) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableScanProgress,
+      where: '$_scanColSourceId = ? AND $_scanColPath = ?',
+      whereArgs: [sourceId, path],
+      limit: 1,
+    );
+
+    if (results.isEmpty) return null;
+    return _scanProgressFromRow(results.first);
+  }
+
+  /// 删除单个目录的扫描进度记录
+  Future<void> deleteScanProgressItem(String sourceId, String path) async {
+    if (!_initialized) await init();
+
+    await _db!.delete(
+      _tableScanProgress,
+      where: '$_scanColSourceId = ? AND $_scanColPath = ?',
+      whereArgs: [sourceId, path],
+    );
+  }
+
+  /// 插入或更新扫描进度记录
+  Future<void> upsertScanProgressItem({
+    required String sourceId,
+    required String path,
+    required String rootPath,
+    int videoCount = 0,
+    DateTime? dirModifiedTime,
+  }) async {
+    if (!_initialized) await init();
+
+    await _db!.insert(
+      _tableScanProgress,
+      {
+        _scanColSourceId: sourceId,
+        _scanColPath: path,
+        _scanColRootPath: rootPath,
+        _scanColStatus: scanStatusCompleted,
+        _scanColVideoCount: videoCount,
+        _scanColLastScanned: DateTime.now().millisecondsSinceEpoch,
+        if (dirModifiedTime != null)
+          _scanColDirModifiedTime: dirModifiedTime.millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// 获取指定目录下的视频文件（用于增量同步）
+  ///
+  /// 只返回直接位于该目录下的文件（不递归）
+  Future<Map<String, ({int fileSize, DateTime? fileModifiedTime})>> getVideoFilesInDirectory(
+    String sourceId,
+    String dirPath,
+  ) async {
+    if (!_initialized) await init();
+
+    // 使用 LIKE 匹配直接子文件（不包含更深层目录）
+    // 例如：/movies/avatar/ 下的文件，但不包括 /movies/avatar/subs/ 下的文件
+    final normalizedPath = dirPath.endsWith('/') ? dirPath : '$dirPath/';
+
+    final results = await _db!.rawQuery(
+      '''
+      SELECT $_colFilePath, $_colFileSize, $_colFileModifiedTime
+      FROM $_tableMetadata
+      WHERE $_colSourceId = ?
+        AND $_colFilePath LIKE ?
+        AND $_colFilePath NOT LIKE ?
+      ''',
+      [sourceId, '$normalizedPath%', '$normalizedPath%/%'],
+    );
+
+    return {
+      for (final row in results)
+        row[_colFilePath]! as String: (
+          fileSize: row[_colFileSize] as int? ?? 0,
+          fileModifiedTime: row[_colFileModifiedTime] != null
+              ? DateTime.fromMillisecondsSinceEpoch(row[_colFileModifiedTime]! as int)
+              : null,
+        )
+    };
+  }
+
   /// 获取所有已完成扫描的目录及其修改时间
   ///
   /// 用于增量同步时与当前文件系统对比
@@ -4051,7 +4141,7 @@ class VideoDatabaseService {
 
   /// 获取指定源下所有视频文件路径（用于检测已删除文件）
   ///
-  /// 返回 Map<filePath, (fileSize, fileModifiedTime)>
+  /// 返回 `Map<filePath, (fileSize, fileModifiedTime)>`
   Future<Map<String, ({int fileSize, DateTime? fileModifiedTime})>> getVideoFilesMap(
     String sourceId, {
     String? pathPrefix,
@@ -4077,7 +4167,7 @@ class VideoDatabaseService {
         row[_colFilePath]! as String: (
           fileSize: row[_colFileSize] as int? ?? 0,
           fileModifiedTime: row[_colFileModifiedTime] != null
-              ? DateTime.fromMillisecondsSinceEpoch(row[_colFileModifiedTime] as int)
+              ? DateTime.fromMillisecondsSinceEpoch(row[_colFileModifiedTime]! as int)
               : null,
         )
     };
@@ -4153,8 +4243,11 @@ class VideoDatabaseService {
       [sourceId, rootPath],
     )) ?? 0;
 
-    // 获取视频总数
-    final videos = await getCount(sourceId: sourceId, pathPrefix: rootPath);
+    // 获取视频总数（按源和路径前缀过滤）
+    final videos = Sqflite.firstIntValue(await _db!.rawQuery(
+      'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colSourceId = ? AND $_colFilePath LIKE ?',
+      [sourceId, '$rootPath%'],
+    )) ?? 0;
 
     return IncrementalSyncStats(
       totalDirectories: total,

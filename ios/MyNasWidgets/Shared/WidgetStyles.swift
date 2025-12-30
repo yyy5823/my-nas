@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import WidgetKit
 
 /// 小组件主题颜色
 struct WidgetTheme {
@@ -100,6 +101,38 @@ extension View {
             backgroundColor: backgroundColor,
             foregroundColor: foregroundColor
         ))
+    }
+
+    /// iOS 16 及以下版本的 Widget 背景包装器
+    /// iOS 17+ 使用 containerBackground API（在 Widget Configuration 中设置）
+    @ViewBuilder
+    func widgetBackgroundCompat<S: ShapeStyle>(_ style: S) -> some View {
+        if #available(iOS 17.0, *) {
+            // iOS 17+ 背景由 containerBackground 处理，无需内部绘制
+            self
+        } else {
+            ZStack {
+                ContainerRelativeShape()
+                    .fill(style)
+                self
+            }
+        }
+    }
+
+    /// 用于带有自定义背景（如封面图片）的 Widget
+    @ViewBuilder
+    func widgetCustomBackgroundCompat<Background: View>(@ViewBuilder _ background: () -> Background) -> some View {
+        if #available(iOS 17.0, *) {
+            self.containerBackground(for: .widget) {
+                background()
+            }
+        } else {
+            ZStack {
+                background()
+                    .clipShape(ContainerRelativeShape())
+                self
+            }
+        }
     }
 }
 

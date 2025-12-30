@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
 
@@ -96,6 +97,9 @@ class MusicSettingsSheet extends ConsumerWidget {
                       const SizedBox(height: 24),
                       // 开关选项
                       _buildSwitchOptions(settings, notifier, isDark),
+                      const SizedBox(height: 24),
+                      // 播放引擎选择
+                      _buildEngineSection(context, settings, notifier, isDark),
                       SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
                     ],
                   ),
@@ -344,6 +348,127 @@ class MusicSettingsSheet extends ConsumerWidget {
         ),
       ],
     );
+
+  Widget _buildEngineSection(
+    BuildContext context,
+    MusicSettings settings,
+    MusicSettingsNotifier notifier,
+    bool isDark,
+  ) => _SettingsSection(
+      title: '播放引擎',
+      subtitle: '切换需要重启应用生效',
+      icon: Icons.memory_rounded,
+      isDark: isDark,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _EngineButton(
+                icon: Icons.phone_android_rounded,
+                title: '平台原生',
+                subtitle: '稳定 / 低功耗',
+                isSelected: settings.playerEngine == MusicPlayerEngine.justAudio,
+                isDark: isDark,
+                onTap: () => _switchEngine(
+                  context,
+                  notifier,
+                  MusicPlayerEngine.justAudio,
+                  settings.playerEngine,
+                ),
+              ),
+              const SizedBox(width: 12),
+              _EngineButton(
+                icon: Icons.graphic_eq_rounded,
+                title: 'FFmpeg',
+                subtitle: 'AC3 / DTS / Dolby',
+                isSelected: settings.playerEngine == MusicPlayerEngine.mediaKit,
+                isDark: isDark,
+                onTap: () => _switchEngine(
+                  context,
+                  notifier,
+                  MusicPlayerEngine.mediaKit,
+                  settings.playerEngine,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.amber.withValues(alpha: 0.15)
+                  : Colors.amber.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: Colors.amber.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: Colors.amber[700],
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    settings.playerEngine == MusicPlayerEngine.mediaKit
+                        ? '当前使用 FFmpeg 引擎，支持 AC3、DTS、Dolby 等高级音频格式'
+                        : '当前使用平台原生引擎，更省电但不支持 AC3/DTS 等格式',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.amber[300] : Colors.amber[800],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+  void _switchEngine(
+    BuildContext context,
+    MusicSettingsNotifier notifier,
+    MusicPlayerEngine newEngine,
+    MusicPlayerEngine currentEngine,
+  ) {
+    if (newEngine == currentEngine) return;
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('切换播放引擎'),
+        content: Text(
+          newEngine == MusicPlayerEngine.mediaKit
+              ? '切换到 FFmpeg 引擎后，将支持 AC3、DTS、Dolby TrueHD 等高级音频格式。\n\n需要重启应用才能生效。'
+              : '切换到平台原生引擎后，将更加省电但不再支持 AC3/DTS 等高级格式。\n\n需要重启应用才能生效。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              notifier.setPlayerEngine(newEngine);
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('播放引擎已更改，请重启应用生效'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: const Text('确认切换'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// 设置区块组件
@@ -624,6 +749,94 @@ class _SettingsSwitch extends StatelessWidget {
             activeThumbColor: Colors.white,
           ),
         ],
+      ),
+    );
+}
+
+/// 引擎选择按钮
+class _EngineButton extends StatelessWidget {
+  const _EngineButton({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppColors.primary
+                : (isDark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.05)),
+            borderRadius: BorderRadius.circular(14),
+            border: isSelected
+                ? null
+                : Border.all(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: isSelected
+                    ? Colors.white
+                    : (isDark ? Colors.white70 : Colors.black54),
+                size: 28,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected
+                      ? Colors.white
+                      : (isDark ? Colors.white : Colors.black87),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.8)
+                      : (isDark ? Colors.white54 : Colors.black45),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
 }
