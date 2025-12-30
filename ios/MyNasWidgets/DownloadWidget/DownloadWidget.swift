@@ -103,7 +103,7 @@ struct DownloadWidgetSmallView: View {
             }
         }
         .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
-        .widgetURL(URL(string: "mynas://downloads"))
+        .widgetURL(URL(string: "mynas://mine"))
     }
 }
 
@@ -171,7 +171,7 @@ struct DownloadWidgetMediumView: View {
             }
         }
         .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
-        .widgetURL(URL(string: "mynas://downloads"))
+        .widgetURL(URL(string: "mynas://mine"))
     }
 }
 

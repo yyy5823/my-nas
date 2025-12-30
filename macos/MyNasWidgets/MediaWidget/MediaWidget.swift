@@ -119,7 +119,7 @@ struct SmallMediaView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            if let data = entry.mediaData, entry.isConnected {
+            if let data = entry.mediaData, data.hasContent, entry.isConnected {
                 // 封面
                 ZStack {
                     if let artwork = entry.artwork {
@@ -139,12 +139,12 @@ struct SmallMediaView: View {
 
                 // 标题
                 VStack(spacing: 2) {
-                    Text(data.title)
+                    Text(data.title ?? "Unknown")
                         .font(.caption)
                         .fontWeight(.medium)
                         .lineLimit(1)
 
-                    Text(data.artist)
+                    Text(data.artist ?? "Unknown Artist")
                         .font(.caption2)
                         .foregroundColor(WidgetTheme.secondaryColor)
                         .lineLimit(1)
@@ -161,6 +161,7 @@ struct SmallMediaView: View {
         .containerBackground(for: .widget) {
             WidgetTheme.backgroundColor
         }
+        .widgetURL(URL(string: "mynas://music/player"))
     }
 }
 
@@ -169,7 +170,7 @@ struct MediumMediaView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let data = entry.mediaData, entry.isConnected {
+            if let data = entry.mediaData, data.hasContent, entry.isConnected {
                 // 左侧封面
                 ZStack {
                     if let artwork = entry.artwork {
@@ -192,20 +193,22 @@ struct MediumMediaView: View {
                     WidgetHeader(title: "Now Playing", icon: "music.note")
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(data.title)
+                        Text(data.title ?? "Unknown")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .lineLimit(1)
 
-                        Text(data.artist)
+                        Text(data.artist ?? "Unknown Artist")
                             .font(.caption)
                             .foregroundColor(WidgetTheme.secondaryColor)
                             .lineLimit(1)
 
-                        Text(data.album)
-                            .font(.caption2)
-                            .foregroundColor(WidgetTheme.secondaryColor.opacity(0.7))
-                            .lineLimit(1)
+                        if let album = data.album, !album.isEmpty {
+                            Text(album)
+                                .font(.caption2)
+                                .foregroundColor(WidgetTheme.secondaryColor.opacity(0.7))
+                                .lineLimit(1)
+                        }
                     }
 
                     Spacer()
@@ -264,6 +267,7 @@ struct MediumMediaView: View {
         .containerBackground(for: .widget) {
             WidgetTheme.backgroundColor
         }
+        .widgetURL(URL(string: "mynas://music/player"))
     }
 }
 

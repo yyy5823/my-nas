@@ -54,26 +54,26 @@ struct DownloadData: Codable {
 }
 
 struct MediaData: Codable {
-    let title: String
-    let artist: String
-    let album: String
-    let artworkPath: String?
+    let title: String?
+    let artist: String?
+    let album: String?
+    let coverImagePath: String?
     let isPlaying: Bool
-    let duration: Double
-    let position: Double
-    let lastUpdated: Date
+    let progress: Double
+    let currentTime: Int
+    let totalTime: Int
+    let themeColor: Int?
 
-    var progress: Double {
-        guard duration > 0 else { return 0 }
-        return position / duration
+    var hasContent: Bool {
+        title != nil && !(title?.isEmpty ?? true)
     }
 
     var positionFormatted: String {
-        formatTime(position)
+        formatTime(Double(currentTime))
     }
 
     var durationFormatted: String {
-        formatTime(duration)
+        formatTime(Double(totalTime))
     }
 
     private func formatTime(_ seconds: Double) -> String {
@@ -81,18 +81,42 @@ struct MediaData: Codable {
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", mins, secs)
     }
+
+    static let placeholder = MediaData(
+        title: "Song Title",
+        artist: "Artist Name",
+        album: "Album Name",
+        coverImagePath: nil,
+        isPlaying: true,
+        progress: 0.45,
+        currentTime: 120,
+        totalTime: 300,
+        themeColor: nil
+    )
+
+    static let empty = MediaData(
+        title: nil,
+        artist: nil,
+        album: nil,
+        coverImagePath: nil,
+        isPlaying: false,
+        progress: 0,
+        currentTime: 0,
+        totalTime: 0,
+        themeColor: nil
+    )
 }
 
 enum QuickAccessType: String, Codable, CaseIterable {
     case music
     case video
-    case books
+    case reading // 对应路由 /reading
 
     var displayName: String {
         switch self {
         case .music: return "Music"
         case .video: return "Video"
-        case .books: return "Books"
+        case .reading: return "Books"
         }
     }
 
@@ -100,7 +124,7 @@ enum QuickAccessType: String, Codable, CaseIterable {
         switch self {
         case .music: return "music.note"
         case .video: return "play.rectangle"
-        case .books: return "book"
+        case .reading: return "book"
         }
     }
 
@@ -155,11 +179,18 @@ class WidgetDataManager {
     }
 
     func getMediaArtwork() -> NSImage? {
+        // 首先尝试从封面图片数据读取
+        if let imageData = userDefaults?.data(forKey: "widget_cover_image"),
+           let image = NSImage(data: imageData) {
+            return image
+        }
+
+        // 其次尝试从路径读取
         guard let mediaData = getMediaData(),
-              let artworkPath = mediaData.artworkPath else {
+              let coverPath = mediaData.coverImagePath else {
             return nil
         }
-        return NSImage(contentsOfFile: artworkPath)
+        return NSImage(contentsOfFile: coverPath)
     }
 
     // MARK: - Connection Status

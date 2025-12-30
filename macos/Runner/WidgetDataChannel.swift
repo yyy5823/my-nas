@@ -107,16 +107,24 @@ class WidgetDataChannel {
             return
         }
 
+        // 使用与 Flutter 和 iOS 一致的字段名
         let mediaData: [String: Any] = [
             "title": args["title"] as? String ?? "",
             "artist": args["artist"] as? String ?? "",
             "album": args["album"] as? String ?? "",
-            "artworkPath": args["artworkPath"] as? String as Any,
+            "coverImagePath": args["coverImagePath"] as? String as Any,
             "isPlaying": args["isPlaying"] as? Bool ?? false,
-            "duration": args["duration"] as? Double ?? 0,
-            "position": args["position"] as? Double ?? 0,
+            "progress": args["progress"] as? Double ?? 0,
+            "currentTime": args["currentTime"] as? Int ?? 0,
+            "totalTime": args["totalTime"] as? Int ?? 0,
+            "themeColor": args["themeColor"] as? Int as Any,
             "lastUpdated": Date().timeIntervalSince1970
         ]
+
+        // 处理封面图片数据
+        if let coverData = args["coverImageData"] as? FlutterStandardTypedData {
+            userDefaults?.set(coverData.data, forKey: "widget_cover_image")
+        }
 
         if let data = try? JSONSerialization.data(withJSONObject: mediaData) {
             userDefaults?.set(data, forKey: "widget_media_data")

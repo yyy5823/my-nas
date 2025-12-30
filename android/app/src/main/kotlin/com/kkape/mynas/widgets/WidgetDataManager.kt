@@ -190,13 +190,14 @@ class WidgetDataManager(private val context: Context) {
         val isConnected: Boolean
     ) {
         companion object {
-            val DEFAULT = QuickAccessData(listOf("music", "video", "book"), null, false)
+            // 默认快捷操作项 - 使用与路由一致的名称
+            val DEFAULT = QuickAccessData(listOf("music", "video", "reading"), null, false)
 
             fun fromJson(json: JSONObject): QuickAccessData {
                 val itemsArray = json.optJSONArray("items") ?: JSONArray()
                 val items = (0 until itemsArray.length()).map { itemsArray.getString(it) }
                 return QuickAccessData(
-                    items = items.ifEmpty { listOf("music", "video", "book") },
+                    items = items.ifEmpty { listOf("music", "video", "reading") },
                     nasName = json.optString("nasName", null),
                     isConnected = json.optBoolean("isConnected", false)
                 )

@@ -100,8 +100,8 @@ class DownloadWidget : AppWidgetProvider() {
                 }
             }
 
-            // 点击打开下载管理
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("mynas://downloads")).apply {
+            // 点击打开下载管理 - 导航到"我的"页面
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("mynas://mine")).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             val pendingIntent = PendingIntent.getActivity(

@@ -109,6 +109,7 @@ struct SmallDownloadView: View {
         .containerBackground(for: .widget) {
             WidgetTheme.backgroundColor
         }
+        .widgetURL(URL(string: "mynas://mine"))
     }
 }
 
@@ -137,6 +138,7 @@ struct MediumDownloadView: View {
         .containerBackground(for: .widget) {
             WidgetTheme.backgroundColor
         }
+        .widgetURL(URL(string: "mynas://mine"))
     }
 }
 

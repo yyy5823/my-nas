@@ -12,7 +12,7 @@ struct WidgetTheme {
 
     static let musicColor = Color.pink
     static let videoColor = Color.purple
-    static let booksColor = Color.orange
+    static let readingColor = Color.orange
 
     static let successColor = Color.green
     static let warningColor = Color.orange
@@ -136,7 +136,7 @@ struct QuickAccessButton: View {
         switch type {
         case .music: return WidgetTheme.musicColor
         case .video: return WidgetTheme.videoColor
-        case .books: return WidgetTheme.booksColor
+        case .reading: return WidgetTheme.readingColor
         }
     }
 }

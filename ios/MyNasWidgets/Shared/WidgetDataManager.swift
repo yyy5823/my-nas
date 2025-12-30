@@ -195,7 +195,7 @@ class WidgetDataManager {
         let isConnected: Bool
 
         static let defaultData = QuickAccessData(
-            items: ["music", "video", "book"],
+            items: ["music", "video", "reading"],  // 使用与路由一致的名称
             nasName: nil,
             isConnected: false
         )

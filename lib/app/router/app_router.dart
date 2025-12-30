@@ -67,9 +67,21 @@ final appRouter = GoRouter(
     // 在这种情况下：scheme=mynas, host=music, path=/player
     if (uri.scheme == 'mynas') {
       final host = uri.host; // e.g., "music"
-      final path = uri.path; // e.g., "/player"
+      var path = uri.path; // e.g., "/player" 或 "/" 或 ""
+
+      // 处理空路径或仅为 "/" 的情况
+      if (path == '/' || path.isEmpty) {
+        path = '';
+      }
+
       // 组合成完整路径: /music/player
-      final fullPath = host.isNotEmpty ? '/$host$path' : path;
+      var fullPath = host.isNotEmpty ? '/$host$path' : path;
+
+      // 移除尾部斜杠（除非是根路径）
+      if (fullPath.length > 1 && fullPath.endsWith('/')) {
+        fullPath = fullPath.substring(0, fullPath.length - 1);
+      }
+
       logger.i('GoRouter: Deep link detected, redirecting to $fullPath');
       return fullPath;
     }

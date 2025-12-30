@@ -100,6 +100,7 @@ struct SmallStorageView: View {
         .containerBackground(for: .widget) {
             WidgetTheme.backgroundColor
         }
+        .widgetURL(URL(string: "mynas://mine"))
     }
 
     private func progressColor(for percentage: Double) -> Color {
@@ -173,6 +174,7 @@ struct MediumStorageView: View {
         .containerBackground(for: .widget) {
             WidgetTheme.backgroundColor
         }
+        .widgetURL(URL(string: "mynas://mine"))
     }
 
     private func progressColor(for percentage: Double) -> Color {

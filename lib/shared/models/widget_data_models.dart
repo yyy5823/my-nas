@@ -353,19 +353,20 @@ class MediaWidgetData {
 }
 
 /// 快捷操作项
+/// 注意：id 必须与路由路径一致 (例如 /music, /video, /reading)
 enum QuickAccessType {
   music('music', '音乐'),
   video('video', '视频'),
-  book('book', '图书'),
+  reading('reading', '图书'), // 对应路由 /reading
   photo('photo', '相册'),
-  file('file', '文件');
+  files('files', '文件'); // 对应路由 /files
 
   const QuickAccessType(this.id, this.label);
 
   final String id;
   final String label;
 
-  /// URL Scheme
+  /// URL Scheme - 与路由路径一致
   String get urlScheme => 'mynas://$id';
 
   /// SF Symbol 名称 (iOS/macOS)
@@ -375,11 +376,11 @@ enum QuickAccessType {
         return 'music.note';
       case QuickAccessType.video:
         return 'play.rectangle';
-      case QuickAccessType.book:
+      case QuickAccessType.reading:
         return 'book';
       case QuickAccessType.photo:
         return 'photo';
-      case QuickAccessType.file:
+      case QuickAccessType.files:
         return 'folder';
     }
   }
@@ -391,11 +392,11 @@ enum QuickAccessType {
         return 'music_note';
       case QuickAccessType.video:
         return 'play_circle';
-      case QuickAccessType.book:
+      case QuickAccessType.reading:
         return 'book';
       case QuickAccessType.photo:
         return 'photo_library';
-      case QuickAccessType.file:
+      case QuickAccessType.files:
         return 'folder';
     }
   }
@@ -425,7 +426,7 @@ class QuickAccessWidgetData {
                 ?.map(
                   (e) => QuickAccessType.values.firstWhere(
                     (t) => t.id == e,
-                    orElse: () => QuickAccessType.file,
+                    orElse: () => QuickAccessType.files,
                   ),
                 )
                 .toList() ??
@@ -439,7 +440,7 @@ class QuickAccessWidgetData {
     items: [
       QuickAccessType.music,
       QuickAccessType.video,
-      QuickAccessType.book,
+      QuickAccessType.reading,
     ],
   );
 }

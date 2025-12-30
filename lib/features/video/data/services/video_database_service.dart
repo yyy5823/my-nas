@@ -1714,6 +1714,84 @@ class VideoDatabaseService {
     ''';
   }
 
+  /// 构建电影去重查询（带筛选条件，用于 getFiltered）
+  ///
+  /// 与 _buildMovieDeduplicationQuery 类似，但使用简单的 where 字符串而非 pathFilter
+  String _buildMovieDeduplicationQueryWithFilters({
+    required String baseWhere,
+    required String orderBy,
+    required int limit,
+    required int offset,
+  }) {
+    // 分辨率优先级排序：数字越大优先级越高
+    // 4K/2160p = 4, 1080p = 3, 720p = 2, 480p = 1, 其他 = 0
+    const resolutionOrder = '''
+      CASE
+        WHEN $_colResolution IN ('4K', '2160p', 'UHD') THEN 4
+        WHEN $_colResolution = '1080p' THEN 3
+        WHEN $_colResolution = '720p' THEN 2
+        WHEN $_colResolution = '480p' THEN 1
+        ELSE 0
+      END
+    ''';
+
+    return '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $baseWhere
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$baseWhere
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
+                  AND LOWER(COALESCE(m2.$_colTitle, '')) = LOWER(COALESCE(m1.$_colTitle, ''))
+                  AND COALESCE(m2.$_colYear, 0) = COALESCE(m1.$_colYear, 0))
+            )
+          ORDER BY $resolutionOrder DESC,
+                   COALESCE(m2.$_colFileSize, 0) DESC,
+                   m2.$_colRating DESC NULLS LAST
+          LIMIT 1
+        )
+      ORDER BY $orderBy
+      LIMIT $limit OFFSET $offset
+    ''';
+  }
+
+  /// 构建电影去重计数查询
+  String _buildMovieDeduplicationCountQuery({
+    required String baseWhere,
+  }) {
+    // 分辨率优先级排序
+    const resolutionOrder = '''
+      CASE
+        WHEN $_colResolution IN ('4K', '2160p', 'UHD') THEN 4
+        WHEN $_colResolution = '1080p' THEN 3
+        WHEN $_colResolution = '720p' THEN 2
+        WHEN $_colResolution = '480p' THEN 1
+        ELSE 0
+      END
+    ''';
+
+    return '''
+      SELECT COUNT(*) FROM $_tableMetadata m1
+      WHERE $baseWhere
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$baseWhere
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
+                  AND LOWER(COALESCE(m2.$_colTitle, '')) = LOWER(COALESCE(m1.$_colTitle, ''))
+                  AND COALESCE(m2.$_colYear, 0) = COALESCE(m1.$_colYear, 0))
+            )
+          ORDER BY $resolutionOrder DESC,
+                   COALESCE(m2.$_colFileSize, 0) DESC,
+                   m2.$_colRating DESC NULLS LAST
+          LIMIT 1
+        )
+    ''';
+  }
+
   /// 获取统计信息文本（用于空状态显示）
   ///
   /// 返回格式如: "123 个影视 · 2.5 MB 缓存"
@@ -3439,6 +3517,21 @@ class VideoDatabaseService {
 
     final orderBy = _buildOrderBy(sortOption);
 
+    // 电影类别使用去重逻辑（同一电影不同清晰度只返回最高清版本）
+    if (category == MediaCategory.movie) {
+      final sql = _buildMovieDeduplicationQueryWithFilters(
+        baseWhere: where,
+        orderBy: orderBy,
+        limit: limit,
+        offset: offset,
+      );
+      // 参数需要出现两次（外层和子查询各一次）
+      final args = [...whereArgs, ...whereArgs];
+      final results = await _db!.rawQuery(sql, args);
+      return results.map(_fromRow).toList();
+    }
+
+    // 其他类别使用普通查询
     final results = await _db!.query(
       _tableMetadata,
       where: where,
@@ -3499,6 +3592,16 @@ class VideoDatabaseService {
       whereArgs.add(year);
     }
 
+    // 电影类别使用去重计数（同一电影不同清晰度只计数一次）
+    if (category == MediaCategory.movie) {
+      final sql = _buildMovieDeduplicationCountQuery(baseWhere: where);
+      // 参数需要出现两次（外层和子查询各一次）
+      final args = [...whereArgs, ...whereArgs];
+      final result = await _db!.rawQuery(sql, args);
+      return Sqflite.firstIntValue(result) ?? 0;
+    }
+
+    // 其他类别使用普通计数
     final result = await _db!.rawQuery(
       'SELECT COUNT(*) FROM $_tableMetadata WHERE $where',
       whereArgs,

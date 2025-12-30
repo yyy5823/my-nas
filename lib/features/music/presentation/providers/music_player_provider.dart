@@ -23,6 +23,8 @@ import 'package:my_nas/features/music/presentation/providers/music_settings_prov
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/main.dart' show audioHandler;
+import 'package:my_nas/shared/models/widget_data_models.dart';
+import 'package:my_nas/shared/services/widget_data_service.dart';
 import 'package:path/path.dart' as p;
 
 /// 当前播放的音乐
@@ -295,6 +297,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       state = state.copyWith(isPlaying: playing);
       // 更新 Android 灵动岛播放状态
       unawaited(_updateDynamicIsland());
+      // 更新 iOS/macOS 媒体小组件
+      unawaited(_updateMediaWidget());
     });
 
     // 监听缓冲状态（使用接口提供的流）
@@ -424,6 +428,42 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     } on Exception catch (e, st) {
       logger.e('MusicPlayer: 隐藏灵动岛失败', e, st);
     }
+  }
+
+  /// 更新 iOS/macOS 媒体小组件
+  Future<void> _updateMediaWidget() async {
+    // 只在 iOS 和 macOS 上更新 Widget
+    if (!Platform.isIOS && !Platform.isMacOS) return;
+
+    final currentMusic = _ref.read(currentMusicProvider);
+
+    if (currentMusic == null) {
+      // 没有播放内容，清空 Widget
+      await widgetDataService.clearMediaWidget();
+      return;
+    }
+
+    // 获取封面数据
+    var coverData = _audioHandler.currentArtworkData;
+    if (coverData == null || coverData.isEmpty) {
+      if (currentMusic.coverData != null && currentMusic.coverData!.isNotEmpty) {
+        coverData = Uint8List.fromList(currentMusic.coverData!);
+      }
+    }
+
+    // 构建 Widget 数据
+    final widgetData = MediaWidgetData(
+      title: currentMusic.displayTitle,
+      artist: currentMusic.artist,
+      album: currentMusic.album,
+      isPlaying: state.isPlaying,
+      progress: state.progress,
+      currentTime: state.position.inSeconds,
+      totalTime: state.duration.inSeconds,
+      coverImageData: coverData,
+    );
+
+    await widgetDataService.updateMediaWidget(widgetData);
   }
 
   /// 设置 Android 灵动岛开关
@@ -1539,6 +1579,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _ref.read(currentMusicProvider.notifier).state = null;
     // 隐藏 Android 灵动岛
     unawaited(_hideDynamicIsland());
+    // 清空 iOS/macOS 媒体小组件
+    unawaited(widgetDataService.clearMediaWidget());
   }
 
   /// 下一曲

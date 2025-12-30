@@ -29,7 +29,8 @@ class LiquidGlassNavItem {
   final String? sfSymbol;
 
   Map<String, dynamic> toMap() => {
-        'icon': sfSymbol ?? _iconToSFSymbol(icon),
+        'icon': _iconToSFSymbol(icon),
+        'selectedIcon': _iconToSFSymbol(selectedIcon),
         'label': label,
       };
 
@@ -39,21 +40,28 @@ class LiquidGlassNavItem {
     final codePoint = icon.codePoint;
 
     // 常用图标映射 (使用 codePoint)
+    // 注意：outlined 和 rounded 版本映射到不同的 SF Symbol
     final iconMap = <int, String>{
+      // 影视
       Icons.movie_filter_outlined.codePoint: 'film',
-      Icons.movie_filter_rounded.codePoint: 'film',
+      Icons.movie_filter_rounded.codePoint: 'film.fill',
+      // 曲库
       Icons.library_music_outlined.codePoint: 'music.note.list',
-      Icons.library_music_rounded.codePoint: 'music.note.list',
+      Icons.library_music_rounded.codePoint: 'music.note.list',  // 没有 .fill 变体
+      // 相册
       Icons.photo_album_outlined.codePoint: 'photo.on.rectangle',
-      Icons.photo_album_rounded.codePoint: 'photo.on.rectangle',
+      Icons.photo_album_rounded.codePoint: 'photo.on.rectangle.fill',
+      // 阅读
       Icons.menu_book_outlined.codePoint: 'book',
-      Icons.menu_book_rounded.codePoint: 'book',
+      Icons.menu_book_rounded.codePoint: 'book.fill',
+      // 我的
       Icons.account_circle_outlined.codePoint: 'person.circle',
-      Icons.account_circle_rounded.codePoint: 'person.circle',
+      Icons.account_circle_rounded.codePoint: 'person.circle.fill',
+      // 其他常用图标
       Icons.home_outlined.codePoint: 'house',
-      Icons.home_rounded.codePoint: 'house',
+      Icons.home_rounded.codePoint: 'house.fill',
       Icons.settings_outlined.codePoint: 'gearshape',
-      Icons.settings_rounded.codePoint: 'gearshape',
+      Icons.settings_rounded.codePoint: 'gearshape.fill',
       Icons.search_outlined.codePoint: 'magnifyingglass',
       Icons.search_rounded.codePoint: 'magnifyingglass',
     };

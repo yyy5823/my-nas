@@ -87,8 +87,8 @@ class StorageWidget : AppWidgetProvider() {
                 )
             }
 
-            // 点击打开应用
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("mynas://storage")).apply {
+            // 点击打开应用 - 导航到"我的"页面
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("mynas://mine")).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             val pendingIntent = PendingIntent.getActivity(

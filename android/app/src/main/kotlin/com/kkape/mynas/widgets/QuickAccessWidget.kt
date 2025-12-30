@@ -57,10 +57,10 @@ class QuickAccessWidget : AppWidgetProvider() {
                 createPendingIntent(context, "mynas://video")
             )
 
-            // 图书按钮
+            // 图书按钮 - 对应路由 /reading
             views.setOnClickPendingIntent(
                 R.id.btn_book,
-                createPendingIntent(context, "mynas://book")
+                createPendingIntent(context, "mynas://reading")
             )
 
             // 相册按钮（如果有的话）

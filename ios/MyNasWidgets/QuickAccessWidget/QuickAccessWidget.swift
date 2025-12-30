@@ -14,17 +14,17 @@ import WidgetKit
 enum QuickAccessItem: String, CaseIterable {
     case music
     case video
-    case book
+    case reading // 对应路由 /reading
     case photo
-    case file
+    case files // 对应路由 /files
 
     var label: String {
         switch self {
         case .music: return "音乐"
         case .video: return "视频"
-        case .book: return "图书"
+        case .reading: return "图书"
         case .photo: return "相册"
-        case .file: return "文件"
+        case .files: return "文件"
         }
     }
 
@@ -32,9 +32,9 @@ enum QuickAccessItem: String, CaseIterable {
         switch self {
         case .music: return "music.note"
         case .video: return "play.rectangle.fill"
-        case .book: return "book.fill"
+        case .reading: return "book.fill"
         case .photo: return "photo.fill"
-        case .file: return "folder.fill"
+        case .files: return "folder.fill"
         }
     }
 
@@ -42,9 +42,9 @@ enum QuickAccessItem: String, CaseIterable {
         switch self {
         case .music: return Color(hex: "ff6b6b")
         case .video: return Color(hex: "4ecdc4")
-        case .book: return Color(hex: "ffe66d")
+        case .reading: return Color(hex: "ffe66d")
         case .photo: return Color(hex: "a29bfe")
-        case .file: return Color(hex: "74b9ff")
+        case .files: return Color(hex: "74b9ff")
         }
     }
 
@@ -106,7 +106,7 @@ struct QuickAccessProvider: TimelineProvider {
     func placeholder(in _: Context) -> QuickAccessEntry {
         QuickAccessEntry(
             date: Date(),
-            items: [.music, .video, .book],
+            items: [.music, .video, .reading],
             nasName: "My NAS",
             isConnected: true
         )
@@ -115,7 +115,7 @@ struct QuickAccessProvider: TimelineProvider {
     func getSnapshot(in _: Context, completion: @escaping (QuickAccessEntry) -> Void) {
         let entry = QuickAccessEntry(
             date: Date(),
-            items: [.music, .video, .book],
+            items: [.music, .video, .reading],
             nasName: WidgetDataManager.shared.getNasName(),
             isConnected: WidgetDataManager.shared.isNasConnected()
         )
@@ -124,11 +124,18 @@ struct QuickAccessProvider: TimelineProvider {
 
     func getTimeline(in _: Context, completion: @escaping (Timeline<QuickAccessEntry>) -> Void) {
         let data = WidgetDataManager.shared.getQuickAccessData()
-        let items = data.items.compactMap { QuickAccessItem(rawValue: $0) }
+        // 将旧的 key 映射到新的 enum 值
+        let items = data.items.compactMap { itemKey -> QuickAccessItem? in
+            switch itemKey {
+            case "book": return .reading
+            case "file": return .files
+            default: return QuickAccessItem(rawValue: itemKey)
+            }
+        }
 
         let entry = QuickAccessEntry(
             date: Date(),
-            items: items.isEmpty ? [.music, .video, .book] : items,
+            items: items.isEmpty ? [.music, .video, .reading] : items,
             nasName: data.nasName ?? WidgetDataManager.shared.getNasName(),
             isConnected: data.isConnected
         )
@@ -296,7 +303,7 @@ struct QuickAccessWidget: Widget {
 } timeline: {
     QuickAccessEntry(
         date: Date(),
-        items: [.music, .video, .book, .photo],
+        items: [.music, .video, .reading, .photo],
         nasName: "Synology DS920+",
         isConnected: true
     )
@@ -307,7 +314,7 @@ struct QuickAccessWidget: Widget {
 } timeline: {
     QuickAccessEntry(
         date: Date(),
-        items: [.music, .video, .book, .photo, .file],
+        items: [.music, .video, .reading, .photo, .files],
         nasName: "Synology DS920+",
         isConnected: true
     )

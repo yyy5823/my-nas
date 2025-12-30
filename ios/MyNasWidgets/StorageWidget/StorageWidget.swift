@@ -87,7 +87,7 @@ struct StorageWidgetSmallView: View {
             }
         }
         .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
-        .widgetURL(URL(string: "mynas://storage"))
+        .widgetURL(URL(string: "mynas://mine"))
     }
 }
 
@@ -161,7 +161,7 @@ struct StorageWidgetMediumView: View {
             }
         }
         .widgetBackgroundCompat(WidgetTheme.backgroundGradient)
-        .widgetURL(URL(string: "mynas://storage"))
+        .widgetURL(URL(string: "mynas://mine"))
     }
 }
 
