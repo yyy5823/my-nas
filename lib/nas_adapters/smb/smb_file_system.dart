@@ -149,6 +149,65 @@ class SmbFileSystem implements NasFileSystem {
     return results;
   }
 
+  /// 并行获取多个目录的修改时间（用于增量同步）
+  ///
+  /// [paths] 要获取信息的目录路径列表
+  ///
+  /// 返回 Map<路径, 修改时间>，失败的目录返回 null
+  Future<Map<String, DateTime?>> getDirectoriesModifiedTime(
+    List<String> paths,
+  ) async {
+    if (paths.isEmpty) return {};
+
+    final results = <String, DateTime?>{};
+
+    // 如果没有连接池，回退到串行执行
+    if (connectionPool == null) {
+      for (final path in paths) {
+        try {
+          final info = await getFileInfo(path);
+          results[path] = info.modifiedTime;
+        // ignore: avoid_catches_without_on_clauses
+        } catch (e) {
+          results[path] = null;
+        }
+      }
+      return results;
+    }
+
+    // 使用连接池并行执行
+    final pool = connectionPool!;
+    final maxConcurrency = pool.maxConnections < paths.length
+        ? pool.maxConnections
+        : paths.length;
+
+    // 分批处理
+    for (var i = 0; i < paths.length; i += maxConcurrency) {
+      final batch = paths.skip(i).take(maxConcurrency).toList();
+      final futures = batch.map((path) async {
+        try {
+          final conn = await pool.acquire(SmbConnectionType.general);
+          try {
+            final info = await conn.stat(path);
+            return MapEntry(path, info.modified);
+          } finally {
+            pool.release(conn);
+          }
+        // ignore: avoid_catches_without_on_clauses
+        } catch (e) {
+          return MapEntry<String, DateTime?>(path, null);
+        }
+      });
+
+      final batchResults = await Future.wait(futures);
+      for (final entry in batchResults) {
+        results[entry.key] = entry.value;
+      }
+    }
+
+    return results;
+  }
+
   /// 递归发现所有子目录（用于扫描阶段1）
   ///
   /// 从根目录开始，并行遍历发现所有子目录

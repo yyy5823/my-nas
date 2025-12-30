@@ -420,6 +420,7 @@ class NfoScraperService {
       rating: show?.rating ?? ep?.rating, // 评分使用剧集整体的
       runtime: ep?.runtime ?? show?.runtime,
       genres: show?.genres ?? ep?.genres,
+      countries: show?.countries ?? ep?.countries, // 国家/地区信息
       director: ep?.director ?? show?.director,
       actors: show?.actors ?? ep?.actors,
       studio: show?.studio ?? ep?.studio,

@@ -447,6 +447,7 @@ class VideoMetadataService {
         ..rating = nfoData.rating
         ..runtime = nfoData.runtime
         ..genres = nfoData.genres?.join(' / ')
+        ..countries = nfoData.countries?.join(', ')
         ..director = nfoData.director
         ..cast = nfoData.actors?.take(5).join(', ')
         ..seasonNumber = nfoData.seasonNumber
@@ -823,6 +824,127 @@ class VideoMetadataService {
     }
 
     logger.i('VideoMetadataService: 系列信息补充完成，成功 $successCount/${movies.length}');
+    return successCount;
+  }
+
+  /// 批量为缺少地区/类型信息的视频补充数据
+  ///
+  /// 查找所有有 TMDB ID 但缺少地区或类型信息的电影和剧集，从 TMDB 获取并更新
+  /// 返回成功补充的视频数量
+  ///
+  /// [onProgress] 进度回调，参数为 (已处理数量, 总数量)
+  Future<int> supplementMissingCountriesAndGenres({
+    void Function(int processed, int total)? onProgress,
+  }) async {
+    if (!_tmdbService.hasApiKey) {
+      logger.w('VideoMetadataService: 无法补充元数据，TMDB API Key 未配置');
+      return 0;
+    }
+
+    if (!_initialized) await init();
+
+    // 获取所有有 TMDB ID 但缺少地区或类型信息的电影
+    final movies = await _db.getMoviesWithIncompleteMetadata();
+    // 获取所有有 TMDB ID 但缺少地区或类型信息的剧集（去重）
+    final tvShows = await _db.getTvShowsWithIncompleteMetadata();
+
+    final totalCount = movies.length + tvShows.length;
+    if (totalCount == 0) {
+      logger.d('VideoMetadataService: 没有需要补充地区/类型信息的视频');
+      return 0;
+    }
+
+    logger.i('VideoMetadataService: 开始为 ${movies.length} 部电影和 ${tvShows.length} 个剧集补充元数据');
+
+    var successCount = 0;
+    var processedCount = 0;
+
+    // 补充电影元数据
+    for (final movie in movies) {
+      if (movie.tmdbId == null) continue;
+
+      try {
+        final detail = await _tmdbService.getMovieDetail(movie.tmdbId!);
+        if (detail != null) {
+          var needsUpdate = false;
+          var updatedMovie = movie;
+
+          // 更新地区信息
+          final countriesList = detail.countriesList;
+          if ((movie.countries == null || movie.countries!.isEmpty) &&
+              countriesList != null && countriesList.isNotEmpty) {
+            updatedMovie = updatedMovie.copyWith(countries: countriesList.join(', '));
+            needsUpdate = true;
+          }
+
+          // 更新类型信息
+          final genresList = detail.genresList;
+          if ((movie.genres == null || movie.genres!.isEmpty) &&
+              genresList != null && genresList.isNotEmpty) {
+            updatedMovie = updatedMovie.copyWith(genres: genresList.join(' / '));
+            needsUpdate = true;
+          }
+
+          if (needsUpdate) {
+            await _db.upsert(updatedMovie);
+            successCount++;
+            logger.d('VideoMetadataService: 补充电影元数据 "${movie.displayTitle}"');
+          }
+        }
+      } on Exception catch (e) {
+        logger.w('VideoMetadataService: 补充电影 "${movie.displayTitle}" 元数据失败', e);
+      }
+
+      processedCount++;
+      onProgress?.call(processedCount, totalCount);
+
+      // 添加延迟避免 TMDB API 限流
+      if (processedCount < totalCount) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
+
+    // 补充剧集元数据
+    for (final tvShow in tvShows) {
+      if (tvShow.tmdbId == null) continue;
+
+      try {
+        final detail = await _tmdbService.getTvDetail(tvShow.tmdbId!);
+        if (detail != null) {
+          final countriesText = detail.countriesText;
+          final genresText = detail.genresText;
+
+          final needsCountries = (tvShow.countries == null || tvShow.countries!.isEmpty) &&
+              countriesText.isNotEmpty;
+          final needsGenres = (tvShow.genres == null || tvShow.genres!.isEmpty) &&
+              genresText.isNotEmpty;
+
+          if (needsCountries || needsGenres) {
+            // 批量更新同一剧集的所有集
+            await _db.updateTvShowMetadata(
+              showDirectory: tvShow.showDirectory,
+              tmdbId: tvShow.tmdbId!,
+              countries: needsCountries ? countriesText : null,
+              genres: needsGenres ? genresText : null,
+            );
+            successCount++;
+            logger.d('VideoMetadataService: 补充剧集元数据 "${tvShow.displayTitle}"');
+          }
+        }
+      } on Exception catch (e) {
+        logger.w('VideoMetadataService: 补充剧集 "${tvShow.displayTitle}" 元数据失败', e);
+      }
+
+      processedCount++;
+      onProgress?.call(processedCount, totalCount);
+
+      // 添加延迟避免 TMDB API 限流
+      if (processedCount < totalCount) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
+
+    logger.i('VideoMetadataService: 元数据补充完成，成功 $successCount/$totalCount');
     return successCount;
   }
 

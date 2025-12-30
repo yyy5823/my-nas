@@ -203,6 +203,16 @@ class VideoScannerService {
         // 缓存 connections 并开始刮削
         _cachedConnections = connections;
         unawaited(scrapeMetadata(connections: connections));
+      } else {
+        // 没有待刮削视频时，检查并补充缺失的元数据
+        // 延迟执行，避免影响启动性能
+        Future.delayed(const Duration(seconds: 3), () {
+          _metadataService.supplementMissingCountriesAndGenres().then((count) {
+            if (count > 0) {
+              logger.i('VideoScannerService: 启动时补充了 $count 个视频的地区/类型信息');
+            }
+          }).ignore();
+        });
       }
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '检查恢复刮削失败，非关键操作');
@@ -754,6 +764,14 @@ class VideoScannerService {
         }
       }).ignore();
 
+      // 补充缺失的地区/类型信息（用于刮削失败或 NFO 不完整的情况）
+      // 后台执行，不阻塞主流程
+      _metadataService.supplementMissingCountriesAndGenres().then((count) {
+        if (count > 0) {
+          logger.i('VideoScannerService: 补充了 $count 个视频的地区/类型信息');
+        }
+      }).ignore();
+
       // 刮削完成，广播最终统计
       final finalStats = await _dbService.getScrapeStats();
       _scrapeStatsController.add(finalStats);
@@ -1252,14 +1270,22 @@ class VideoScannerService {
     final paths = directories.map((d) => d.path).toList();
     final results = await fileSystem.listDirectoriesParallel(paths);
 
+    // 获取目录修改时间（用于增量同步）
+    final dirMtimes = await fileSystem.getDirectoriesModifiedTime(paths);
+
     // 处理每个目录的结果
-    final completedDirs = <({String sourceId, String path, int videoCount})>[];
+    final completedDirs = <({String sourceId, String path, int videoCount, DateTime? dirModifiedTime})>[];
 
     for (final dir in directories) {
       final items = results[dir.path];
       if (items == null) {
         // 列目录失败，标记完成但视频数为 0
-        completedDirs.add((sourceId: sourceId, path: dir.path, videoCount: 0));
+        completedDirs.add((
+          sourceId: sourceId,
+          path: dir.path,
+          videoCount: 0,
+          dirModifiedTime: dirMtimes[dir.path],
+        ));
         continue;
       }
 
@@ -1276,6 +1302,7 @@ class VideoScannerService {
         sourceId: sourceId,
         path: dir.path,
         videoCount: videoCount,
+        dirModifiedTime: dirMtimes[dir.path],
       ));
     }
 
@@ -1309,6 +1336,15 @@ class VideoScannerService {
     try {
       final items = await fileSystem.listDirectory(dirPath);
 
+      // 获取目录修改时间（用于增量同步）
+      DateTime? dirMtime;
+      try {
+        final dirInfo = await fileSystem.getFileInfo(dirPath);
+        dirMtime = dirInfo.modifiedTime;
+      } on Exception {
+        // 忽略获取目录信息失败，不影响扫描流程
+      }
+
       final videoCount = await _processDirectoryItems(
         sourceId: sourceId,
         dirPath: dirPath,
@@ -1317,8 +1353,13 @@ class VideoScannerService {
         subtitles: subtitles,
       );
 
-      // 标记完成
-      await _dbService.markDirectoryCompleted(sourceId, dirPath, videoCount: videoCount);
+      // 标记完成（包含目录修改时间）
+      await _dbService.markDirectoryCompleted(
+        sourceId,
+        dirPath,
+        videoCount: videoCount,
+        dirModifiedTime: dirMtime,
+      );
 
       // 更新进度
       final currentStats = await _dbService.getScanProgressStats(sourceId, rootPath);

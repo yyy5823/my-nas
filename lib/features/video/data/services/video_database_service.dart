@@ -187,6 +187,7 @@ class VideoDatabaseService {
   static const String _scanColStatus = 'status'; // 0=pending, 1=scanning, 2=completed
   static const String _scanColVideoCount = 'video_count'; // 该目录发现的视频数
   static const String _scanColLastScanned = 'last_scanned'; // 最后扫描时间
+  static const String _scanColDirModifiedTime = 'dir_modified_time'; // 目录的修改时间（用于增量同步）
 
   /// 扫描状态常量
   static const int scanStatusPending = 0;
@@ -203,7 +204,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 17, // 添加扩展视频信息、评分和内容分级字段
+        version: 18, // 添加增量同步支持（目录修改时间字段）
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -369,6 +370,7 @@ class VideoDatabaseService {
         $_scanColStatus INTEGER DEFAULT 0,
         $_scanColVideoCount INTEGER DEFAULT 0,
         $_scanColLastScanned INTEGER,
+        $_scanColDirModifiedTime INTEGER,
         UNIQUE($_scanColSourceId, $_scanColPath)
       )
     ''');
@@ -934,6 +936,14 @@ class VideoDatabaseService {
       await _migrateExtendedVideoInfo(db);
 
       logger.i('VideoDatabaseService: 版本16->17 升级完成（添加扩展视频信息、评分和内容分级字段）');
+    }
+
+    // 从版本17升级到版本18
+    if (oldVersion < 18) {
+      // 添加目录修改时间字段（用于增量同步）
+      await _safeAddColumn(db, _tableScanProgress, _scanColDirModifiedTime, 'INTEGER');
+
+      logger.i('VideoDatabaseService: 版本17->18 升级完成（添加增量同步支持）');
     }
   }
 
@@ -3846,10 +3856,12 @@ class VideoDatabaseService {
   /// 标记目录扫描完成
   ///
   /// [videoCount] 该目录发现的视频数量
+  /// [dirModifiedTime] 目录的修改时间（用于下次增量同步检测变化）
   Future<void> markDirectoryCompleted(
     String sourceId,
     String path, {
     int videoCount = 0,
+    DateTime? dirModifiedTime,
   }) async {
     if (!_initialized) await init();
 
@@ -3859,6 +3871,8 @@ class VideoDatabaseService {
         _scanColStatus: scanStatusCompleted,
         _scanColVideoCount: videoCount,
         _scanColLastScanned: DateTime.now().millisecondsSinceEpoch,
+        if (dirModifiedTime != null)
+          _scanColDirModifiedTime: dirModifiedTime.millisecondsSinceEpoch,
       },
       where: '$_scanColSourceId = ? AND $_scanColPath = ?',
       whereArgs: [sourceId, path],
@@ -3867,7 +3881,7 @@ class VideoDatabaseService {
 
   /// 批量标记目录扫描完成
   Future<void> markDirectoriesCompletedBatch(
-    List<({String sourceId, String path, int videoCount})> items,
+    List<({String sourceId, String path, int videoCount, DateTime? dirModifiedTime})> items,
   ) async {
     if (!_initialized) await init();
     if (items.isEmpty) return;
@@ -3883,6 +3897,8 @@ class VideoDatabaseService {
             _scanColStatus: scanStatusCompleted,
             _scanColVideoCount: item.videoCount,
             _scanColLastScanned: now,
+            if (item.dirModifiedTime != null)
+              _scanColDirModifiedTime: item.dirModifiedTime!.millisecondsSinceEpoch,
           },
           where: '$_scanColSourceId = ? AND $_scanColPath = ?',
           whereArgs: [item.sourceId, item.path],
@@ -4003,7 +4019,150 @@ class VideoDatabaseService {
         lastScanned: row[_scanColLastScanned] != null
             ? DateTime.fromMillisecondsSinceEpoch(row[_scanColLastScanned] as int)
             : null,
+        dirModifiedTime: row[_scanColDirModifiedTime] != null
+            ? DateTime.fromMillisecondsSinceEpoch(row[_scanColDirModifiedTime] as int)
+            : null,
       );
+
+  // ============================================
+  // 增量同步方法
+  // ============================================
+
+  /// 获取所有已完成扫描的目录及其修改时间
+  ///
+  /// 用于增量同步时与当前文件系统对比
+  Future<Map<String, ScanProgressItem>> getCompletedDirectoriesMap(
+    String sourceId,
+    String rootPath,
+  ) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableScanProgress,
+      where: '$_scanColSourceId = ? AND $_scanColRootPath = ? AND $_scanColStatus = ?',
+      whereArgs: [sourceId, rootPath, scanStatusCompleted],
+    );
+
+    return {
+      for (final row in results)
+        row[_scanColPath]! as String: _scanProgressFromRow(row)
+    };
+  }
+
+  /// 获取指定源下所有视频文件路径（用于检测已删除文件）
+  ///
+  /// 返回 Map<filePath, (fileSize, fileModifiedTime)>
+  Future<Map<String, ({int fileSize, DateTime? fileModifiedTime})>> getVideoFilesMap(
+    String sourceId, {
+    String? pathPrefix,
+  }) async {
+    if (!_initialized) await init();
+
+    final where = pathPrefix != null
+        ? '$_colSourceId = ? AND $_colFilePath LIKE ?'
+        : '$_colSourceId = ?';
+    final whereArgs = pathPrefix != null
+        ? [sourceId, '$pathPrefix%']
+        : [sourceId];
+
+    final results = await _db!.query(
+      _tableMetadata,
+      columns: [_colFilePath, _colFileSize, _colFileModifiedTime],
+      where: where,
+      whereArgs: whereArgs,
+    );
+
+    return {
+      for (final row in results)
+        row[_colFilePath]! as String: (
+          fileSize: row[_colFileSize] as int? ?? 0,
+          fileModifiedTime: row[_colFileModifiedTime] != null
+              ? DateTime.fromMillisecondsSinceEpoch(row[_colFileModifiedTime] as int)
+              : null,
+        )
+    };
+  }
+
+  /// 批量删除视频记录（用于清理已删除的文件）
+  Future<int> deleteVideosBatch(String sourceId, List<String> filePaths) async {
+    if (!_initialized) await init();
+    if (filePaths.isEmpty) return 0;
+
+    var totalDeleted = 0;
+
+    // 分批处理，避免 SQL 参数过多
+    const batchSize = 100;
+    for (var i = 0; i < filePaths.length; i += batchSize) {
+      final batch = filePaths.skip(i).take(batchSize).toList();
+      final placeholders = batch.map((_) => '?').join(', ');
+
+      final deleted = await _db!.delete(
+        _tableMetadata,
+        where: '$_colSourceId = ? AND $_colFilePath IN ($placeholders)',
+        whereArgs: [sourceId, ...batch],
+      );
+      totalDeleted += deleted;
+    }
+
+    return totalDeleted;
+  }
+
+  /// 标记目录为需要重新扫描（用于增量同步检测到变化时）
+  Future<void> markDirectoriesForRescan(
+    String sourceId,
+    List<String> dirPaths,
+  ) async {
+    if (!_initialized) await init();
+    if (dirPaths.isEmpty) return;
+
+    // 分批处理
+    const batchSize = 100;
+    for (var i = 0; i < dirPaths.length; i += batchSize) {
+      final batch = dirPaths.skip(i).take(batchSize).toList();
+      final placeholders = batch.map((_) => '?').join(', ');
+
+      await _db!.update(
+        _tableScanProgress,
+        {_scanColStatus: scanStatusPending},
+        where: '$_scanColSourceId = ? AND $_scanColPath IN ($placeholders)',
+        whereArgs: [sourceId, ...batch],
+      );
+    }
+  }
+
+  /// 获取增量同步统计
+  Future<IncrementalSyncStats> getIncrementalSyncStats(
+    String sourceId,
+    String rootPath,
+  ) async {
+    if (!_initialized) await init();
+
+    // 获取有修改时间记录的目录数
+    final withMtime = Sqflite.firstIntValue(await _db!.rawQuery(
+      '''
+      SELECT COUNT(*) FROM $_tableScanProgress
+      WHERE $_scanColSourceId = ? AND $_scanColRootPath = ?
+        AND $_scanColDirModifiedTime IS NOT NULL
+      ''',
+      [sourceId, rootPath],
+    )) ?? 0;
+
+    // 获取总目录数
+    final total = Sqflite.firstIntValue(await _db!.rawQuery(
+      'SELECT COUNT(*) FROM $_tableScanProgress WHERE $_scanColSourceId = ? AND $_scanColRootPath = ?',
+      [sourceId, rootPath],
+    )) ?? 0;
+
+    // 获取视频总数
+    final videos = await getCount(sourceId: sourceId, pathPrefix: rootPath);
+
+    return IncrementalSyncStats(
+      totalDirectories: total,
+      directoriesWithMtime: withMtime,
+      totalVideos: videos,
+      supportsIncrementalSync: withMtime > 0,
+    );
+  }
 
   // ============================================
   // 聚合表同步方法
@@ -4815,6 +4974,7 @@ class ScanProgressItem {
     required this.status,
     this.videoCount = 0,
     this.lastScanned,
+    this.dirModifiedTime,
   });
 
   /// 源ID
@@ -4834,6 +4994,9 @@ class ScanProgressItem {
 
   /// 最后扫描时间
   final DateTime? lastScanned;
+
+  /// 目录的修改时间（用于增量同步检测变化）
+  final DateTime? dirModifiedTime;
 
   /// 是否待扫描
   bool get isPending => status == VideoDatabaseService.scanStatusPending;
@@ -4880,4 +5043,71 @@ class ScanProgressStats {
 
   /// 是否有未完成的扫描
   bool get hasUnfinished => pendingDirectories > 0 || scanningDirectories > 0;
+}
+
+/// 增量同步统计
+class IncrementalSyncStats {
+  const IncrementalSyncStats({
+    required this.totalDirectories,
+    required this.directoriesWithMtime,
+    required this.totalVideos,
+    required this.supportsIncrementalSync,
+  });
+
+  /// 总目录数
+  final int totalDirectories;
+
+  /// 有修改时间记录的目录数
+  final int directoriesWithMtime;
+
+  /// 视频总数
+  final int totalVideos;
+
+  /// 是否支持增量同步（需要有修改时间记录）
+  final bool supportsIncrementalSync;
+}
+
+/// 增量同步结果
+class IncrementalSyncResult {
+  const IncrementalSyncResult({
+    required this.addedFiles,
+    required this.deletedFiles,
+    required this.changedFiles,
+    required this.unchangedDirectories,
+    required this.changedDirectories,
+    required this.newDirectories,
+    required this.deletedDirectories,
+  });
+
+  /// 新增的文件数
+  final int addedFiles;
+
+  /// 删除的文件数
+  final int deletedFiles;
+
+  /// 变化的文件数（内容可能更新）
+  final int changedFiles;
+
+  /// 未变化的目录数
+  final int unchangedDirectories;
+
+  /// 有变化的目录数
+  final int changedDirectories;
+
+  /// 新增的目录数
+  final int newDirectories;
+
+  /// 删除的目录数
+  final int deletedDirectories;
+
+  /// 是否有任何变化
+  bool get hasChanges =>
+      addedFiles > 0 ||
+      deletedFiles > 0 ||
+      changedFiles > 0 ||
+      newDirectories > 0 ||
+      deletedDirectories > 0;
+
+  /// 总的变化文件数
+  int get totalChangedFiles => addedFiles + deletedFiles + changedFiles;
 }
