@@ -10,6 +10,8 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/utils/grid_helper.dart';
+import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/background_task_pool.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -2611,11 +2613,14 @@ class AllSongsPage extends ConsumerStatefulWidget {
 
 class _AllSongsPageState extends ConsumerState<AllSongsPage> {
   final _scrollController = ScrollController();
+  bool _isTableView = false; // 桌面端表格视图模式
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    // 桌面端默认使用表格视图
+    _isTableView = PlatformCapabilities.isDesktop;
   }
 
   @override
@@ -2658,22 +2663,24 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
           Expanded(
             child: tracks.isEmpty
                 ? _buildEmptyState(isDark)
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.only(bottom: 16),
-                    itemCount: sortedTracks.length + (hasMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= sortedTracks.length) {
-                        return _buildLoadMoreIndicator(isDark, isLoadingMore);
-                      }
-                      return _ModernMusicTile(
-                        track: sortedTracks[index],
-                        index: index,
-                        isDark: isDark,
-                        allTracks: sortedTracks,
-                      );
-                    },
-                  ),
+                : _isTableView && PlatformCapabilities.isDesktop
+                    ? _buildTableView(context, sortedTracks, isDark, hasMore, isLoadingMore)
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.only(bottom: 16),
+                        itemCount: sortedTracks.length + (hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= sortedTracks.length) {
+                            return _buildLoadMoreIndicator(isDark, isLoadingMore);
+                          }
+                          return _ModernMusicTile(
+                            track: sortedTracks[index],
+                            index: index,
+                            isDark: isDark,
+                            allTracks: sortedTracks,
+                          );
+                        },
+                      ),
           ),
           const MiniPlayer(),
         ],
@@ -2753,6 +2760,18 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
                   ],
                 ),
               ),
+              // 视图切换按钮（仅桌面端显示）
+              if (PlatformCapabilities.isDesktop) ...[
+                IconButton(
+                  onPressed: () => setState(() => _isTableView = !_isTableView),
+                  icon: Icon(
+                    _isTableView ? Icons.grid_view_rounded : Icons.table_rows_rounded,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                    size: 20,
+                  ),
+                  tooltip: _isTableView ? '网格视图' : '表格视图',
+                ),
+              ],
               // 排序按钮
               _SortButton(
                 sortState: sortState,
@@ -2834,6 +2853,68 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
         ],
       ),
     );
+
+  /// 桌面端表格视图
+  Widget _buildTableView(
+    BuildContext context,
+    List<MusicFileWithSource> tracks,
+    bool isDark,
+    bool hasMore,
+    bool isLoadingMore,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      children: [
+        // 表头
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+            border: Border(
+              bottom: BorderSide(
+                color: isDark ? Colors.white12 : Colors.black12,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              const SizedBox(width: 40), // 序号列
+              const Expanded(flex: 4, child: _TableHeader(title: '标题')),
+              const Expanded(flex: 2, child: _TableHeader(title: '艺术家')),
+              const Expanded(flex: 2, child: _TableHeader(title: '专辑')),
+              const SizedBox(width: 60, child: _TableHeader(title: '时长', align: TextAlign.right)),
+              const SizedBox(width: 48), // 操作列
+            ],
+          ),
+        ),
+        // 数据行
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            itemCount: tracks.length + (hasMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index >= tracks.length) {
+                return _buildLoadMoreIndicator(isDark, isLoadingMore);
+              }
+
+              final track = tracks[index];
+              final isEven = index.isEven;
+
+              return _MusicTableRow(
+                track: track,
+                index: index,
+                isDark: isDark,
+                isEven: isEven,
+                allTracks: tracks,
+                colorScheme: colorScheme,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
   List<MusicFileWithSource> _applySorting(
     List<MusicFileWithSource> tracks,
@@ -4628,13 +4709,14 @@ class _ArtistsView extends ConsumerWidget {
       return _buildEmptyView('暂无艺术家', Icons.person_off_rounded, isDark);
     }
 
+    final gridConfig = GridHelper.getMusicArtistGridConfig(context);
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.9,
+      padding: gridConfig.padding,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: gridConfig.crossAxisCount,
+        mainAxisSpacing: gridConfig.mainAxisSpacing,
+        crossAxisSpacing: gridConfig.crossAxisSpacing,
+        childAspectRatio: gridConfig.childAspectRatio,
       ),
       itemCount: artists.length,
       itemBuilder: (context, index) {
@@ -4822,13 +4904,14 @@ class _AlbumsView extends ConsumerWidget {
       return _buildEmptyView('暂无专辑', Icons.album_outlined, isDark);
     }
 
+    final gridConfig = GridHelper.getMusicAlbumGridConfig(context);
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.85,
+      padding: gridConfig.padding,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: gridConfig.crossAxisCount,
+        mainAxisSpacing: gridConfig.mainAxisSpacing,
+        crossAxisSpacing: gridConfig.crossAxisSpacing,
+        childAspectRatio: gridConfig.childAspectRatio,
       ),
       itemCount: albums.length,
       itemBuilder: (context, index) {
@@ -5185,13 +5268,14 @@ class _GenresView extends ConsumerWidget {
       return _buildEmptyView('暂无流派信息', Icons.category_outlined, isDark);
     }
 
+    final gridConfig = GridHelper.getMusicCategoryGridConfig(context);
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.3,
+      padding: gridConfig.padding,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: gridConfig.crossAxisCount,
+        mainAxisSpacing: gridConfig.mainAxisSpacing,
+        crossAxisSpacing: gridConfig.crossAxisSpacing,
+        childAspectRatio: gridConfig.childAspectRatio,
       ),
       itemCount: genres.length,
       itemBuilder: (context, index) {
@@ -5349,13 +5433,14 @@ class _YearsView extends ConsumerWidget {
       return _buildEmptyView('暂无年代信息', Icons.date_range_rounded, isDark);
     }
 
+    final gridConfig = GridHelper.getMusicCategoryGridConfig(context);
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.3,
+      padding: gridConfig.padding,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: gridConfig.crossAxisCount,
+        mainAxisSpacing: gridConfig.mainAxisSpacing,
+        crossAxisSpacing: gridConfig.crossAxisSpacing,
+        childAspectRatio: gridConfig.childAspectRatio,
       ),
       itemCount: years.length,
       itemBuilder: (context, index) {
@@ -6347,6 +6432,217 @@ class _SpotifyIconButton extends StatelessWidget {
         ),
       ),
     );
+}
+
+/// 表格头部
+class _TableHeader extends StatelessWidget {
+  const _TableHeader({
+    required this.title,
+    this.align = TextAlign.left,
+  });
+
+  final String title;
+  final TextAlign align;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Text(
+      title,
+      textAlign: align,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: isDark ? Colors.white54 : Colors.black54,
+      ),
+    );
+  }
+}
+
+/// 音乐表格行
+class _MusicTableRow extends ConsumerWidget {
+  const _MusicTableRow({
+    required this.track,
+    required this.index,
+    required this.isDark,
+    required this.isEven,
+    required this.allTracks,
+    required this.colorScheme,
+  });
+
+  final MusicFileWithSource track;
+  final int index;
+  final bool isDark;
+  final bool isEven;
+  final List<MusicFileWithSource> allTracks;
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentMusic = ref.watch(currentMusicProvider);
+    final isPlaying = currentMusic?.path == track.path;
+    final durationSeconds = track.duration;
+    final durationText = durationSeconds != null && durationSeconds > 0
+        ? '${durationSeconds ~/ 60}:${(durationSeconds % 60).toString().padLeft(2, '0')}'
+        : '--:--';
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _playTrack(context, ref),
+        onSecondaryTap: () => _showContextMenu(context, ref),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: isPlaying
+                ? colorScheme.primary.withValues(alpha: 0.1)
+                : isEven
+                    ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.black.withValues(alpha: 0.02))
+                    : Colors.transparent,
+          ),
+          child: Row(
+            children: [
+              // 序号/播放状态
+              SizedBox(
+                width: 40,
+                child: isPlaying
+                    ? Icon(Icons.volume_up_rounded, size: 16, color: colorScheme.primary)
+                    : Text(
+                        '${index + 1}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white38 : Colors.black38,
+                        ),
+                      ),
+              ),
+              // 标题
+              Expanded(
+                flex: 4,
+                child: Text(
+                  track.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isPlaying ? FontWeight.w600 : FontWeight.normal,
+                    color: isPlaying
+                        ? colorScheme.primary
+                        : (isDark ? Colors.white : Colors.black87),
+                  ),
+                ),
+              ),
+              // 艺术家
+              Expanded(
+                flex: 2,
+                child: Text(
+                  track.displayArtist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white54 : Colors.black54,
+                  ),
+                ),
+              ),
+              // 专辑
+              Expanded(
+                flex: 2,
+                child: Text(
+                  track.displayAlbum,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
+                ),
+              ),
+              // 时长
+              SizedBox(
+                width: 60,
+                child: Text(
+                  durationText,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
+                ),
+              ),
+              // 更多按钮
+              SizedBox(
+                width: 48,
+                child: IconButton(
+                  onPressed: () => _showContextMenu(context, ref),
+                  icon: Icon(
+                    Icons.more_horiz_rounded,
+                    size: 18,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _playTrack(BuildContext context, WidgetRef ref) async {
+    final musicItem = track.toMusicItem();
+    final queue = allTracks.map((t) => t.toMusicItem()).toList();
+
+    ref.read(playQueueProvider.notifier).setQueue(queue);
+    ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(index);
+    await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+
+    if (context.mounted) {
+      await MusicPlayerPage.open(context);
+    }
+  }
+
+  void _showContextMenu(BuildContext context, WidgetRef ref) {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final position = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx + size.width - 48,
+        position.dy,
+        position.dx + size.width,
+        position.dy + size.height,
+      ),
+      items: [
+        const PopupMenuItem(value: 'play', child: Text('播放')),
+        const PopupMenuItem(value: 'queue', child: Text('添加到队列')),
+        const PopupMenuItem(value: 'playlist', child: Text('添加到播放列表')),
+        const PopupMenuDivider(),
+        const PopupMenuItem(value: 'artist', child: Text('查看艺术家')),
+        const PopupMenuItem(value: 'album', child: Text('查看专辑')),
+      ],
+    ).then((value) {
+      if (value == null) return;
+      switch (value) {
+        case 'play':
+          unawaited(_playTrack(context, ref));
+        case 'queue':
+          ref.read(playQueueProvider.notifier).addToQueue(track.toMusicItem());
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('已添加到播放队列'), duration: Duration(seconds: 1)),
+            );
+          }
+        // 其他操作...
+      }
+    });
+  }
 }
 
 /// 现代风格音乐列表项

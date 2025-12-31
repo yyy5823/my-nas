@@ -24,6 +24,7 @@ import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// 全局 AudioHandler 实例
@@ -141,6 +142,13 @@ Future<void> _initApp() async {
     NativeLogBridgeService().init(),
     action: 'NativeLogBridgeService.init',
   );
+
+  // 初始化原生 Tab Bar 服务（iOS）
+  // 必须在 UI 启动前初始化，以便接收原生 Tab 事件
+  if (!kIsWeb && Platform.isIOS) {
+    NativeTabBarService.instance.initialize();
+    logger.i('NativeTabBarService initialized');
+  }
 
   // Initialize sqflite_common_ffi for desktop platforms (Windows, macOS, Linux)
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {

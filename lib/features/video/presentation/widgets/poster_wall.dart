@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/utils/grid_helper.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 
@@ -26,16 +27,18 @@ class PosterWall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final count = crossAxisCount ?? (width > 1200 ? 6 : width > 800 ? 5 : width > 600 ? 4 : 3);
+    final gridConfig = GridHelper.getPosterGridConfig(context);
+    final count = crossAxisCount ?? gridConfig.crossAxisCount;
+    final effectiveSpacing = spacing;
+    final effectiveAspectRatio = childAspectRatio;
 
     return GridView.builder(
       padding: padding,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: count,
-        childAspectRatio: childAspectRatio,
-        mainAxisSpacing: spacing,
-        crossAxisSpacing: spacing,
+        childAspectRatio: effectiveAspectRatio,
+        mainAxisSpacing: effectiveSpacing,
+        crossAxisSpacing: effectiveSpacing,
       ),
       itemCount: items.length,
       itemBuilder: (context, index) => PosterCard(
@@ -70,17 +73,19 @@ class SliverPosterWall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final count = crossAxisCount ?? (width > 1200 ? 6 : width > 800 ? 5 : width > 600 ? 4 : 3);
+    final gridConfig = GridHelper.getPosterGridConfig(context);
+    final count = crossAxisCount ?? gridConfig.crossAxisCount;
+    final effectiveSpacing = spacing;
+    final effectiveAspectRatio = childAspectRatio;
 
     return SliverPadding(
       padding: padding,
       sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: count,
-          childAspectRatio: childAspectRatio,
-          mainAxisSpacing: spacing,
-          crossAxisSpacing: spacing,
+          childAspectRatio: effectiveAspectRatio,
+          mainAxisSpacing: effectiveSpacing,
+          crossAxisSpacing: effectiveSpacing,
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) => PosterCard(

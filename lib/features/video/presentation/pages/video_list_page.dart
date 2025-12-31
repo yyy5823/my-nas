@@ -10,6 +10,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/utils/grid_helper.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
@@ -2268,24 +2269,15 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     List<VideoFileWithSource> videos,
     bool isDark,
   ) {
-    final width = MediaQuery.of(context).size.width;
-    // 横向视频卡片需要更少的列数
-    final crossAxisCount = width > 1200
-        ? 5
-        : width > 900
-        ? 4
-        : width > 600
-        ? 3
-        : 2;
+    final gridConfig = GridHelper.getVideoThumbnailGridConfig(context);
 
-    // 使用横向比例，适合视频缩略图 (16:9 = 1.78，加上标题区域约 1.4)
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: gridConfig.padding,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        childAspectRatio: 1.4,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 12,
+        crossAxisCount: gridConfig.crossAxisCount,
+        childAspectRatio: gridConfig.childAspectRatio,
+        mainAxisSpacing: gridConfig.mainAxisSpacing,
+        crossAxisSpacing: gridConfig.crossAxisSpacing,
       ),
       itemCount: videos.length,
       itemBuilder: (context, index) {
@@ -5604,8 +5596,8 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
     final width = MediaQuery.of(context).size.width;
     final isWide = width > 600;
 
-    // 计算网格列数
-    final crossAxisCount = (width / 160).floor().clamp(2, 8);
+    // 使用 GridHelper 计算网格配置
+    final gridConfig = GridHelper.getPosterGridConfig(context);
     final filteredItems = _sortedAndFilteredItems;
 
     return Scaffold(
@@ -5673,26 +5665,25 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
             child: filteredItems.isEmpty
                 ? _buildEmptyState(isDark)
                 : GridView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: gridConfig.padding,
                     // 限制预加载区域，减少内存占用和初始加载时间
                     cacheExtent: 200,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      childAspectRatio: 0.55,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 12,
+                      crossAxisCount: gridConfig.crossAxisCount,
+                      childAspectRatio: gridConfig.childAspectRatio,
+                      mainAxisSpacing: gridConfig.mainAxisSpacing,
+                      crossAxisSpacing: gridConfig.crossAxisSpacing,
                     ),
                     itemCount: filteredItems.length,
                     itemBuilder: (context, index) {
                       final metadata = filteredItems[index];
+                      final itemWidth = GridHelper.calculateItemSize(context, gridConfig).width;
                       return _LazyPosterCard(
                         key: ValueKey(metadata.uniqueKey),
                         metadata: metadata,
                         onTap: () => _openVideoDetail(context, metadata),
                         isDark: isDark,
-                        width:
-                            (width - 32 - (crossAxisCount - 1) * 12) /
-                            crossAxisCount,
+                        width: itemWidth,
                         showMargin: false,
                       );
                     },

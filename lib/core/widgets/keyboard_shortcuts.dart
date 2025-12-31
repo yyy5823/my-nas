@@ -269,17 +269,31 @@ class CommonShortcuts {
   static const jumpTo90 = ShortcutKey(LogicalKeyboardKey.digit9);
 }
 
+/// 快捷键帮助分组
+class ShortcutGroup {
+  const ShortcutGroup({
+    required this.title,
+    required this.shortcuts,
+  });
+
+  final String title;
+  final List<({String key, String description})> shortcuts;
+}
+
 /// 快捷键帮助对话框
 class KeyboardShortcutsHelpDialog extends StatelessWidget {
   const KeyboardShortcutsHelpDialog({
     required this.title,
     required this.shortcuts,
+    this.groups,
     super.key,
   });
 
   final String title;
   final List<({String key, String description})> shortcuts;
+  final List<ShortcutGroup>? groups;
 
+  /// 显示帮助对话框（平铺列表）
   static void show(
     BuildContext context, {
     required String title,
@@ -294,63 +308,477 @@ class KeyboardShortcutsHelpDialog extends StatelessWidget {
     );
   }
 
+  /// 显示帮助对话框（分组列表）
+  static void showGrouped(
+    BuildContext context, {
+    required String title,
+    required List<ShortcutGroup> groups,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => KeyboardShortcutsHelpDialog(
+        title: title,
+        shortcuts: const [],
+        groups: groups,
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: Row(
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 600),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.keyboard),
-            const SizedBox(width: 8),
-            Text(title),
-          ],
-        ),
-        content: SizedBox(
-          width: 400,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: shortcuts
-                  .map(
-                    (s) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                            ),
-                            child: Text(
-                              s.key,
-                              style: const TextStyle(
-                                fontFamily: 'monospace',
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(child: Text(s.description)),
-                        ],
+            // 标题栏
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 16, 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.keyboard_rounded,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  )
-                  .toList(),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                    tooltip: '关闭',
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 内容
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: groups != null
+                    ? _buildGroupedContent(context, isDark)
+                    : _buildFlatContent(context, isDark),
+              ),
+            ),
+            // 底部提示
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.03),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const _KeyCap(label: '?'),
+                  const SizedBox(width: 8),
+                  Text(
+                    '按此键显示/隐藏帮助',
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFlatContent(BuildContext context, bool isDark) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: shortcuts
+            .map((s) => _ShortcutRow(keyLabel: s.key, description: s.description))
+            .toList(),
+      );
+
+  Widget _buildGroupedContent(BuildContext context, bool isDark) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (int i = 0; i < groups!.length; i++) ...[
+            if (i > 0) const SizedBox(height: 20),
+            _ShortcutGroupSection(group: groups![i]),
+          ],
+        ],
+      );
+}
+
+/// 快捷键分组区域
+class _ShortcutGroupSection extends StatelessWidget {
+  const _ShortcutGroupSection({required this.group});
+
+  final ShortcutGroup group;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            group.title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.primary,
+              letterSpacing: 0.5,
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
+        ...group.shortcuts.map(
+          (s) => _ShortcutRow(keyLabel: s.key, description: s.description),
+        ),
+      ],
+    );
+  }
+}
+
+/// 单个快捷键行
+class _ShortcutRow extends StatelessWidget {
+  const _ShortcutRow({
+    required this.keyLabel,
+    required this.description,
+  });
+
+  final String keyLabel;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          _buildKeyLabels(context),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              description,
+              style: const TextStyle(fontSize: 14),
+            ),
           ),
         ],
+      ),
+    );
+
+  Widget _buildKeyLabels(BuildContext context) {
+    // 解析组合键（如 "Ctrl+S"）
+    final parts = keyLabel.split('+');
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int i = 0; i < parts.length; i++) ...[
+          if (i > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '+',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          _KeyCap(label: parts[i].trim()),
+        ],
+      ],
+    );
+  }
+}
+
+/// 键帽组件
+class _KeyCap extends StatelessWidget {
+  const _KeyCap({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      constraints: const BoxConstraints(minWidth: 28),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.1)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.2)
+              : colorScheme.outline.withValues(alpha: 0.5),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
+            offset: const Offset(0, 2),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+          color: isDark ? Colors.white : colorScheme.onSurface,
+        ),
+      ),
+    );
+  }
+}
+
+/// 快捷键帮助覆盖层
+///
+/// 用于在页面上快速显示快捷键帮助，按 `?` 键显示
+class KeyboardShortcutsOverlay extends StatefulWidget {
+  const KeyboardShortcutsOverlay({
+    super.key,
+    required this.child,
+    required this.title,
+    this.shortcuts = const [],
+    this.groups,
+    this.enabled = true,
+  });
+
+  final Widget child;
+  final String title;
+  final List<({String key, String description})> shortcuts;
+  final List<ShortcutGroup>? groups;
+  final bool enabled;
+
+  @override
+  State<KeyboardShortcutsOverlay> createState() => _KeyboardShortcutsOverlayState();
+}
+
+class _KeyboardShortcutsOverlayState extends State<KeyboardShortcutsOverlay> {
+  void _showHelp() {
+    if (widget.groups != null) {
+      KeyboardShortcutsHelpDialog.showGrouped(
+        context,
+        title: widget.title,
+        groups: widget.groups!,
       );
+    } else {
+      KeyboardShortcutsHelpDialog.show(
+        context,
+        title: widget.title,
+        shortcuts: widget.shortcuts,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.enabled) return widget.child;
+
+    return Focus(
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+        // 检测 ? 键（Shift + /）
+        if (event.logicalKey == LogicalKeyboardKey.slash &&
+            HardwareKeyboard.instance.isShiftPressed) {
+          _showHelp();
+          return KeyEventResult.handled;
+        }
+
+        return KeyEventResult.ignored;
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// 常用的快捷键帮助分组
+class CommonShortcutGroups {
+  CommonShortcutGroups._();
+
+  /// 视频播放快捷键
+  static List<ShortcutGroup> get videoPlayer => [
+        const ShortcutGroup(
+          title: '播放控制',
+          shortcuts: [
+            (key: 'Space', description: '播放 / 暂停'),
+            (key: 'K', description: '播放 / 暂停'),
+            (key: 'J', description: '快退 10 秒'),
+            (key: 'L', description: '快进 10 秒'),
+            (key: '←', description: '快退 5 秒'),
+            (key: '→', description: '快进 5 秒'),
+            (key: '0-9', description: '跳转到 0%-90%'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '音量',
+          shortcuts: [
+            (key: '↑', description: '增加音量'),
+            (key: '↓', description: '减少音量'),
+            (key: 'M', description: '静音 / 取消静音'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '显示',
+          shortcuts: [
+            (key: 'F', description: '全屏 / 退出全屏'),
+            (key: 'F11', description: '全屏 / 退出全屏'),
+            (key: 'C', description: '显示 / 隐藏字幕'),
+            (key: 'I', description: '显示视频信息'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '播放速度',
+          shortcuts: [
+            (key: '[', description: '减慢播放速度'),
+            (key: ']', description: '加快播放速度'),
+            (key: '\\', description: '恢复正常速度'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '其他',
+          shortcuts: [
+            (key: 'Esc', description: '退出全屏 / 返回'),
+            (key: '?', description: '显示帮助'),
+          ],
+        ),
+      ];
+
+  /// 音乐播放快捷键
+  static List<ShortcutGroup> get musicPlayer => [
+        const ShortcutGroup(
+          title: '播放控制',
+          shortcuts: [
+            (key: 'Space', description: '播放 / 暂停'),
+            (key: '←', description: '上一曲'),
+            (key: '→', description: '下一曲'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '音量',
+          shortcuts: [
+            (key: '↑', description: '增加音量'),
+            (key: '↓', description: '减少音量'),
+            (key: 'M', description: '静音 / 取消静音'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '播放模式',
+          shortcuts: [
+            (key: 'R', description: '切换循环模式'),
+            (key: 'S', description: '随机播放'),
+            (key: 'L', description: '喜欢 / 取消喜欢'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '其他',
+          shortcuts: [
+            (key: 'Esc', description: '返回'),
+            (key: '?', description: '显示帮助'),
+          ],
+        ),
+      ];
+
+  /// 图片浏览快捷键
+  static List<ShortcutGroup> get photoViewer => [
+        const ShortcutGroup(
+          title: '导航',
+          shortcuts: [
+            (key: '←', description: '上一张'),
+            (key: '→', description: '下一张'),
+            (key: 'Home', description: '第一张'),
+            (key: 'End', description: '最后一张'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '缩放',
+          shortcuts: [
+            (key: '+', description: '放大'),
+            (key: '-', description: '缩小'),
+            (key: '0', description: '重置缩放'),
+            (key: 'F', description: '适合屏幕'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '其他',
+          shortcuts: [
+            (key: 'I', description: '显示图片信息'),
+            (key: 'L', description: '喜欢 / 取消喜欢'),
+            (key: 'Esc', description: '退出'),
+            (key: '?', description: '显示帮助'),
+          ],
+        ),
+      ];
+
+  /// 文件管理快捷键
+  static List<ShortcutGroup> get fileManager => [
+        const ShortcutGroup(
+          title: '导航',
+          shortcuts: [
+            (key: '↑', description: '向上移动'),
+            (key: '↓', description: '向下移动'),
+            (key: 'Enter', description: '打开文件/文件夹'),
+            (key: 'Backspace', description: '返回上级目录'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '选择',
+          shortcuts: [
+            (key: 'Ctrl+A', description: '全选'),
+            (key: 'Shift+↑/↓', description: '扩展选择'),
+            (key: 'Ctrl+Click', description: '多选'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '操作',
+          shortcuts: [
+            (key: 'Ctrl+C', description: '复制'),
+            (key: 'Ctrl+X', description: '剪切'),
+            (key: 'Ctrl+V', description: '粘贴'),
+            (key: 'Delete', description: '删除'),
+            (key: 'F2', description: '重命名'),
+          ],
+        ),
+        const ShortcutGroup(
+          title: '其他',
+          shortcuts: [
+            (key: 'Ctrl+F', description: '搜索'),
+            (key: 'F5', description: '刷新'),
+            (key: '?', description: '显示帮助'),
+          ],
+        ),
+      ];
 }

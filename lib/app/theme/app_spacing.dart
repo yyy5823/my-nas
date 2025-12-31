@@ -14,6 +14,111 @@ abstract final class AppSpacing {
   static const double xxxl = 32;
   static const double xxxxl = 48;
 
+  // ============================================================================
+  // 平台自适应间距
+  // ============================================================================
+
+  /// 是否为桌面平台
+  static bool get _isDesktop =>
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+  /// 卡片内边距
+  /// 桌面端：12dp，移动端：16dp
+  static EdgeInsets get cardPadding => _isDesktop
+      ? const EdgeInsets.all(md)
+      : const EdgeInsets.all(lg);
+
+  /// 列表项内边距
+  /// 桌面端：更紧凑，移动端：更宽松便于触摸
+  static EdgeInsets get listItemPadding => _isDesktop
+      ? const EdgeInsets.symmetric(horizontal: md, vertical: sm)
+      : const EdgeInsets.symmetric(horizontal: lg, vertical: md);
+
+  /// 列表项垂直内边距
+  static double get listItemVerticalPadding => _isDesktop ? sm : md;
+
+  /// 列表项水平内边距
+  static double get listItemHorizontalPadding => _isDesktop ? md : lg;
+
+  /// 网格间距
+  static double get gridSpacing => _isDesktop ? lg : 10;
+
+  /// 页面内边距
+  static EdgeInsets get pagePadding => _isDesktop
+      ? const EdgeInsets.all(lg)
+      : const EdgeInsets.symmetric(horizontal: md, vertical: sm);
+
+  /// 对话框内边距
+  static EdgeInsets get dialogPadding => _isDesktop
+      ? const EdgeInsets.all(xxl)
+      : const EdgeInsets.all(lg);
+
+  /// 工具栏按钮间距
+  static double get toolbarButtonSpacing => _isDesktop ? sm : md;
+
+  /// 图标与文字间距
+  static double get iconTextGap => _isDesktop ? sm : md;
+
+  /// 分组标题与内容间距
+  static double get sectionSpacing => _isDesktop ? lg : xl;
+
+  /// 底部操作栏高度
+  static double get bottomBarHeight => _isDesktop ? 56 : 64;
+
+  // ============================================================================
+  // 触摸目标尺寸
+  // ============================================================================
+
+  /// 最小触摸目标尺寸
+  /// 移动端：48dp（Material Design 规范）
+  /// 桌面端：32dp（鼠标点击精度更高）
+  static double get minTouchTarget => _isDesktop ? 32 : 48;
+
+  /// 图标按钮尺寸
+  static double get iconButtonSize => _isDesktop ? 36 : 44;
+
+  /// 紧凑图标按钮尺寸
+  static double get compactIconButtonSize => _isDesktop ? 28 : 36;
+
+  // ============================================================================
+  // 列表项高度
+  // ============================================================================
+
+  /// 标准列表项高度
+  /// 移动端：72dp，桌面端：48dp
+  static double get listItemHeight => _isDesktop ? 48 : 72;
+
+  /// 紧凑列表项高度
+  static double get compactListItemHeight => _isDesktop ? 40 : 56;
+
+  /// 单行列表项高度
+  static double get singleLineListItemHeight => _isDesktop ? 40 : 48;
+
+  /// 双行列表项高度
+  static double get twoLineListItemHeight => _isDesktop ? 56 : 72;
+
+  /// 三行列表项高度
+  static double get threeLineListItemHeight => _isDesktop ? 72 : 88;
+
+  // ============================================================================
+  // 图标尺寸
+  // ============================================================================
+
+  /// 标准图标尺寸
+  static double get iconSize => _isDesktop ? 20 : 24;
+
+  /// 小图标尺寸
+  static double get smallIconSize => _isDesktop ? 16 : 20;
+
+  /// 大图标尺寸
+  static double get largeIconSize => _isDesktop ? 24 : 28;
+
+  /// 列表前置图标尺寸
+  static double get leadingIconSize => _isDesktop ? 20 : 24;
+
+  /// 列表尾部图标尺寸
+  static double get trailingIconSize => _isDesktop ? 18 : 20;
+
   // App bar content padding (inside SafeArea)
   // iOS: Minimal vertical padding since iOS navigation bars are compact
   // Android: Slightly more padding for Material feel

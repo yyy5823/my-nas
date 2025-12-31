@@ -1,0 +1,179 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:my_nas/core/errors/errors.dart';
+
+/// 原生 Tab Bar 服务
+///
+/// 用于与 iOS 原生 UITabBarController 通信，实现 Liquid Glass 效果
+/// 在非 iOS 平台上，所有方法都是空操作
+class NativeTabBarService {
+  NativeTabBarService._();
+
+  static final NativeTabBarService _instance = NativeTabBarService._();
+  static NativeTabBarService get instance => _instance;
+
+  static const _channelName = 'com.kkape.mynas/native_tab_bar';
+  MethodChannel? _channel;
+
+  /// Tab 选择回调
+  final _tabSelectedController = StreamController<TabSelectedEvent>.broadcast();
+
+  /// 主题变化回调
+  final _themeChangedController = StreamController<bool>.broadcast();
+
+  /// Tab 选择事件流
+  Stream<TabSelectedEvent> get onTabSelected => _tabSelectedController.stream;
+
+  /// 主题变化事件流（true = dark）
+  Stream<bool> get onThemeChanged => _themeChangedController.stream;
+
+  /// 是否是 iOS 平台
+  bool get _isIOS => !kIsWeb && Platform.isIOS;
+
+  /// 是否已初始化
+  bool _isInitialized = false;
+
+  /// 初始化服务
+  ///
+  /// 在 app 启动时调用
+  void initialize() {
+    if (!_isIOS || _isInitialized) return;
+
+    _channel = const MethodChannel(_channelName);
+    _channel!.setMethodCallHandler(_handleMethodCall);
+    _isInitialized = true;
+
+    debugPrint('NativeTabBarService: Initialized');
+  }
+
+  /// 处理来自原生的方法调用
+  Future<dynamic> _handleMethodCall(MethodCall call) async {
+    switch (call.method) {
+      case 'onTabSelected':
+        final args = call.arguments as Map<dynamic, dynamic>;
+        final index = args['index'] as int;
+        final route = args['route'] as String;
+
+        debugPrint('NativeTabBarService: Tab selected - index: $index, route: $route');
+        _tabSelectedController.add(TabSelectedEvent(index: index, route: route));
+        return null;
+
+      case 'onThemeChanged':
+        final isDark = call.arguments as bool;
+        debugPrint('NativeTabBarService: Theme changed - isDark: $isDark');
+        _themeChangedController.add(isDark);
+        return null;
+
+      default:
+        throw PlatformException(
+          code: 'Unimplemented',
+          details: 'Method ${call.method} not implemented',
+        );
+    }
+  }
+
+  /// 设置选中的 Tab 索引
+  ///
+  /// 当 Flutter 路由变化时调用，同步原生 Tab Bar
+  Future<void> setSelectedIndex(int index) async {
+    if (!_isIOS || _channel == null) return;
+
+    await AppError.guard(
+      () => _channel!.invokeMethod<void>('setSelectedIndex', index),
+      action: 'setSelectedIndex',
+    );
+  }
+
+  /// 获取当前选中的 Tab 索引
+  Future<int> getSelectedIndex() async {
+    if (!_isIOS || _channel == null) return 0;
+
+    final result = await AppError.guard(
+      () => _channel!.invokeMethod<int>('getSelectedIndex'),
+      action: 'getSelectedIndex',
+    );
+    return result ?? 0;
+  }
+
+  /// 获取 Tab Bar 高度
+  Future<double> getTabBarHeight() async {
+    if (!_isIOS || _channel == null) return 49.0; // iOS 默认 tab bar 高度
+
+    final result = await AppError.guard(
+      () => _channel!.invokeMethod<double>('getTabBarHeight'),
+      action: 'getTabBarHeight',
+    );
+    return result ?? 49.0;
+  }
+
+  /// 获取底部安全区高度
+  Future<double> getSafeAreaBottom() async {
+    if (!_isIOS || _channel == null) return 34.0; // iPhone 默认底部安全区
+
+    final result = await AppError.guard(
+      () => _channel!.invokeMethod<double>('getSafeAreaBottom'),
+      action: 'getSafeAreaBottom',
+    );
+    return result ?? 34.0;
+  }
+
+  /// 检查是否支持 Liquid Glass
+  Future<bool> isLiquidGlassSupported() async {
+    if (!_isIOS || _channel == null) return false;
+
+    final result = await AppError.guard(
+      () => _channel!.invokeMethod<bool>('isLiquidGlassSupported'),
+      action: 'isLiquidGlassSupported',
+    );
+    return result ?? false;
+  }
+
+  /// 设置 Tab Bar 是否可见
+  ///
+  /// 用于在 loading 页面隐藏 tab bar
+  Future<void> setTabBarVisible(bool visible) async {
+    if (!_isIOS || _channel == null) return;
+
+    await AppError.guard(
+      () => _channel!.invokeMethod<void>('setTabBarVisible', visible),
+      action: 'setTabBarVisible',
+    );
+  }
+
+  /// 获取 Tab Bar 是否可见
+  Future<bool> isTabBarVisible() async {
+    if (!_isIOS || _channel == null) return true;
+
+    final result = await AppError.guard(
+      () => _channel!.invokeMethod<bool>('isTabBarVisible'),
+      action: 'isTabBarVisible',
+    );
+    return result ?? true;
+  }
+
+  /// 释放资源
+  void dispose() {
+    _tabSelectedController.close();
+    _themeChangedController.close();
+  }
+}
+
+/// Tab 选择事件
+class TabSelectedEvent {
+  const TabSelectedEvent({
+    required this.index,
+    required this.route,
+  });
+
+  /// 选中的 Tab 索引
+  final int index;
+
+  /// 对应的 Flutter 路由
+  final String route;
+
+  @override
+  String toString() => 'TabSelectedEvent(index: $index, route: $route)';
+}

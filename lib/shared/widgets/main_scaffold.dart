@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -10,8 +11,8 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/services/update_service.dart';
-import 'package:my_nas/shared/widgets/liquid_glass/liquid_glass.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 
 class MainScaffold extends ConsumerStatefulWidget {
@@ -26,9 +27,33 @@ class MainScaffold extends ConsumerStatefulWidget {
 class _MainScaffoldState extends ConsumerState<MainScaffold> {
   static bool _hasCheckedForUpdates = false;
 
+  /// 原生 Tab 选择订阅
+  StreamSubscription<TabSelectedEvent>? _tabSelectedSubscription;
+
+  /// 是否正在处理 Tab 切换（防止循环）
+  bool _isHandlingTabChange = false;
+
+  /// 是否使用原生 Tab Bar
+  bool get _useNativeTabBar {
+    if (kIsWeb) return false;
+    return Platform.isIOS;
+  }
+
   @override
   void initState() {
     super.initState();
+
+    // 订阅原生 Tab Bar 事件（服务已在 main.dart 中初始化）
+    if (_useNativeTabBar) {
+      _tabSelectedSubscription =
+          NativeTabBarService.instance.onTabSelected.listen(_handleNativeTabSelected);
+
+      // 显示原生 Tab Bar（初始时是隐藏的）
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        NativeTabBarService.instance.setTabBarVisible(true);
+      });
+    }
+
     // 仅在首次显示 MainScaffold 时检查更新
     if (!_hasCheckedForUpdates) {
       _hasCheckedForUpdates = true;
@@ -36,6 +61,28 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
         _checkForUpdatesOnStartup();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _tabSelectedSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// 处理原生 Tab 选择事件
+  void _handleNativeTabSelected(TabSelectedEvent event) {
+    if (_isHandlingTabChange) return;
+    if (!mounted) return;
+
+    _isHandlingTabChange = true;
+
+    // 使用原生传来的路由进行导航
+    context.go(event.route);
+
+    // 延迟重置标志，避免路由变化时触发循环
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _isHandlingTabChange = false;
+    });
   }
 
   Future<void> _checkForUpdatesOnStartup() async {
@@ -95,18 +142,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     ),
   ];
 
-  /// 转换为 LiquidGlassNavItem 列表
-  static List<LiquidGlassNavItem> get _liquidGlassItems => _destinations
-      .map(
-        (d) => LiquidGlassNavItem(
-          icon: d.icon,
-          selectedIcon: d.selectedIcon,
-          label: d.label,
-          sfSymbol: d.sfSymbol,
-        ),
-      )
-      .toList();
-
   int _getCurrentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
     for (var i = 0; i < _destinations.length; i++) {
@@ -118,16 +153,34 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   }
 
   void _onDestinationSelected(BuildContext context, int index) {
+    if (_isHandlingTabChange) return;
+
+    _isHandlingTabChange = true;
     context.go(_destinations[index].route);
+
+    // 同步到原生 Tab Bar
+    if (_useNativeTabBar) {
+      NativeTabBarService.instance.setSelectedIndex(index);
+    }
+
+    // 延迟重置标志
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _isHandlingTabChange = false;
+    });
   }
 
-  /// 是否使用 iOS 26 风格的悬浮导航栏
-  /// 只有在 iOS 平台且用户选择了玻璃风格时才使用
-  bool _useFloatingNavBar(UIStyle uiStyle) {
-    if (kIsWeb) return false;
-    // 在 iOS 上，只有选择玻璃风格时才使用悬浮导航栏
-    // 如果用户选择 classic，则使用传统固定导航栏
-    return Platform.isIOS && uiStyle.isGlass;
+  @override
+  void didUpdateWidget(MainScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // 当 Flutter 路由变化时，同步到原生 Tab Bar
+    if (_useNativeTabBar && !_isHandlingTabChange) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final currentIndex = _getCurrentIndex(context);
+        NativeTabBarService.instance.setSelectedIndex(currentIndex);
+      });
+    }
   }
 
   @override
@@ -152,12 +205,11 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       );
     }
 
-    // iOS + 玻璃风格: 使用悬浮导航栏
-    if (_useFloatingNavBar(uiStyle)) {
+    // iOS 平台：使用原生 UITabBarController，不显示 Flutter 底部导航栏
+    if (_useNativeTabBar) {
       return Scaffold(
         backgroundColor: isDark ? AppColors.darkBackground : null,
-        extendBody: true,
-        body: _buildFloatingNavLayout(context, currentIndex, isDark),
+        body: widget.child,
       );
     }
 
@@ -168,54 +220,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       extendBody: enableGlass,
       body: widget.child,
       bottomNavigationBar: _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
-    );
-  }
-
-  /// 构建悬浮导航栏布局 (iOS 26 风格)
-  ///
-  /// iOS 26 Liquid Glass 特点：
-  /// - 导航栏悬浮在内容上方
-  /// - 内容延伸到屏幕底部，透过透明导航栏可见
-  /// - 子页面需要自己处理底部 padding（使用 floatingNavBarPadding）
-  Widget _buildFloatingNavLayout(BuildContext context, int currentIndex, bool isDark) {
-    // iOS 26 Liquid Glass 标准尺寸
-    // 高度：约 60pt（标准高度）
-    // 底部间距：0pt（贴近屏幕底部，由原生 UITabBar 处理安全区）
-    // 水平边距：0pt，与内容区域宽度一致
-    const horizontalPadding = 0.0;
-    const bottomPadding = 0.0;
-    const navBarHeight = 60.0;
-
-    // 计算子页面需要的底部 padding（内容不被导航栏遮挡）
-    final floatingNavPadding = navBarHeight + bottomPadding;
-
-    return Stack(
-      children: [
-        // 主体内容 - 延伸到屏幕底部，内容可透过导航栏看到
-        Positioned.fill(
-          child: MediaQuery(
-            // 注入底部 padding 信息，子页面可通过 MediaQuery.of(context).padding.bottom 获取
-            data: MediaQuery.of(context).copyWith(
-              padding: MediaQuery.of(context).padding.copyWith(
-                bottom: floatingNavPadding,
-              ),
-            ),
-            child: widget.child,
-          ),
-        ),
-
-        // 悬浮导航栏 - 固定距离屏幕底部，宽度与内容区域一致
-        Positioned(
-          left: horizontalPadding,
-          right: horizontalPadding,
-          bottom: bottomPadding,
-          child: LiquidGlassNavBar(
-            items: _liquidGlassItems,
-            selectedIndex: currentIndex,
-            onTap: (index) => _onDestinationSelected(context, index),
-          ),
-        ),
-      ],
     );
   }
 

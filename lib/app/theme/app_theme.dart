@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
@@ -51,6 +54,7 @@ abstract final class AppTheme {
       dialogTheme: _lightDialogTheme,
       snackBarTheme: _snackBarTheme,
       listTileTheme: _lightListTileTheme,
+      scrollbarTheme: _lightScrollbarTheme,
     );
   }
 
@@ -134,6 +138,7 @@ abstract final class AppTheme {
       ),
       snackBarTheme: _snackBarTheme,
       listTileTheme: _darkListTileTheme,
+      scrollbarTheme: _darkScrollbarTheme,
     );
   }
 
@@ -215,6 +220,7 @@ abstract final class AppTheme {
         dialogTheme: _lightDialogTheme,
         snackBarTheme: _snackBarTheme,
         listTileTheme: _lightListTileTheme,
+        scrollbarTheme: _lightScrollbarTheme,
       );
 
   static ThemeData get dark => ThemeData(
@@ -235,7 +241,15 @@ abstract final class AppTheme {
         dialogTheme: _darkDialogTheme,
         snackBarTheme: _snackBarTheme,
         listTileTheme: _darkListTileTheme,
+        scrollbarTheme: _darkScrollbarTheme,
       );
+
+  // ============================================================================
+  // 平台检测
+  // ============================================================================
+
+  static bool get _isDesktop =>
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
 
   // Color Schemes - 使用 getter 因为 AppColors 现在是动态的
   static ColorScheme get _lightColorScheme => ColorScheme.light(
@@ -521,4 +535,70 @@ abstract final class AppTheme {
       borderRadius: AppRadius.borderRadiusSm,
     ),
   );
+
+  // ============================================================================
+  // Scrollbar - 桌面端显示滚动条，移动端隐藏
+  // ============================================================================
+
+  static ScrollbarThemeData get _lightScrollbarTheme => ScrollbarThemeData(
+        thumbVisibility: WidgetStateProperty.all(_isDesktop),
+        trackVisibility: WidgetStateProperty.all(_isDesktop),
+        thickness: WidgetStateProperty.resolveWith((states) {
+          if (!_isDesktop) return 0;
+          if (states.contains(WidgetState.hovered)) return 8;
+          return 6;
+        }),
+        radius: const Radius.circular(4),
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.dragged)) {
+            return AppColors.lightOnSurfaceVariant.withValues(alpha: 0.6);
+          }
+          if (states.contains(WidgetState.hovered)) {
+            return AppColors.lightOnSurfaceVariant.withValues(alpha: 0.5);
+          }
+          return AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3);
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return AppColors.lightSurfaceVariant.withValues(alpha: 0.5);
+          }
+          return Colors.transparent;
+        }),
+        trackBorderColor: WidgetStateProperty.all(Colors.transparent),
+        crossAxisMargin: 2,
+        mainAxisMargin: 4,
+        minThumbLength: 48,
+        interactive: true,
+      );
+
+  static ScrollbarThemeData get _darkScrollbarTheme => ScrollbarThemeData(
+        thumbVisibility: WidgetStateProperty.all(_isDesktop),
+        trackVisibility: WidgetStateProperty.all(_isDesktop),
+        thickness: WidgetStateProperty.resolveWith((states) {
+          if (!_isDesktop) return 0;
+          if (states.contains(WidgetState.hovered)) return 8;
+          return 6;
+        }),
+        radius: const Radius.circular(4),
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.dragged)) {
+            return AppColors.darkOnSurfaceVariant.withValues(alpha: 0.6);
+          }
+          if (states.contains(WidgetState.hovered)) {
+            return AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5);
+          }
+          return AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3);
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return AppColors.darkSurfaceVariant.withValues(alpha: 0.5);
+          }
+          return Colors.transparent;
+        }),
+        trackBorderColor: WidgetStateProperty.all(Colors.transparent),
+        crossAxisMargin: 2,
+        mainAxisMargin: 4,
+        minThumbLength: 48,
+        interactive: true,
+      );
 }

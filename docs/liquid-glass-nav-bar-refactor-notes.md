@@ -430,6 +430,251 @@ end
 rm -rf ios/Pods ios/Podfile.lock && cd ios && pod install
 ```
 
+### 错误方案 11：设置 dummy ViewController 的视图属性
+
+```swift
+// ❌ 这样做没有效果
+let dummyVC = UIViewController()
+dummyVC.view.backgroundColor = .clear
+dummyVC.view.isOpaque = false
+dummyVC.view.alpha = 0  // 设置为完全透明
+dummyVC.edgesForExtendedLayout = .all
+dummyVC.extendedLayoutIncludesOpaqueBars = true
+```
+
+**结果**：透明度仍然很低，没有改善
+
+**原因分析**：
+问题的核心不是 dummy ViewController 的视图属性，而是**视图层级关系**和**内容延伸**的问题。
+
+**Liquid Glass 效果的原理**：
+- UITabBar 的 Liquid Glass 效果是对**它下方的内容**进行高斯模糊
+- 当前架构中，UITabBarController 的 view 包含：
+  1. 内容区域（dummy ViewController.view）
+  2. UITabBar（底部）
+- TabBar 实际上是在对 dummy ViewController.view 进行模糊
+- 即使 dummy view 设置为透明，它仍然是一个"空白"，不是 Flutter 内容
+
+**当前架构的问题**：
+```
+Flutter 渲染层
+│
+├── 页面内容（Positioned.fill）
+│
+└── UiKitView（Positioned bottom: 0）
+    └── UITabBarController.view
+        ├── dummy VC.view ← TabBar 在模糊这个，即使透明也是空白
+        └── UITabBar（Liquid Glass）
+```
+
+**要实现通透的 Liquid Glass**：
+- Flutter 内容必须绘制在 TabBar 的**正下方**（Underlap）
+- 但 UiKitView 是作为独立层渲染的，Flutter 内容无法"穿透"到原生视图下方
+- 这是 Flutter Platform View 的根本限制
+
+## 根本性问题（重要发现！）
+
+### UIVisualEffect 的合成要求
+
+> **"UIVisualEffects require being composited as part of the content they are logically layered on top of to look correct."**
+> — [Apple Developer Documentation](https://developer.apple.com/documentation/uikit/uivisualeffectview)
+
+这意味着：
+- UIGlassEffect / UIVisualEffectView 必须与它要模糊的内容在**同一个视图层级**中
+- 如果它们不在同一层级，效果会显示不正确或无法正确模糊下方内容
+
+### Flutter Platform View 的限制
+
+Flutter 在 iOS 上使用 **Hybrid Composition** 渲染 Platform View：
+- 原生 UIView 被添加到视图层级之上
+- 原生视图和 Flutter 内容**不在同一个视图层级**中合成
+- 原生视图是 "hovering above the FlutterViewController"
+
+**参考**：[Flutter Platform Views Documentation](https://docs.flutter.dev/platform-integration/ios/platform-views)
+
+### 为什么当前方案透明度很低
+
+```
+┌─────────────────────────────────────────────┐
+│  原生层（通过 Hybrid Composition 悬浮）      │
+│  ┌─────────────────────────────────────┐    │
+│  │  UITabBarController.view            │    │
+│  │  ├── dummy VC.view (空白)           │    │
+│  │  └── UITabBar (Liquid Glass)        │    │
+│  │       └── 只能模糊 dummy VC.view！  │    │
+│  └─────────────────────────────────────┘    │
+├─────────────────────────────────────────────┤
+│  Flutter 渲染层（独立的渲染管线）            │
+│  ┌─────────────────────────────────────┐    │
+│  │  页面内容                            │    │ ← UITabBar 看不到这里！
+│  └─────────────────────────────────────┘    │
+└─────────────────────────────────────────────┘
+```
+
+**结论**：UITabBar 的 Liquid Glass 效果只能模糊它自己内部的 dummy VC.view（空白），
+而不是 Flutter 渲染的页面内容。这就是为什么透明度看起来很低（实际上是在模糊空白）。
+
+## 可行的解决方向
+
+### 方向 1：纯 Flutter 实现（推荐）
+
+- 不使用原生 UITabBar，完全用 Flutter 实现
+- 使用 `BackdropFilter` 实现毛玻璃效果
+- 可以正确模糊 Flutter 内容
+- 缺点：失去原生的 Selection Bubble 交互效果
+
+```dart
+ClipRRect(
+  borderRadius: BorderRadius.circular(30),
+  child: BackdropFilter(
+    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+    child: Container(
+      // 导航栏内容
+    ),
+  ),
+)
+```
+
+### 方向 2：重构应用架构（复杂）
+
+- 将 FlutterViewController 嵌入到原生 UITabBarController 中
+- 原生 UITabBarController 作为根控制器
+- Flutter 内容在 UITabBarController 的 viewControllers 中渲染
+- 这样 UITabBar 可以正确模糊 Flutter 内容
+- 缺点：需要大幅修改应用架构，可能影响 Flutter 的状态管理
+
+### 方向 3：接受当前效果
+
+- 当前的 UITabBarController 实现确实有 Liquid Glass 效果
+- 只是透明度不如预期（因为在模糊空白内容）
+- 如果应用背景是纯色或简单图案，效果可能仍然可接受
+
+### 方向 4：混合方案
+
+- 导航栏用 Flutter 的 BackdropFilter 实现（正确的透明度）
+- 选中指示器动画用 Flutter 实现（模拟 Selection Bubble）
+- 虽然不是原生效果，但视觉上可以接近
+
+---
+
+## 透明度问题排查清单（2024年12月31日更新）
+
+> **背景**：当前 app 的 Liquid Glass 导航栏透明度明显**低于**其他 iOS 26 原生 app。以下是基于网络调研整理的所有可能原因和尝试方案。
+
+### 🔴 高优先级检查项
+
+#### 1. 编译环境和设备
+| 检查项 | 说明 | 状态 |
+|--------|------|------|
+| Xcode 版本 | 必须使用 Xcode 26 编译 | [ ] |
+| iOS Deployment Target | 设置为 iOS 26.0+ | [ ] |
+| 测试设备 | 在 iOS 26 真机上测试（非模拟器） | [ ] |
+
+#### 2. iOS 系统设置
+| 检查项 | 影响 | 状态 |
+|--------|------|------|
+| `Settings > Display & Brightness > Liquid Glass` | iOS 26.1+ 新增，"Tinted" 会增加不透明度 | [ ] |
+| `Settings > Accessibility > Reduce Transparency` | 开启会大幅降低透明度 | [ ] |
+| `Settings > Accessibility > Increase Contrast` | 可能影响玻璃效果 | [ ] |
+
+### 🟠 中优先级：代码层面检查
+
+#### 3. dummy ViewController 优化
+**当前问题**：UITabBar 正在模糊 dummy VC 的空白视图。
+
+尝试修改 `rebuildTabs()` 中的 dummy VC 设置：
+```swift
+// 尝试 1：完全透明 + 隐藏
+dummyVC.view.alpha = 0
+dummyVC.view.isHidden = true
+
+// 尝试 2：布局延伸
+dummyVC.edgesForExtendedLayout = .all
+dummyVC.extendedLayoutIncludesOpaqueBars = true
+
+// 尝试 3：layer 级别清除
+dummyVC.view.layer.backgroundColor = UIColor.clear.cgColor
+```
+
+| 尝试 | 结果 |
+|------|------|
+| `view.alpha = 0` | [ ] 待测试 |
+| `view.isHidden = true` | [ ] 待测试 |
+| `edgesForExtendedLayout = .all` | [ ] 待测试 |
+| `layer.backgroundColor = .clear.cgColor` | [ ] 待测试 |
+
+#### 4. 视图层级 alpha 链检查
+**问题**：UIVisualEffect 要求整个父视图链的 alpha 都是 1.0。
+
+添加调试代码检查：
+```swift
+// 在 viewDidLoad 中添加
+DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+    var current: UIView? = self.tabBar
+    while let v = current {
+        NSLog("🔍 View: \(type(of: v)), alpha: \(v.alpha), isOpaque: \(v.isOpaque)")
+        current = v.superview
+    }
+}
+```
+
+| 检查结果 | 状态 |
+|----------|------|
+| 所有父视图 alpha = 1.0 | [ ] |
+| 没有视图 isOpaque = true | [ ] |
+
+#### 5. 使用独立 UITabBar（不用 UITabBarController）
+**假设**：UITabBarController 的内容视图层可能干扰透明度。
+
+```swift
+// 替代方案：直接使用 UITabBar
+let tabBar = UITabBar()
+tabBar.items = [...]
+view.addSubview(tabBar)
+// 不使用 UITabBarController
+```
+
+| 尝试 | 结果 |
+|------|------|
+| 独立 UITabBar | [ ] 待测试 |
+
+### 🟡 低优先级：深度调研
+
+#### 6. Platform View 渲染模式
+**问题**：Flutter 的 Hybrid Composition 创建 "hole"，导致原生视图无法模糊 Flutter 内容。
+
+可能的研究方向：
+- [ ] 调研 Flutter 的 `texture` 渲染模式是否有帮助
+- [ ] 调研是否可以截图 Flutter 内容作为原生层背景
+
+#### 7. 对比测试
+- [ ] 创建纯原生 iOS 项目，只含 UITabBarController，对比透明度
+- [ ] 在原生项目中验证 Liquid Glass 效果是否正常
+
+#### 8. UIGlassEffect 样式
+**已知限制**：UITabBar 使用 `.regular` 样式，无法改为 `.clear`。
+
+可能方案：
+- [ ] 提交 Apple Feedback 请求暴露 glass style API
+- [ ] 完全自定义：UIVisualEffectView + UIGlassEffect + 自定义按钮（失去原生交互）
+
+### 测试记录模板
+
+| 日期 | 尝试内容 | 结果 | 备注 |
+|------|----------|------|------|
+| YYYY-MM-DD | 描述 | ✅/❌ | |
+
+### 最终结论
+
+如果以上所有方案都无法解决，核心问题是 **Flutter Platform View 的根本限制**：
+- 原生视图和 Flutter 内容不在同一渲染管线
+- UITabBar 只能模糊其直接下层内容（dummy VC），无法看到 Flutter 内容
+
+**推荐最终方案**：
+1. 接受当前效果（如背景是纯色则影响不大）
+2. 改用 Flutter 的 `BackdropFilter` 完全实现（失去原生交互效果）
+3. 重构架构：原生 UITabBarController 作为根控制器（工作量大）
+
 ## 相关文件
 
 - `ios/Runner/LiquidGlassView.swift` - 原生视图实现
