@@ -170,7 +170,7 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
     };
 
     return SizedBox(
-      height: 80, // iOS 26 Liquid Glass 标准高度
+      height: 60, // iOS 26 Liquid Glass 紧凑高度
       child: UiKitView(
         viewType: _viewType,
         creationParams: creationParams,
@@ -186,7 +186,7 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(35),
+        borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.15),
@@ -196,9 +196,9 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
         ],
       ),
       child: SizedBox(
-        height: 80, // iOS 26 Liquid Glass 标准高度
+        height: 60, // iOS 26 Liquid Glass 紧凑高度
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(40),
+          borderRadius: BorderRadius.circular(30),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: DecoratedBox(
@@ -207,7 +207,7 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
                 color: isDark
                     ? Colors.black.withValues(alpha: 0.08)
                     : Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(40),
+                borderRadius: BorderRadius.circular(30),
                 border: Border.all(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.1)

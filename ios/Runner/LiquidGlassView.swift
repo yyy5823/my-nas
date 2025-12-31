@@ -4,14 +4,16 @@ import UIKit
 /// iOS 26 Liquid Glass 原生视图
 ///
 /// 使用原生 UITabBarController 实现真正的 iOS 26 Liquid Glass 效果
-/// iOS 26 的 UITabBar 自动获得 Liquid Glass 样式，无需任何自定义代码
 ///
-/// 特点：
-/// - 透明背景
-/// - 只有选中的 tab 有玻璃"药丸"效果
-/// - 选中指示器可以长按拖动切换
-/// - 平滑的变形动画
-/// - 按压交互效果
+/// 关键：
+/// - iOS 26 的 UITabBar **默认就是** Liquid Glass 效果
+/// - **不要**设置 UIBarAppearance - 会破坏玻璃效果！
+/// - **不要**设置 backgroundColor - 会破坏玻璃效果！
+/// - 让系统自动处理所有 Liquid Glass 特性
+///
+/// 参考：
+/// - WWDC25 Session 284: "Using UIBarAppearance or backgroundColor interferes with the glass appearance"
+/// - https://developer.apple.com/videos/play/wwdc2025/284/
 
 // MARK: - Navigation Bar Item
 
@@ -90,7 +92,7 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
             }
         }
 
-        NSLog("🔮 LiquidGlassView: init with frame: \(frame), viewId: \(viewId)")
+        NSLog("🔮 LiquidGlassView: init with viewId: \(viewId)")
         NSLog("🔮 LiquidGlassView: iOS version: \(UIDevice.current.systemVersion)")
         NSLog("🔮 LiquidGlassView: Parsed \(items.count) items, selectedIndex: \(selectedIndex)")
 
@@ -152,7 +154,6 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
 
     private func handleNavTap(_ index: Int) {
         NSLog("🔮 LiquidGlassView: handleNavTap called with index: \(index)")
-        // 通知 Flutter
         methodChannel?.invokeMethod("onNavTap", arguments: index)
     }
 }
@@ -160,12 +161,15 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
 // MARK: - Tab Bar Controller
 
 /// 使用原生 UITabBarController 实现 Liquid Glass 效果
-/// iOS 26+: 手动应用 UIGlassEffect（因为 Flutter PlatformView 不会自动获得系统效果）
-/// iOS < 26: 使用 UIBlurEffect 作为回退
+///
+/// 关键原则：
+/// - iOS 26 的 UITabBar **默认就是** Liquid Glass
+/// - **不要**设置任何 UIBarAppearance
+/// - **不要**设置任何 backgroundColor
+/// - 让系统自动处理所有效果
 class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegate {
     private var items: [LiquidGlassNavItem]
     private var isDark: Bool
-    private var glassEffectView: UIVisualEffectView?
     var onTabSelected: ((Int) -> Void)?
 
     init(items: [LiquidGlassNavItem], selectedIndex: Int, isDark: Bool) {
@@ -184,109 +188,41 @@ class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegat
 
         NSLog("🔮 LiquidGlassTabBarController: viewDidLoad")
 
-        // 设置透明背景
+        // 关键：设置 view 背景透明，避免黑色长方体
         view.backgroundColor = .clear
-        view.isOpaque = false
 
         // 设置代理
         delegate = self
 
-        // 配置玻璃效果背景（在 tabBar 下方）
-        setupGlassBackground()
-
-        // 配置外观
-        configureAppearance()
-
         // 创建 tab items
         rebuildTabs()
+
+        // iOS 26+: 不设置任何 appearance，让系统自动应用 Liquid Glass
+        // 这是最关键的一点！
+        if #available(iOS 26.0, *) {
+            NSLog("🔮 LiquidGlassTabBarController: iOS 26+ - NOT setting any appearance (letting system apply Liquid Glass)")
+            // 不做任何事情！让系统默认的 Liquid Glass 生效
+        } else {
+            // iOS < 26: 使用模糊效果作为回退
+            configureAppearanceFallback()
+        }
 
         NSLog("🔮 LiquidGlassTabBarController: Setup complete")
     }
 
-    private func setupGlassBackground() {
-        if #available(iOS 26.0, *) {
-            // iOS 26+: 使用 UIGlassEffect 手动创建玻璃效果
-            // 使用 .clear 风格获得最高透明度
-            let glassEffect = UIGlassEffect(style: .clear)
-
-            let effectView = UIVisualEffectView(effect: glassEffect)
-            effectView.translatesAutoresizingMaskIntoConstraints = false
-            effectView.layer.cornerRadius = 40 // 胶囊形圆角
-            effectView.clipsToBounds = true
-
-            // 插入到最底层
-            view.insertSubview(effectView, at: 0)
-
-            // 约束：填充整个视图
-            NSLayoutConstraint.activate([
-                effectView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                effectView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                effectView.topAnchor.constraint(equalTo: view.topAnchor),
-                effectView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            ])
-
-            glassEffectView = effectView
-            NSLog("🔮 LiquidGlassTabBarController: Applied UIGlassEffect with .clear style for maximum transparency")
-        } else {
-            // iOS < 26: 使用 UIBlurEffect 作为回退
-            let blurStyle: UIBlurEffect.Style = isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight
-            let blurEffect = UIBlurEffect(style: blurStyle)
-
-            let effectView = UIVisualEffectView(effect: blurEffect)
-            effectView.translatesAutoresizingMaskIntoConstraints = false
-            effectView.layer.cornerRadius = 40
-            effectView.clipsToBounds = true
-
-            view.insertSubview(effectView, at: 0)
-
-            NSLayoutConstraint.activate([
-                effectView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                effectView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                effectView.topAnchor.constraint(equalTo: view.topAnchor),
-                effectView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            ])
-
-            glassEffectView = effectView
-            NSLog("🔮 LiquidGlassTabBarController: Applied UIBlurEffect fallback for iOS < 26")
-        }
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-
-        // 强制 tabBar 填充整个视图，忽略 safe area
-        // 因为 safe area 已经在 Flutter 端处理了
-        tabBar.frame = view.bounds
-
-        NSLog("🔮 LiquidGlassTabBarController: viewDidLayoutSubviews - tabBar.frame: \(tabBar.frame), view.bounds: \(view.bounds)")
-    }
-
-    // 禁用额外的 safe area insets
-    override var additionalSafeAreaInsets: UIEdgeInsets {
-        get { return .zero }
-        set { }
-    }
-
-    private func configureAppearance() {
-        // 由于我们已经在 setupGlassBackground() 中添加了独立的玻璃效果视图，
-        // 这里只需要让 tabBar 完全透明即可
+    /// iOS < 26 的回退外观配置
+    private func configureAppearanceFallback() {
         let appearance = UITabBarAppearance()
-        appearance.configureWithTransparentBackground()
-        appearance.backgroundColor = .clear
-        appearance.shadowColor = .clear
-        appearance.shadowImage = nil
+        appearance.configureWithDefaultBackground()
+        appearance.backgroundEffect = UIBlurEffect(style: isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
 
         tabBar.standardAppearance = appearance
         if #available(iOS 15.0, *) {
             tabBar.scrollEdgeAppearance = appearance
         }
-
         tabBar.isTranslucent = true
-        tabBar.backgroundColor = .clear
-        tabBar.backgroundImage = UIImage()
-        tabBar.shadowImage = UIImage()
 
-        NSLog("🔮 LiquidGlassTabBarController: TabBar configured with transparent background (glass effect handled separately)")
+        NSLog("🔮 LiquidGlassTabBarController: Using blur effect fallback for iOS < 26")
     }
 
     private func rebuildTabs() {
@@ -336,11 +272,13 @@ class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegat
         onTabSelected?(index)
     }
 
-    // iOS 26+ 的交互效果由系统自动处理：
-    // - 选中指示器的玻璃"药丸"效果
-    // - 长按拖动切换 tab
-    // - 按压动画效果
-    // - tab 之间的变形动画
+    // iOS 26+ 的 Liquid Glass 交互效果由系统自动处理：
+    // - 选中指示器的玻璃"药丸"效果（Selection Bubble）
+    // - 长按拖动切换 tab（Drag to switch）
+    // - 按压动画效果（Press animation）
+    // - tab 之间的变形动画（Morphing）
+    // - 透镜效果（Lensing）
+    // - 色差效果（Chromatic aberration）
 }
 
 // MARK: - Plugin Registration
@@ -353,7 +291,8 @@ class LiquidGlassPlugin: NSObject, FlutterPlugin {
         NSLog("🔮 LiquidGlassPlugin: Registered")
 
         if #available(iOS 26.0, *) {
-            NSLog("🔮 LiquidGlassPlugin: iOS 26+ detected, UITabBar will automatically get Liquid Glass")
+            NSLog("🔮 LiquidGlassPlugin: iOS 26+ detected - UITabBar will automatically get Liquid Glass")
+            NSLog("🔮 LiquidGlassPlugin: IMPORTANT: Do NOT set UIBarAppearance - it will break the glass effect!")
         } else {
             NSLog("🔮 LiquidGlassPlugin: iOS < 26, using blur effect fallback")
         }

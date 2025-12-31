@@ -42,6 +42,13 @@ post_install do |installer|
     target.build_configurations.each do |config|
       # 强制所有 Pod 使用 iOS 15.5 作为最低部署目标 (google_mlkit_commons 需要)
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'
+
+      # 修复预编译框架（如 sqlite3arm64ios.framework）的代码签名问题
+      # 确保所有 Pod 使用相同的签名设置
+      config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Development'
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'YES'
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'YES'
+      config.build_settings['DEVELOPMENT_TEAM'] = 'DZ9KFPGX7N'
     end
   end
 

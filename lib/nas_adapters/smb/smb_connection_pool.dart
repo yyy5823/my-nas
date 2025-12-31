@@ -185,6 +185,9 @@ class SmbConnectionPool {
       domain: domain,
       username: username,
       password: password,
+      // 连接池连接启用心跳保活
+      enableHeartbeat: true,
+      heartbeatInterval: const Duration(minutes: 2),
     ).timeout(
       const Duration(seconds: 30),
       onTimeout: () => throw TimeoutException('SMB 连接超时'),
@@ -264,6 +267,11 @@ class SmbConnectionPool {
         domain: domain,
         username: username,
         password: password,
+        // 流传输连接禁用心跳（一直在传输数据，不需要心跳）
+        // 但如果播放器暂停时间过长，连接可能会断开
+        // 考虑启用心跳以防止暂停时断开
+        enableHeartbeat: true,
+        heartbeatInterval: const Duration(minutes: 2),
       ).timeout(
         const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException('SMB 专用连接超时 (30s)'),

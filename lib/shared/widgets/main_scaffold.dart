@@ -178,13 +178,13 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   /// - 内容延伸到屏幕底部，透过透明导航栏可见
   /// - 子页面需要自己处理底部 padding（使用 floatingNavBarPadding）
   Widget _buildFloatingNavLayout(BuildContext context, int currentIndex, bool isDark) {
-    // iOS 26 Liquid Glass 标准尺寸（根据实测调整）
-    // 高度：标准约 1cm ≈ 80pt
-    // 底部间距：往下移动 2/5，12 - 12*2/5 ≈ 7pt
-    // 宽度：与内部选项宽度一致，水平边距设为 0
+    // iOS 26 Liquid Glass 标准尺寸
+    // 高度：约 60pt（标准高度）
+    // 底部间距：0pt（贴近屏幕底部，由原生 UITabBar 处理安全区）
+    // 水平边距：0pt，与内容区域宽度一致
     const horizontalPadding = 0.0;
-    const bottomPadding = 7.0;
-    const navBarHeight = 80.0;
+    const bottomPadding = 0.0;
+    const navBarHeight = 60.0;
 
     // 计算子页面需要的底部 padding（内容不被导航栏遮挡）
     final floatingNavPadding = navBarHeight + bottomPadding;
@@ -204,7 +204,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
           ),
         ),
 
-        // 悬浮导航栏 - 固定距离屏幕底部，不叠加 safeArea
+        // 悬浮导航栏 - 固定距离屏幕底部，宽度与内容区域一致
         Positioned(
           left: horizontalPadding,
           right: horizontalPadding,
