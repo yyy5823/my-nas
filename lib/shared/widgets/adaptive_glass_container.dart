@@ -127,6 +127,9 @@ class AdaptiveGlassContainer extends StatelessWidget {
       'isInteractive': isInteractive,
     };
 
+    // 使用 key 强制在主题变化时重建原生视图
+    final viewKey = ValueKey('container_blur_${isDark}_${uiStyle.name}');
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(cornerRadius),
       child: Stack(
@@ -134,7 +137,7 @@ class AdaptiveGlassContainer extends StatelessWidget {
         children: [
           // 原生模糊背景
           Positioned.fill(
-            child: _buildPlatformView(creationParams),
+            child: _buildPlatformView(creationParams, viewKey),
           ),
           // Flutter 子组件
           Padding(
@@ -146,11 +149,12 @@ class AdaptiveGlassContainer extends StatelessWidget {
     );
   }
 
-  Widget _buildPlatformView(Map<String, dynamic> creationParams) {
+  Widget _buildPlatformView(Map<String, dynamic> creationParams, Key viewKey) {
     const viewType = 'com.kkape.mynas/native_blur_view';
 
     if (Platform.isIOS) {
       return UiKitView(
+        key: viewKey,
         viewType: viewType,
         creationParams: creationParams,
         creationParamsCodec: const StandardMessageCodec(),
@@ -158,6 +162,7 @@ class AdaptiveGlassContainer extends StatelessWidget {
       );
     } else if (Platform.isMacOS) {
       return AppKitView(
+        key: viewKey,
         viewType: viewType,
         creationParams: creationParams,
         creationParamsCodec: const StandardMessageCodec(),
@@ -284,11 +289,14 @@ class AdaptiveGlassNavBar extends StatelessWidget {
       'isInteractive': isInteractive,
     };
 
+    // 使用 key 强制在主题变化时重建原生视图
+    final viewKey = ValueKey('navbar_blur_${isDark}_${uiStyle.name}');
+
     return Stack(
       fit: StackFit.passthrough,
       children: [
         Positioned.fill(
-          child: _buildPlatformView(creationParams),
+          child: _buildPlatformView(creationParams, viewKey),
         ),
         // 顶部边框
         Positioned(
@@ -310,11 +318,12 @@ class AdaptiveGlassNavBar extends StatelessWidget {
     );
   }
 
-  Widget _buildPlatformView(Map<String, dynamic> creationParams) {
+  Widget _buildPlatformView(Map<String, dynamic> creationParams, Key viewKey) {
     const viewType = 'com.kkape.mynas/native_blur_view';
 
     if (Platform.isIOS) {
       return UiKitView(
+        key: viewKey,
         viewType: viewType,
         creationParams: creationParams,
         creationParamsCodec: const StandardMessageCodec(),
@@ -322,6 +331,7 @@ class AdaptiveGlassNavBar extends StatelessWidget {
       );
     } else if (Platform.isMacOS) {
       return AppKitView(
+        key: viewKey,
         viewType: viewType,
         creationParams: creationParams,
         creationParamsCodec: const StandardMessageCodec(),

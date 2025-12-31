@@ -169,9 +169,13 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
       'items': widget.items.map((e) => e.toMap()).toList(),
     };
 
+    // 使用 key 强制在主题变化时重建原生视图
+    final viewKey = ValueKey('liquid_glass_nav_$isDark');
+
     return SizedBox(
       height: 70,
       child: UiKitView(
+        key: viewKey,
         viewType: _viewType,
         creationParams: creationParams,
         creationParamsCodec: const StandardMessageCodec(),

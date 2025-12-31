@@ -3,24 +3,14 @@ import UIKit
 
 /// iOS 26 Liquid Glass 原生视图
 ///
-/// 使用原生 UITabBarController 实现真正的 iOS 26 Liquid Glass 效果
-/// iOS 26 的 UITabBar 自动获得 Liquid Glass 样式，无需任何自定义代码
+/// 使用原生 UITabBar 实现悬浮导航栏效果
+/// iOS 26+ 使用 UIGlassEffect 实现真正的 Liquid Glass 效果
 ///
 /// 特点：
-/// - 透明背景
-/// - 只有选中的 tab 有玻璃"药丸"效果
-/// - 选中指示器可以长按拖动切换
-/// - 平滑的变形动画
-/// - 按压交互效果
-
-// MARK: - Navigation Bar Item
-
-struct LiquidGlassNavItem {
-    let id: Int
-    let icon: String           // SF Symbol name (未选中)
-    let selectedIcon: String   // SF Symbol name (选中)
-    let label: String
-}
+/// - 原生 UITabBar 外观和交互
+/// - 透明/玻璃背景
+/// - 支持深色/浅色模式
+/// - 胶囊形悬浮设计
 
 // MARK: - Platform View Factory
 
@@ -50,13 +40,75 @@ class LiquidGlassViewFactory: NSObject, FlutterPlatformViewFactory {
     }
 }
 
+// MARK: - Custom Container View (忽略安全区域)
+
+/// 自定义容器视图，重写 safeAreaInsets 返回 .zero
+/// 这样 UITabBar 就不会预留安全区域空间
+class SafeAreaIgnoringContainerView: UIView {
+    override var safeAreaInsets: UIEdgeInsets {
+        return .zero
+    }
+}
+
+// MARK: - Custom TabBar (填满容器)
+
+/// 自定义 UITabBar，确保填满容器高度并垂直居中内容
+class FullHeightTabBar: UITabBar {
+
+    private var containerHeight: CGFloat = 70
+    // UITabBar 标准内容高度
+    private let standardTabBarContentHeight: CGFloat = 49
+
+    func setContainerHeight(_ height: CGFloat) {
+        containerHeight = height
+        invalidateIntrinsicContentSize()
+        setNeedsLayout()
+    }
+
+    override var safeAreaInsets: UIEdgeInsets {
+        return .zero
+    }
+
+    override var intrinsicContentSize: CGSize {
+        return CGSize(width: UIView.noIntrinsicMetric, height: containerHeight)
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        var sizeThatFits = super.sizeThatFits(size)
+        sizeThatFits.height = containerHeight
+        return sizeThatFits
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        // 计算垂直偏移量，使内容居中
+        let verticalOffset = (containerHeight - standardTabBarContentHeight) / 2
+
+        // 调整所有 TabBarButton 的位置
+        for subview in subviews {
+            let className = String(describing: type(of: subview))
+            if className.contains("TabBarButton") {
+                var frame = subview.frame
+                // 将按钮向下移动，使其在容器中垂直居中
+                frame.origin.y = verticalOffset
+                frame.size.height = standardTabBarContentHeight
+                subview.frame = frame
+            }
+        }
+    }
+}
+
 // MARK: - Platform View
 
 class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
-    private let tabBarController: LiquidGlassTabBarController
+    private let containerView: SafeAreaIgnoringContainerView
+    private let tabBar: FullHeightTabBar
+    private var backgroundEffectView: UIVisualEffectView?
     private let viewId: Int64
     private let messenger: FlutterBinaryMessenger?
     private var methodChannel: FlutterMethodChannel?
+    private var isDark: Bool = false
 
     init(
         frame: CGRect,
@@ -67,10 +119,22 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
         self.viewId = viewId
         self.messenger = messenger
 
+        // 创建容器视图（忽略安全区域）
+        containerView = SafeAreaIgnoringContainerView(frame: frame)
+        containerView.backgroundColor = .clear
+        containerView.clipsToBounds = true
+        containerView.layer.cornerRadius = frame.height / 2
+        containerView.layer.cornerCurve = .continuous
+
+        // 创建 TabBar
+        tabBar = FullHeightTabBar(frame: containerView.bounds)
+        tabBar.setContainerHeight(frame.height)
+        tabBar.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        tabBar.insetsLayoutMarginsFromSafeArea = false
+
         // 解析参数
-        var items: [LiquidGlassNavItem] = []
+        var items: [UITabBarItem] = []
         var selectedIndex = 0
-        var isDark = false
 
         if let params = args as? [String: Any] {
             isDark = params["isDark"] as? Bool ?? false
@@ -80,40 +144,143 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
                 items = itemsData.enumerated().map { index, item in
                     let icon = item["icon"] as? String ?? "circle"
                     let selectedIcon = item["selectedIcon"] as? String ?? icon
-                    return LiquidGlassNavItem(
-                        id: index,
-                        icon: icon,
-                        selectedIcon: selectedIcon,
-                        label: item["label"] as? String ?? ""
+                    let label = item["label"] as? String ?? ""
+
+                    let tabItem = UITabBarItem(
+                        title: label,
+                        image: UIImage(systemName: icon),
+                        selectedImage: UIImage(systemName: selectedIcon)
                     )
+                    tabItem.tag = index
+                    return tabItem
                 }
             }
         }
 
-        NSLog("🔮 LiquidGlassView: init with frame: \(frame), viewId: \(viewId)")
-        NSLog("🔮 LiquidGlassView: iOS version: \(UIDevice.current.systemVersion)")
-        NSLog("🔮 LiquidGlassView: Parsed \(items.count) items, selectedIndex: \(selectedIndex)")
-
-        // 创建 TabBarController
-        tabBarController = LiquidGlassTabBarController(
-            items: items,
-            selectedIndex: selectedIndex,
-            isDark: isDark
-        )
-
         super.init()
+
+        // 设置界面风格
+        containerView.overrideUserInterfaceStyle = isDark ? .dark : .light
+        tabBar.overrideUserInterfaceStyle = isDark ? .dark : .light
+
+        // 设置背景效果
+        setupBackground(frame: containerView.bounds)
+
+        // 配置 TabBar 外观
+        configureTabBarAppearance()
+
+        // 设置 TabBar items
+        tabBar.items = items
+        tabBar.selectedItem = items.indices.contains(selectedIndex) ? items[selectedIndex] : items.first
+        tabBar.delegate = self
+
+        // 添加到容器
+        containerView.addSubview(tabBar)
 
         // 设置 Method Channel
         setupMethodChannel()
 
-        // 设置回调
-        tabBarController.onTabSelected = { [weak self] index in
-            self?.handleNavTap(index)
-        }
+        // Debug 日志
+        NSLog("🔮 LiquidGlassView: Created with frame \(frame), isDark: \(isDark), items: \(items.count)")
     }
 
     func view() -> UIView {
-        return tabBarController.view
+        return containerView
+    }
+
+    private func setupBackground(frame: CGRect) {
+        backgroundEffectView?.removeFromSuperview()
+
+        if #available(iOS 26.0, *) {
+            // iOS 26+: 使用 Liquid Glass 效果
+            let glassEffect = UIGlassEffect()
+            let effectView = UIVisualEffectView(effect: glassEffect)
+            effectView.frame = frame
+            effectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            effectView.layer.cornerRadius = frame.height / 2
+            effectView.layer.cornerCurve = .continuous
+            effectView.clipsToBounds = true
+            effectView.overrideUserInterfaceStyle = isDark ? .dark : .light
+            containerView.insertSubview(effectView, at: 0)
+            backgroundEffectView = effectView
+
+            NSLog("🔮 LiquidGlassView: Using UIGlassEffect (iOS 26+)")
+        } else {
+            // iOS < 26: 使用模糊效果
+            let blurStyle: UIBlurEffect.Style = isDark ? .systemThinMaterialDark : .systemThinMaterialLight
+            let blurEffect = UIBlurEffect(style: blurStyle)
+            let effectView = UIVisualEffectView(effect: blurEffect)
+            effectView.frame = frame
+            effectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            effectView.layer.cornerRadius = frame.height / 2
+            effectView.layer.cornerCurve = .continuous
+            effectView.clipsToBounds = true
+
+            // 添加边框
+            effectView.layer.borderWidth = 0.5
+            effectView.layer.borderColor = isDark
+                ? UIColor.white.withAlphaComponent(0.1).cgColor
+                : UIColor.black.withAlphaComponent(0.05).cgColor
+
+            containerView.insertSubview(effectView, at: 0)
+            backgroundEffectView = effectView
+
+            NSLog("🔮 LiquidGlassView: Using UIBlurEffect (iOS < 26)")
+        }
+    }
+
+    private func configureTabBarAppearance() {
+        // 完全透明背景（由 backgroundEffectView 提供玻璃效果）
+        tabBar.backgroundImage = UIImage()
+        tabBar.shadowImage = UIImage()
+        tabBar.backgroundColor = .clear
+        tabBar.barTintColor = .clear
+        tabBar.isTranslucent = true
+
+        // 使用现代外观 API
+        if #available(iOS 15.0, *) {
+            let appearance = UITabBarAppearance()
+            appearance.configureWithTransparentBackground()
+            appearance.backgroundColor = .clear
+            appearance.shadowColor = .clear
+            appearance.shadowImage = nil
+            appearance.backgroundImage = nil
+            appearance.backgroundEffect = nil
+
+            // 配置 item 外观
+            let itemAppearance = UITabBarItemAppearance()
+
+            // 正常状态
+            itemAppearance.normal.iconColor = isDark
+                ? UIColor.white.withAlphaComponent(0.6)
+                : UIColor.black.withAlphaComponent(0.5)
+            itemAppearance.normal.titleTextAttributes = [
+                .foregroundColor: isDark
+                    ? UIColor.white.withAlphaComponent(0.6)
+                    : UIColor.black.withAlphaComponent(0.5),
+                .font: UIFont.systemFont(ofSize: 10, weight: .regular)
+            ]
+
+            // 选中状态
+            itemAppearance.selected.iconColor = .systemBlue
+            itemAppearance.selected.titleTextAttributes = [
+                .foregroundColor: UIColor.systemBlue,
+                .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
+            ]
+
+            appearance.stackedLayoutAppearance = itemAppearance
+            appearance.inlineLayoutAppearance = itemAppearance
+            appearance.compactInlineLayoutAppearance = itemAppearance
+
+            tabBar.standardAppearance = appearance
+            tabBar.scrollEdgeAppearance = appearance
+        } else {
+            // iOS 14 及以下
+            tabBar.tintColor = .systemBlue
+            tabBar.unselectedItemTintColor = isDark
+                ? UIColor.white.withAlphaComponent(0.6)
+                : UIColor.black.withAlphaComponent(0.5)
+        }
     }
 
     private func setupMethodChannel() {
@@ -125,23 +292,31 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
         methodChannel?.setMethodCallHandler { [weak self] call, result in
             switch call.method {
             case "updateSelectedIndex":
-                if let index = call.arguments as? Int {
-                    self?.tabBarController.updateSelectedIndex(index)
+                if let index = call.arguments as? Int,
+                   let items = self?.tabBar.items,
+                   items.indices.contains(index) {
+                    self?.tabBar.selectedItem = items[index]
                 }
                 result(nil)
             case "updateItems":
                 if let itemsData = call.arguments as? [[String: Any]] {
-                    let items = itemsData.enumerated().map { index, item in
+                    let newItems = itemsData.enumerated().map { index, item in
                         let icon = item["icon"] as? String ?? "circle"
                         let selectedIcon = item["selectedIcon"] as? String ?? icon
-                        return LiquidGlassNavItem(
-                            id: index,
-                            icon: icon,
-                            selectedIcon: selectedIcon,
-                            label: item["label"] as? String ?? ""
+                        let label = item["label"] as? String ?? ""
+
+                        let tabItem = UITabBarItem(
+                            title: label,
+                            image: UIImage(systemName: icon),
+                            selectedImage: UIImage(systemName: selectedIcon)
                         )
+                        tabItem.tag = index
+                        return tabItem
                     }
-                    self?.tabBarController.updateItems(items)
+                    self?.tabBar.items = newItems
+                    if let firstItem = newItems.first {
+                        self?.tabBar.selectedItem = firstItem
+                    }
                 }
                 result(nil)
             default:
@@ -151,155 +326,16 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
     }
 
     private func handleNavTap(_ index: Int) {
-        NSLog("🔮 LiquidGlassView: handleNavTap called with index: \(index)")
-        // 通知 Flutter
         methodChannel?.invokeMethod("onNavTap", arguments: index)
     }
 }
 
-// MARK: - Tab Bar Controller
+// MARK: - UITabBarDelegate
 
-/// 使用原生 UITabBarController 实现 Liquid Glass 效果
-/// iOS 26 的 UITabBar 自动获得 Liquid Glass 样式
-class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegate {
-    private var items: [LiquidGlassNavItem]
-    private var isDark: Bool
-    var onTabSelected: ((Int) -> Void)?
-
-    init(items: [LiquidGlassNavItem], selectedIndex: Int, isDark: Bool) {
-        self.items = items
-        self.isDark = isDark
-        super.init(nibName: nil, bundle: nil)
-        self.selectedIndex = selectedIndex
+extension LiquidGlassPlatformView: UITabBarDelegate {
+    func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
+        handleNavTap(item.tag)
     }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-
-        NSLog("🔮 LiquidGlassTabBarController: viewDidLoad")
-
-        // 设置透明背景
-        view.backgroundColor = .clear
-        view.isOpaque = false
-
-        // 设置代理
-        delegate = self
-
-        // 配置外观
-        configureAppearance()
-
-        // 创建 tab items
-        rebuildTabs()
-
-        NSLog("🔮 LiquidGlassTabBarController: Setup complete, iOS 26+ will automatically apply Liquid Glass")
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-
-        // 强制 tabBar 填充整个视图，忽略 safe area
-        // 因为 safe area 已经在 Flutter 端处理了
-        tabBar.frame = view.bounds
-
-        NSLog("🔮 LiquidGlassTabBarController: viewDidLayoutSubviews - tabBar.frame: \(tabBar.frame), view.bounds: \(view.bounds)")
-    }
-
-    // 禁用额外的 safe area insets
-    override var additionalSafeAreaInsets: UIEdgeInsets {
-        get { return .zero }
-        set { }
-    }
-
-    private func configureAppearance() {
-        // 配置 TabBar 外观
-        let appearance = UITabBarAppearance()
-
-        if #available(iOS 26.0, *) {
-            // iOS 26+: 使用透明背景，让系统自动应用 Liquid Glass
-            appearance.configureWithTransparentBackground()
-            appearance.backgroundColor = .clear
-            appearance.shadowColor = .clear
-            appearance.shadowImage = nil
-            NSLog("🔮 LiquidGlassTabBarController: Using transparent background for iOS 26 Liquid Glass")
-        } else {
-            // iOS < 26: 使用最薄的模糊效果作为回退
-            appearance.configureWithTransparentBackground()
-            appearance.backgroundEffect = UIBlurEffect(style: isDark ? .systemThinMaterialDark : .systemThinMaterialLight)
-            appearance.backgroundColor = (isDark ? UIColor.black : UIColor.white).withAlphaComponent(0.1)
-            appearance.shadowColor = .clear
-            appearance.shadowImage = nil
-            NSLog("🔮 LiquidGlassTabBarController: Using thin blur effect fallback for iOS < 26")
-        }
-
-        // 应用外观
-        tabBar.standardAppearance = appearance
-        if #available(iOS 15.0, *) {
-            tabBar.scrollEdgeAppearance = appearance
-        }
-
-        // 设置 TabBar 透明
-        tabBar.isTranslucent = true
-        tabBar.backgroundColor = .clear
-        tabBar.backgroundImage = UIImage()
-        tabBar.shadowImage = UIImage()
-    }
-
-    private func rebuildTabs() {
-        var controllers: [UIViewController] = []
-
-        for item in items {
-            // 创建空的 ViewController 作为占位
-            let dummyVC = UIViewController()
-            dummyVC.view.backgroundColor = .clear
-
-            // 配置 tab bar item
-            let image = UIImage(systemName: item.icon)
-            let selectedImage = UIImage(systemName: item.selectedIcon)
-
-            dummyVC.tabBarItem = UITabBarItem(
-                title: item.label,
-                image: image,
-                selectedImage: selectedImage
-            )
-            dummyVC.tabBarItem.tag = item.id
-
-            controllers.append(dummyVC)
-
-            NSLog("🔮 LiquidGlassTabBarController: Added tab '\(item.label)' with icon '\(item.icon)'")
-        }
-
-        setViewControllers(controllers, animated: false)
-        NSLog("🔮 LiquidGlassTabBarController: Created \(controllers.count) tabs")
-    }
-
-    func updateSelectedIndex(_ index: Int) {
-        guard index != selectedIndex, index >= 0, index < (viewControllers?.count ?? 0) else { return }
-        selectedIndex = index
-        NSLog("🔮 LiquidGlassTabBarController: Updated selectedIndex to \(index)")
-    }
-
-    func updateItems(_ newItems: [LiquidGlassNavItem]) {
-        items = newItems
-        rebuildTabs()
-    }
-
-    // MARK: - UITabBarControllerDelegate
-
-    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-        let index = viewController.tabBarItem.tag
-        NSLog("🔮 LiquidGlassTabBarController: Tab selected: \(index)")
-        onTabSelected?(index)
-    }
-
-    // iOS 26+ 的交互效果由系统自动处理：
-    // - 选中指示器的玻璃"药丸"效果
-    // - 长按拖动切换 tab
-    // - 按压动画效果
-    // - tab 之间的变形动画
 }
 
 // MARK: - Plugin Registration
@@ -308,14 +344,6 @@ class LiquidGlassPlugin: NSObject, FlutterPlugin {
     static func register(with registrar: FlutterPluginRegistrar) {
         let factory = LiquidGlassViewFactory(messenger: registrar.messenger())
         registrar.register(factory, withId: "com.kkape.mynas/liquid_glass_view")
-
-        NSLog("🔮 LiquidGlassPlugin: Registered")
-
-        if #available(iOS 26.0, *) {
-            NSLog("🔮 LiquidGlassPlugin: iOS 26+ detected, UITabBar will automatically get Liquid Glass")
-        } else {
-            NSLog("🔮 LiquidGlassPlugin: iOS < 26, using blur effect fallback")
-        }
     }
 }
 

@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 70;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXAggregateTarget section */
@@ -35,6 +35,9 @@
 		65DSPC012F00F100003CEDC6 /* DisplayCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DSPC022F00F100003CEDC6 /* DisplayCapabilityChannel.swift */; };
 		65NBLUR012F00F300003CEDC6 /* NativeBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NBLUR022F00F300003CEDC6 /* NativeBlurView.swift */; };
 		65WDCH002F00F000003CEDC6 /* WidgetDataChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65WDCH012F00F000003CEDC6 /* WidgetDataChannel.swift */; };
+		65NAVP112F01A100003CEDC6 /* NativeAVPlayerChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NAVP012F01A100003CEDC6 /* NativeAVPlayerChannel.swift */; };
+		65NAVP122F01A100003CEDC6 /* NativeAVPlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NAVP022F01A100003CEDC6 /* NativeAVPlayerController.swift */; };
+		65NAVP132F01A100003CEDC6 /* NativeAVPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NAVP032F01A100003CEDC6 /* NativeAVPlayerView.swift */; };
 		D95812FFD559C104CBE77DF6 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4519CB014C561650C67C4318 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
 
@@ -117,6 +120,9 @@
 		65DSPC022F00F100003CEDC6 /* DisplayCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayCapabilityChannel.swift; sourceTree = "<group>"; };
 		65NBLUR022F00F300003CEDC6 /* NativeBlurView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBlurView.swift; sourceTree = "<group>"; };
 		65WDCH012F00F000003CEDC6 /* WidgetDataChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataChannel.swift; sourceTree = "<group>"; };
+		65NAVP012F01A100003CEDC6 /* NativeAVPlayerChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerChannel.swift; sourceTree = "<group>"; };
+		65NAVP022F01A100003CEDC6 /* NativeAVPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerController.swift; sourceTree = "<group>"; };
+		65NAVP032F01A100003CEDC6 /* NativeAVPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerView.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		925AA0E82455F19AE3521366 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
@@ -124,7 +130,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		65CD6C782F00ED4D003CEDC6 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		65CD6C782F00ED4D003CEDC6 /* Exceptions for "MyNasWidgets" folder in "MyNasWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -134,7 +140,18 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		65CD6C652F00ED4B003CEDC6 /* MyNasWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (65CD6C782F00ED4D003CEDC6 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = MyNasWidgets; sourceTree = "<group>"; };
+		65CD6C652F00ED4B003CEDC6 /* MyNasWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				65CD6C782F00ED4D003CEDC6 /* Exceptions for "MyNasWidgets" folder in "MyNasWidgetsExtension" target */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = MyNasWidgets;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -253,12 +270,23 @@
 				65DSPC022F00F100003CEDC6 /* DisplayCapabilityChannel.swift */,
 				65AUDC022F00F200003CEDC6 /* AudioCapabilityChannel.swift */,
 				65NBLUR022F00F300003CEDC6 /* NativeBlurView.swift */,
+				65NAVP002F01A100003CEDC6 /* NativeAVPlayer */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
 				33BA886A226E78AF003329D5 /* Configs */,
 			);
 			path = Runner;
+			sourceTree = "<group>";
+		};
+		65NAVP002F01A100003CEDC6 /* NativeAVPlayer */ = {
+			isa = PBXGroup;
+			children = (
+				65NAVP012F01A100003CEDC6 /* NativeAVPlayerChannel.swift */,
+				65NAVP022F01A100003CEDC6 /* NativeAVPlayerController.swift */,
+				65NAVP032F01A100003CEDC6 /* NativeAVPlayerView.swift */,
+			);
+			path = NativeAVPlayer;
 			sourceTree = "<group>";
 		};
 		D73912EC22F37F3D000D13A0 /* Frameworks */ = {
@@ -488,13 +516,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -563,6 +587,9 @@
 				65DSPC012F00F100003CEDC6 /* DisplayCapabilityChannel.swift in Sources */,
 				65AUDC012F00F200003CEDC6 /* AudioCapabilityChannel.swift in Sources */,
 				65NBLUR012F00F300003CEDC6 /* NativeBlurView.swift in Sources */,
+				65NAVP112F01A100003CEDC6 /* NativeAVPlayerChannel.swift in Sources */,
+				65NAVP122F01A100003CEDC6 /* NativeAVPlayerController.swift in Sources */,
+				65NAVP132F01A100003CEDC6 /* NativeAVPlayerView.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

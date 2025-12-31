@@ -84,11 +84,13 @@ class NativeBlurPlatformView: NSObject, FlutterPlatformView {
         contentView.backgroundColor = .clear
         contentView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
+        // 设置容器视图的用户界面风格，确保正确响应深色/浅色模式
+        containerView.overrideUserInterfaceStyle = isDark ? .dark : .light
+
         // 根据 iOS 版本选择效果
         if #available(iOS 26.0, *), useLiquidGlass {
             // iOS 26+: 使用 Liquid Glass 效果
-            // 使用 .regular 样式创建玻璃效果
-            let glassEffect = UIGlassEffect(style: .regular)
+            let glassEffect = UIGlassEffect()
             glassEffect.isInteractive = isInteractive
 
             // 先创建空 effect 的视图，然后通过动画设置 effect
@@ -97,19 +99,37 @@ class NativeBlurPlatformView: NSObject, FlutterPlatformView {
             effectView.frame = frame
             effectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
+            // 确保 effectView 也继承正确的界面风格
+            effectView.overrideUserInterfaceStyle = isDark ? .dark : .light
+
             // 设置圆角
-            // 注意: UIGlassEffect 默认是 capsule 形状
-            // 自定义圆角需要使用 layer.cornerRadius
             if cornerRadius > 0 {
                 effectView.layer.cornerRadius = CGFloat(cornerRadius)
                 effectView.layer.cornerCurve = .continuous
                 effectView.clipsToBounds = true
             }
 
+            // 根据风格添加染色层
+            // systemThinMaterial = 清澈模式（无染色）
+            // systemMaterial = 染色模式（添加淡淡的背景色）
+            let isClearStyle = style == "systemThinMaterial" || style == "systemUltraThinMaterial"
+            if !isClearStyle {
+                // 染色模式：添加一层淡淡的背景色
+                let tintView = UIView()
+                tintView.frame = effectView.bounds
+                tintView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                tintView.backgroundColor = isDark
+                    ? UIColor.white.withAlphaComponent(0.05)
+                    : UIColor.black.withAlphaComponent(0.03)
+                effectView.contentView.insertSubview(tintView, at: 0)
+            }
+
             // 使用动画设置 effect（materialize 动画）
             UIView.animate(withDuration: 0.3) { [weak effectView] in
                 effectView?.effect = glassEffect
             }
+
+            NSLog("🔮 NativeBlurView: Using UIGlassEffect for \(style), isClear: \(isClearStyle)")
         } else {
             // iOS 13-25: 使用传统模糊效果
             let blurEffect = NativeBlurPlatformView.createBlurEffect(style: style, isDark: isDark)

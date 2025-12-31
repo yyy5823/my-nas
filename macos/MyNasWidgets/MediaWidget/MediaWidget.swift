@@ -13,11 +13,12 @@ struct MediaProvider: TimelineProvider {
                 title: "Song Title",
                 artist: "Artist Name",
                 album: "Album Name",
-                artworkPath: nil,
+                coverImagePath: nil,
                 isPlaying: true,
-                duration: 240,
-                position: 120,
-                lastUpdated: Date()
+                progress: 0.5,
+                currentTime: 120,
+                totalTime: 240,
+                themeColor: nil
             ),
             artwork: nil,
             isConnected: true
@@ -292,16 +293,17 @@ struct MediaWidget: Widget {
     MediaWidget()
 } timeline: {
     MediaEntry(
-        date: .now,
+        date: Date(),
         mediaData: MediaData(
             title: "Bohemian Rhapsody",
             artist: "Queen",
             album: "A Night at the Opera",
-            artworkPath: nil,
+            coverImagePath: nil,
             isPlaying: true,
-            duration: 354,
-            position: 142,
-            lastUpdated: .now
+            progress: 0.4,
+            currentTime: 142,
+            totalTime: 354,
+            themeColor: nil
         ),
         artwork: nil,
         isConnected: true
