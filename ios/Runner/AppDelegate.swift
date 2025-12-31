@@ -63,6 +63,12 @@ import UIKit
       LiquidGlassChannel.register(with: registrar)
     }
 
+    // 注册原生 AVPlayer 通道
+    // 用于播放 Dolby Vision 等需要原生支持的视频格式
+    if let registrar = self.registrar(forPlugin: "NativeAVPlayerChannel") {
+      NativeAVPlayerChannel.register(with: registrar)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

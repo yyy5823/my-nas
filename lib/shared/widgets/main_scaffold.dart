@@ -122,10 +122,12 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   }
 
   /// 是否使用 iOS 26 风格的悬浮导航栏
-  bool get _useFloatingNavBar {
+  /// 只有在 iOS 平台且用户选择了玻璃风格时才使用
+  bool _useFloatingNavBar(UIStyle uiStyle) {
     if (kIsWeb) return false;
-    // 在 iOS 上始终使用悬浮导航栏（原生或回退都支持）
-    return Platform.isIOS;
+    // 在 iOS 上，只有选择玻璃风格时才使用悬浮导航栏
+    // 如果用户选择 classic，则使用传统固定导航栏
+    return Platform.isIOS && uiStyle.isGlass;
   }
 
   @override
@@ -150,8 +152,8 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       );
     }
 
-    // iOS: 使用悬浮导航栏
-    if (_useFloatingNavBar) {
+    // iOS + 玻璃风格: 使用悬浮导航栏
+    if (_useFloatingNavBar(uiStyle)) {
       return Scaffold(
         backgroundColor: isDark ? AppColors.darkBackground : null,
         extendBody: true,

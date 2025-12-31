@@ -37,5 +37,11 @@ class AppDelegate: FlutterAppDelegate {
     NativeBlurViewPlugin.register(
       with: controller.engine.registrar(forPlugin: "NativeBlurViewPlugin")
     )
+
+    // 注册原生 AVPlayer 通道
+    // 用于播放 Dolby Vision 等需要原生支持的视频格式
+    NativeAVPlayerChannel.register(
+      with: controller.engine.registrar(forPlugin: "NativeAVPlayerChannel")
+    )
   }
 }

@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -12,13 +15,18 @@ import 'package:my_nas/features/transfer/presentation/providers/transfer_provide
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/capability/playback_capability_service.dart';
 import 'package:my_nas/features/video/data/services/pip_service.dart';
+import 'package:my_nas/features/video/data/services/player/dolby_vision_detector.dart';
+import 'package:my_nas/features/video/data/services/player/native_av_player_backend.dart';
+import 'package:my_nas/features/video/data/services/player/video_player_backend.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
 import 'package:my_nas/features/video/domain/entities/audio_capability.dart';
 import 'package:my_nas/features/video/domain/entities/hdr_capability.dart';
 import 'package:my_nas/features/video/domain/entities/playback_configuration.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/hdr_audio_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playback_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
@@ -56,6 +64,7 @@ class VideoPlayerState {
     this.errorMessage,
     this.positionOffset = Duration.zero,
     this.originalDuration = Duration.zero,
+    this.backendType = PlayerBackendType.mediaKit,
   });
 
   final bool isPlaying;
@@ -74,6 +83,11 @@ class VideoPlayerState {
   final Duration positionOffset;
   /// 原始视频总时长（用于进度条显示）
   final Duration originalDuration;
+  /// 当前使用的播放器后端类型
+  final PlayerBackendType backendType;
+
+  /// 是否使用原生 AVPlayer（杜比视界）
+  bool get isUsingNativePlayer => backendType == PlayerBackendType.nativeAVPlayer;
 
   /// 实际播放位置（播放器位置 + 偏移量）
   Duration get actualPosition => position + positionOffset;
@@ -115,6 +129,7 @@ class VideoPlayerState {
     String? errorMessage,
     Duration? positionOffset,
     Duration? originalDuration,
+    PlayerBackendType? backendType,
   }) =>
       VideoPlayerState(
         isPlaying: isPlaying ?? this.isPlaying,
@@ -129,6 +144,7 @@ class VideoPlayerState {
         errorMessage: errorMessage,
         positionOffset: positionOffset ?? this.positionOffset,
         originalDuration: originalDuration ?? this.originalDuration,
+        backendType: backendType ?? this.backendType,
       );
 }
 
@@ -147,6 +163,12 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   final PipService _pipService = PipService();
   final PlaybackCapabilityService _capabilityService = PlaybackCapabilityService();
 
+  /// 原生 AVPlayer 后端（用于 iOS/macOS 杜比视界）
+  NativeAVPlayerBackend? _nativeBackend;
+
+  /// 原生播放器事件订阅
+  final List<StreamSubscription<dynamic>> _nativeSubscriptions = [];
+
   /// 是否已经自动选择过音轨（每个视频只选择一次）
   bool _hasAutoSelectedAudioTrack = false;
 
@@ -163,8 +185,89 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   Player get player => _player;
   VideoController get videoController => _videoController;
 
+  /// 获取原生播放器后端（仅在使用原生播放器时有效）
+  NativeAVPlayerBackend? get nativeBackend => _nativeBackend;
+
+  /// 获取当前使用的播放器后端类型
+  PlayerBackendType get currentBackendType => state.backendType;
+
+  /// 是否正在使用原生 AVPlayer
+  bool get isUsingNativePlayer =>
+      state.backendType == PlayerBackendType.nativeAVPlayer && _nativeBackend != null;
+
+  /// 获取视频显示组件
+  ///
+  /// 根据当前后端类型返回对应的视频显示组件
+  Widget buildVideoWidget({BoxFit fit = BoxFit.contain}) {
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      return _nativeBackend!.buildVideoWidget(fit: fit);
+    }
+    // 默认使用 media_kit 的 Video widget
+    return Video(controller: _videoController, fit: fit);
+  }
+
   /// 是否支持画中画
   Future<bool> get isPipSupported => _pipService.isSupported;
+
+  /// 清理原生播放器后端
+  Future<void> _cleanupNativeBackend() async {
+    // 取消原生播放器事件订阅
+    for (final subscription in _nativeSubscriptions) {
+      await subscription.cancel();
+    }
+    _nativeSubscriptions.clear();
+
+    // 销毁原生播放器
+    if (_nativeBackend != null) {
+      _nativeBackend!.dispose();
+      _nativeBackend = null;
+    }
+  }
+
+  /// 订阅原生播放器事件
+  void _subscribeToNativeBackendStreams() {
+    if (_nativeBackend == null) return;
+
+    _nativeSubscriptions
+      ..add(_nativeBackend!.playingStream.listen((playing) {
+        if (_isDisposed) return;
+        state = state.copyWith(isPlaying: playing);
+        if (playing) {
+          _startProgressSaveTimer();
+        } else {
+          _stopProgressSaveTimer();
+          _saveCurrentProgress();
+        }
+      }))
+      ..add(_nativeBackend!.bufferingStream.listen((buffering) {
+        if (_isDisposed) return;
+        state = state.copyWith(isBuffering: buffering);
+      }))
+      ..add(_nativeBackend!.positionStream.listen((position) {
+        if (_isDisposed) return;
+        state = state.copyWith(position: position);
+      }))
+      ..add(_nativeBackend!.durationStream.listen((duration) {
+        if (_isDisposed) return;
+        state = state.copyWith(duration: duration);
+      }))
+      ..add(_nativeBackend!.errorStream.listen((error) {
+        if (_isDisposed) return;
+        if (error != null && error.isNotEmpty) {
+          state = state.copyWith(errorMessage: error);
+        }
+      }))
+      ..add(_nativeBackend!.completedStream.listen((completed) {
+        if (_isDisposed) return;
+        if (completed && _currentVideo != null) {
+          _historyService.clearProgress(_currentVideo!.path);
+          logger.d('VideoPlayerNotifier: 播放完成，清除进度');
+          _playNextFromPlaylist();
+        }
+      }));
+
+    logger.d('VideoPlayerNotifier: 已订阅原生播放器事件');
+  }
 
   void _initPlayer() {
     _player = Player();
@@ -470,6 +573,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     // 保存当前视频进度
     await _saveCurrentProgress();
 
+    // 清理之前的原生后端
+    await _cleanupNativeBackend();
+
     // 重置自动选择标志（新视频需要重新选择音轨）
     _hasAutoSelectedAudioTrack = false;
 
@@ -578,48 +684,123 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       }
     }
 
-    // 应用 HDR/音频配置
-    await _applyHdrAudioConfiguration();
+    // 检测是否需要使用原生播放器（杜比视界）
+    final shouldUseNative = DolbyVisionDetector.shouldUseNativePlayer(
+      video: resolvedVideo,
+    );
 
-    // 打开视频并设置起始位置
-    logger.d('VideoPlayer: 正在打开视频源...');
-    try {
-      await _player.open(Media(playUrl));
-      logger.d('VideoPlayer: 视频源打开成功');
-    } on Exception catch (e, st) {
-      AppError.handle(e, st, 'VideoPlayer.openVideo', {'path': video.path});
-      state = state.copyWith(errorMessage: AppError.getUserFriendlyMessage(e));
-      return;
+    // 标记当前使用的后端类型
+    var currentBackend = PlayerBackendType.mediaKit;
+    var nativePlayerFailed = false;
+
+    // 尝试使用原生 AVPlayer（iOS/macOS 杜比视界）
+    if (shouldUseNative) {
+      logger.i('VideoPlayer: 检测到杜比视界内容，尝试使用原生 AVPlayer');
+
+      try {
+        _nativeBackend = NativeAVPlayerBackend();
+        await _nativeBackend!.open(playUrl!);
+        currentBackend = PlayerBackendType.nativeAVPlayer;
+
+        // 订阅原生播放器事件
+        _subscribeToNativeBackendStreams();
+
+        // 设置起始位置
+        if (resumePosition != null && resumePosition > Duration.zero) {
+          // 等待原生播放器准备好后 seek
+          final completer = Completer<void>();
+          StreamSubscription<Duration>? subscription;
+
+          subscription = _nativeBackend!.durationStream.listen((duration) {
+            if (duration > Duration.zero && !completer.isCompleted) {
+              _nativeBackend!.seek(resumePosition!).then((_) {
+                logger.i('VideoPlayerNotifier: 原生播放器跳转到 ${resumePosition!.inSeconds}s');
+              });
+              subscription?.cancel();
+              completer.complete();
+            }
+          });
+
+          // 设置超时
+          Future.delayed(const Duration(seconds: 5), () {
+            if (!completer.isCompleted) {
+              subscription?.cancel();
+              completer.complete();
+              _nativeBackend!.seek(resumePosition!);
+            }
+          });
+
+          await completer.future;
+        }
+
+        // 开始播放
+        await _nativeBackend!.play();
+
+        logger.i('VideoPlayer: 原生 AVPlayer 初始化成功');
+      } catch (e, st) {
+        // 原生播放器失败，回退到 media_kit
+        logger.w('VideoPlayer: 原生 AVPlayer 初始化失败，回退到 media_kit: $e');
+        AppError.ignore(e, st, '原生播放器初始化失败（回退到 media_kit）');
+
+        await _cleanupNativeBackend();
+        nativePlayerFailed = true;
+        currentBackend = PlayerBackendType.mediaKit;
+      }
     }
 
-    // 等待播放器准备好后再 seek
-    if (resumePosition != null && resumePosition > Duration.zero) {
-      // 监听 duration 变化，等视频加载完成后再 seek
-      StreamSubscription<Duration>? subscription;
-      final completer = Completer<void>();
+    // 使用 media_kit 播放（默认或回退）
+    if (currentBackend == PlayerBackendType.mediaKit) {
+      // 应用 HDR/音频配置（仅 media_kit 需要）
+      await _applyHdrAudioConfiguration();
 
-      subscription = _player.stream.duration.listen((duration) {
-        if (duration > Duration.zero && !completer.isCompleted) {
-          // 视频已准备好，执行 seek
-          _player.seek(resumePosition!).then((_) {
-            logger.i('VideoPlayerNotifier: 跳转到 ${resumePosition!.inSeconds}s');
-          });
-          subscription?.cancel();
-          completer.complete();
-        }
-      });
+      // 打开视频并设置起始位置
+      logger.d('VideoPlayer: 使用 media_kit 打开视频源...');
+      try {
+        await _player.open(Media(playUrl));
+        logger.d('VideoPlayer: media_kit 视频源打开成功');
+      } on Exception catch (e, st) {
+        AppError.handle(e, st, 'VideoPlayer.openVideo', {'path': video.path});
+        state = state.copyWith(errorMessage: AppError.getUserFriendlyMessage(e));
+        return;
+      }
 
-      // 设置超时，避免无限等待
-      Future.delayed(const Duration(seconds: 5), () {
-        if (!completer.isCompleted) {
-          subscription?.cancel();
-          completer.complete();
-          // 超时后尝试直接 seek
-          _player.seek(resumePosition!);
-        }
-      });
+      // 等待播放器准备好后再 seek
+      if (resumePosition != null && resumePosition > Duration.zero) {
+        // 监听 duration 变化，等视频加载完成后再 seek
+        StreamSubscription<Duration>? subscription;
+        final completer = Completer<void>();
 
-      await completer.future;
+        subscription = _player.stream.duration.listen((duration) {
+          if (duration > Duration.zero && !completer.isCompleted) {
+            // 视频已准备好，执行 seek
+            _player.seek(resumePosition!).then((_) {
+              logger.i('VideoPlayerNotifier: 跳转到 ${resumePosition!.inSeconds}s');
+            });
+            subscription?.cancel();
+            completer.complete();
+          }
+        });
+
+        // 设置超时，避免无限等待
+        Future.delayed(const Duration(seconds: 5), () {
+          if (!completer.isCompleted) {
+            subscription?.cancel();
+            completer.complete();
+            // 超时后尝试直接 seek
+            _player.seek(resumePosition!);
+          }
+        });
+
+        await completer.future;
+      }
+    }
+
+    // 更新后端类型状态
+    state = state.copyWith(backendType: currentBackend);
+
+    // 如果是回退到 media_kit，记录日志
+    if (nativePlayerFailed) {
+      logger.w('VideoPlayer: 已回退到 media_kit 播放');
     }
 
     // 添加到播放历史
@@ -635,8 +816,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       ),
     );
 
-    // 初始化清晰度控制器（传递代理 URL 用于转码）
-    await _initQualityController(video, playUrl: playUrl);
+    // 初始化清晰度控制器（传递代理 URL 用于转码，仅 media_kit 需要）
+    if (currentBackend == PlayerBackendType.mediaKit) {
+      await _initQualityController(video, playUrl: playUrl);
+    }
   }
 
   /// 初始化清晰度控制器
@@ -730,12 +913,24 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   /// 播放/暂停切换
   Future<void> playOrPause() async {
-    await _player.playOrPause();
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      if (state.isPlaying) {
+        await _nativeBackend!.pause();
+      } else {
+        await _nativeBackend!.play();
+      }
+    } else {
+      await _player.playOrPause();
+    }
   }
 
   /// 暂停
   Future<void> pause() async {
-    await _player.pause();
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      await _nativeBackend!.pause();
+    } else {
+      await _player.pause();
+    }
     // 用户暂停时保存进度截图
     AppError.fireAndForget(
       _captureProgressThumbnail(),
@@ -745,12 +940,21 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   /// 同步暂停（用于 dispose）
   void pauseSync() {
-    _player.pause();
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      // 原生播放器没有同步方法，使用 fire-and-forget
+      AppError.fireAndForget(_nativeBackend!.pause(), action: 'nativePauseSync');
+    } else {
+      _player.pause();
+    }
   }
 
   /// 继续播放
   Future<void> resume() async {
-    await _player.play();
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      await _nativeBackend!.play();
+    } else {
+      await _player.play();
+    }
   }
 
   /// 停止
@@ -759,7 +963,16 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     await _captureProgressThumbnail();
     await _saveCurrentProgress();
     _stopProgressSaveTimer();
-    await _player.stop();
+
+    // 停止播放器
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      await _cleanupNativeBackend();
+      // 重置后端类型
+      state = state.copyWith(backendType: PlayerBackendType.mediaKit);
+    } else {
+      await _player.stop();
+    }
+
     _currentVideo = null;
     _ref.read(currentVideoProvider.notifier).state = null;
   }
@@ -771,11 +984,20 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     if (state.progress <= 0.05 || state.progress >= 0.95) return;
 
     try {
-      final screenshot = await _player.screenshot();
-      if (screenshot != null && screenshot.isNotEmpty) {
+      List<int>? screenshotData;
+
+      if (isUsingNativePlayer && _nativeBackend != null) {
+        // 原生播放器截图
+        screenshotData = await _nativeBackend!.screenshot();
+      } else {
+        // media_kit 截图
+        screenshotData = await _player.screenshot();
+      }
+
+      if (screenshotData != null && screenshotData.isNotEmpty) {
         await _thumbnailService.saveProgressThumbnail(
           videoPath: _currentVideo!.path,
-          imageBytes: screenshot,
+          imageBytes: Uint8List.fromList(screenshotData),
         );
         logger.d('VideoPlayerNotifier: 进度截图已保存');
       }
@@ -796,6 +1018,12 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     }
     _subscriptions.clear();
 
+    // 取消原生播放器订阅
+    for (final subscription in _nativeSubscriptions) {
+      subscription.cancel();
+    }
+    _nativeSubscriptions.clear();
+
     _stopProgressSaveTimer();
 
     // 保存当前视频和状态的引用，用于异步保存进度
@@ -803,9 +1031,14 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     final positionToSave = state.position;
     final durationToSave = state.duration;
 
-    // 直接停止播放器
-    _player..pause()
-    ..stop();
+    // 停止播放器
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      // 异步清理原生后端
+      AppError.fireAndForget(_cleanupNativeBackend(), action: 'stopSyncNativeCleanup');
+    } else {
+      _player..pause()
+      ..stop();
+    }
     _currentVideo = null;
 
     // 延迟修改 provider 状态，避免在 dispose 期间修改
@@ -842,7 +1075,11 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   /// 跳转到指定位置
   Future<void> seek(Duration position) async {
-    await _player.seek(position);
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      await _nativeBackend!.seek(position);
+    } else {
+      await _player.seek(position);
+    }
   }
 
   /// 快进
@@ -871,14 +1108,22 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   /// 设置音量 (0.0 - 1.0)
   Future<void> setVolume(double volume) async {
-    await _player.setVolume(volume * 100);
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      await _nativeBackend!.setVolume(volume);
+    } else {
+      await _player.setVolume(volume * 100);
+    }
     // 保存音量设置
     await _ref.read(playbackSettingsProvider.notifier).setVolume(volume);
   }
 
   /// 设置播放速度
   Future<void> setSpeed(double speed) async {
-    await _player.setRate(speed);
+    if (isUsingNativePlayer && _nativeBackend != null) {
+      await _nativeBackend!.setSpeed(speed);
+    } else {
+      await _player.setRate(speed);
+    }
     // 保存速度设置
     await _ref.read(playbackSettingsProvider.notifier).setSpeed(speed);
   }
@@ -1051,6 +1296,12 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     }
     _subscriptions.clear();
 
+    // 取消原生播放器订阅
+    for (final subscription in _nativeSubscriptions) {
+      subscription.cancel();
+    }
+    _nativeSubscriptions.clear();
+
     // 停止转码并清理画质状态
     try {
       final qualityNotifier = _ref.read(qualityStateProvider.notifier);
@@ -1066,6 +1317,13 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
     _saveCurrentProgress();
     _stopProgressSaveTimer();
+
+    // 清理原生后端
+    if (_nativeBackend != null) {
+      _nativeBackend!.dispose();
+      _nativeBackend = null;
+    }
+
     _player.dispose();
     super.dispose();
   }
