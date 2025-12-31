@@ -109,9 +109,32 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
 
 # === FFmpeg Bundling ===
 # 打包 FFmpeg 到应用目录，用于客户端视频转码
-# 需要将 FFmpeg 静态版本放到 windows/ffmpeg/ 目录
-# 下载地址: https://www.gyan.dev/ffmpeg/builds/ (推荐 ffmpeg-release-essentials.zip)
+# FFmpeg 会在构建时自动下载（如果不存在）
 set(FFMPEG_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg")
+set(FFMPEG_EXE "${FFMPEG_SOURCE_DIR}/ffmpeg.exe")
+
+# 下载脚本路径
+set(DOWNLOAD_SCRIPT "${CMAKE_SOURCE_DIR}/../scripts/download_ffmpeg.ps1")
+
+# 如果 FFmpeg 不存在，在配置阶段尝试下载
+if(NOT EXISTS "${FFMPEG_EXE}")
+  message(STATUS "FFmpeg not found, attempting to download...")
+  if(EXISTS "${DOWNLOAD_SCRIPT}")
+    execute_process(
+      COMMAND powershell -ExecutionPolicy Bypass -File "${DOWNLOAD_SCRIPT}"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/.."
+      RESULT_VARIABLE DOWNLOAD_RESULT
+    )
+    if(NOT DOWNLOAD_RESULT EQUAL 0)
+      message(WARNING "FFmpeg download failed. Run scripts/download_ffmpeg.ps1 manually.")
+    endif()
+  else()
+    message(WARNING "Download script not found. FFmpeg will not be bundled.")
+    message(WARNING "Run: scripts/download_ffmpeg.sh windows (or download manually)")
+  endif()
+endif()
+
+# 安装 FFmpeg 到应用目录
 if(EXISTS "${FFMPEG_SOURCE_DIR}")
   install(DIRECTORY "${FFMPEG_SOURCE_DIR}/"
     DESTINATION "${CMAKE_INSTALL_PREFIX}/ffmpeg"
@@ -122,5 +145,5 @@ if(EXISTS "${FFMPEG_SOURCE_DIR}")
   )
   message(STATUS "FFmpeg will be bundled from: ${FFMPEG_SOURCE_DIR}")
 else()
-  message(STATUS "FFmpeg directory not found at ${FFMPEG_SOURCE_DIR}, skipping bundling")
+  message(STATUS "FFmpeg directory not found, transcoding will use system FFmpeg if available")
 endif()

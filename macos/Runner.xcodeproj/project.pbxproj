@@ -565,7 +565,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Copy bundled FFmpeg to app\nFFMPEG_SRC=\"${SRCROOT}/Runner/Resources/ffmpeg/ffmpeg\"\nFFMPEG_DST=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/ffmpeg\"\n\nif [ -f \"$FFMPEG_SRC\" ]; then\n    cp -f \"$FFMPEG_SRC\" \"$FFMPEG_DST\"\n    chmod +x \"$FFMPEG_DST\"\n    # Sign the FFmpeg binary with ad-hoc signature for local development\n    codesign --force --sign - \"$FFMPEG_DST\" 2>/dev/null || true\n    echo \"FFmpeg copied and signed\"\nelse\n    echo \"warning: FFmpeg not found at $FFMPEG_SRC\"\nfi\n";
+			shellScript = "# Prepare FFmpeg for macOS build\n# Downloads FFmpeg if not exists, then copies to app bundle\n\"${SRCROOT}/scripts/prepare_ffmpeg.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
