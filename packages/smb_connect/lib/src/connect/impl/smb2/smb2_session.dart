@@ -8,13 +8,20 @@ import 'package:smb_connect/src/connect/impl/smb2/session/smb2_session_setup_res
 import 'package:smb_connect/src/connect/impl/smb2/smb2_constants.dart';
 import 'package:smb_connect/src/connect/impl/smb2/smb2_signing_digest.dart';
 import 'package:smb_connect/src/connect/smb_session.dart';
+import 'package:smb_connect/src/crypto/crypto.dart';
 import 'package:smb_connect/src/dialect_version.dart';
 import 'package:smb_connect/src/exceptions.dart';
+import 'package:smb_connect/src/smb/nt_status.dart';
 import 'package:smb_connect/src/smb/request_param.dart';
 import 'package:smb_connect/src/smb/ssp_context.dart';
+import 'package:smb_connect/src/utils/base.dart';
 import 'package:smb_connect/src/utils/extensions.dart';
 
 class Smb2Session extends SmbSession {
+  /// SMB 3.1.1: 此会话的 preauth integrity hash
+  /// 每个会话需要维护自己的 hash，从协商后的 hash 开始
+  Uint8List? _sessionPreauthHash;
+
   Smb2Session(super.config, super.transport, [super.credentials]);
 
   @override
@@ -35,6 +42,13 @@ class Smb2Session extends SmbSession {
     }
     var negoResp = transport.getNegotiatedResponse()! as Smb2NegotiateResponse;
 
+    // SMB 3.1.1: 初始化此会话的 preauth hash（从协商后的 hash 开始）
+    final bool isSmb311 =
+        negoResp.getSelectedDialect()?.atLeast(DialectVersion.SMB311) == true;
+    if (isSmb311) {
+      _sessionPreauthHash = transport.getNewSessionPreauthHash();
+    }
+
     var token = negoResp.securityBuffer;
     int securityMode = ((negoResp.securityMode &
                     Smb2Constants.SMB2_NEGOTIATE_SIGNING_REQUIRED) !=
@@ -52,11 +66,26 @@ class Smb2Session extends SmbSession {
     var request1 = Smb2SessionSetupRequest(
         config, securityMode, negoResp.commonCapabilities, 0, token,
         retainPayload: true, credit: 512);
-    // request1.setRetainPayload();
-    // request1.credit = 512;
+
+    // SMB 3.1.1: 手动更新此会话的 preauth hash
     Smb2SessionSetupResponse response1 = await transport
         .sendrecv(request1, params: {RequestParam.RETAIN_PAYLOAD});
-    // sessId = response.getSessionId();
+
+    if (isSmb311) {
+      // 更新 request1 的 hash
+      final reqPayload = request1.getRawPayload();
+      if (reqPayload != null) {
+        _updateSessionPreauthHash(reqPayload, negoResp.selectedPreauthHash);
+      }
+      // 更新 response1 的 hash (只有 MORE_PROCESSING_REQUIRED 才更新)
+      if (response1.status == NtStatus.NT_STATUS_MORE_PROCESSING_REQUIRED) {
+        final respPayload = response1.getRawPayload();
+        if (respPayload != null) {
+          _updateSessionPreauthHash(respPayload, negoResp.selectedPreauthHash);
+        }
+      }
+    }
+
     if (config.debugPrint) {
       print("SessionId: ${response1.sessionId}");
     }
@@ -73,11 +102,20 @@ class Smb2Session extends SmbSession {
     var request2 = Smb2SessionSetupRequest(
         config, securityMode, negoResp.commonCapabilities, 0, token,
         credit: 512, retainPayload: true);
-    // request2.credit = 512;
     request2.setSessionId(response1.sessionId);
-    // request2.setRetainPayload();
+
     Smb2SessionSetupResponse response2 = await transport
         .sendrecv(request2, params: {RequestParam.RETAIN_PAYLOAD});
+
+    if (isSmb311) {
+      // 更新 request2 的 hash
+      final reqPayload = request2.getRawPayload();
+      if (reqPayload != null) {
+        _updateSessionPreauthHash(reqPayload, negoResp.selectedPreauthHash);
+      }
+      // 最终响应 (SUCCESS) 不更新 hash，签名密钥派生需要当前 hash 值
+    }
+
     token = response2.blob;
     if (config.debugPrint) {
       print("Smb session token2: ${token?.toHexString()}");
@@ -85,9 +123,6 @@ class Smb2Session extends SmbSession {
     if (token == null) {
       final s = SmbException.getMessageByCode(response2.status);
       throw SmbAuthException(s);
-      // print(object)
-      // throw SmbException("Signing enabled but no session key available");
-      // return false;
     }
 
     token = createToken(ctx, token);
@@ -105,8 +140,14 @@ class Smb2Session extends SmbSession {
       bool signed = response2.isSigned();
       if (!anonymous && (isSignatureSetupRequired() || signed)) {
         if (signingKey != null) {
+          // SMB 3.1.1: 使用此会话的 preauth hash（不是 transport 的）
+          Uint8List? preauth = _sessionPreauthHash ?? transport.preauthIntegrityHash;
+          if (config.debugPrint) {
+            print(
+                "SMB3.1.1: Creating SigningDigest with dialect=0x${negoResp.dialectRevision.toRadixString(16)}, preauth=${preauth.sublist(0, 16).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}...");
+          }
           Smb2SigningDigest dgst = Smb2SigningDigest(
-              sessionKey!, negoResp.dialectRevision, preauthIntegrityHash);
+              sessionKey!, negoResp.dialectRevision, preauth);
           // verify the server signature here, this is not done automatically as we don't set the
           // request digest
           // Ignore a missing signature for SMB < 3.0, as
@@ -131,6 +172,24 @@ class Smb2Session extends SmbSession {
       return true;
     }
     return false;
+  }
+
+  /// 更新此会话的 preauth integrity hash
+  void _updateSessionPreauthHash(Uint8List input, int hashAlgo) {
+    if (_sessionPreauthHash == null) return;
+
+    MessageDigest dgst;
+    switch (hashAlgo) {
+      case 1: // SHA-512
+        dgst = Crypto.getSHA512();
+        break;
+      default:
+        throw SmbUnsupportedOperationException();
+    }
+
+    dgst.updateBuff(_sessionPreauthHash!);
+    dgst.update(input, 0, input.length);
+    _sessionPreauthHash = dgst.digest();
   }
 
   SSPContext createContext(

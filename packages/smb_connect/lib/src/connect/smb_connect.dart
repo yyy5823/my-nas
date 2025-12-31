@@ -107,6 +107,7 @@ abstract class SmbConnect {
           debugPrint: debugPrint,
           debugPrintLowLevel: debugPrintLowLevel,
           forceSmb1: forceSmb1,
+          // 设置支持的最高版本，实际使用的版本由服务器协商决定
           maximumVersion:
               forceSmb1 ? DialectVersion.SMB1 : DialectVersion.SMB311,
         ),

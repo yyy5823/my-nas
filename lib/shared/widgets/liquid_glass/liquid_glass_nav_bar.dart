@@ -169,13 +169,9 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
       'items': widget.items.map((e) => e.toMap()).toList(),
     };
 
-    // 使用 key 强制在主题变化时重建原生视图
-    final viewKey = ValueKey('liquid_glass_nav_$isDark');
-
     return SizedBox(
-      height: 70,
+      height: 80, // iOS 26 Liquid Glass 标准高度
       child: UiKitView(
-        key: viewKey,
         viewType: _viewType,
         creationParams: creationParams,
         creationParamsCodec: const StandardMessageCodec(),
@@ -200,18 +196,18 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
         ],
       ),
       child: SizedBox(
-        height: 70,
+        height: 80, // iOS 26 Liquid Glass 标准高度
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(35),
+          borderRadius: BorderRadius.circular(40),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                // iOS 26 Liquid Glass 风格：高透明度，能清晰看到背后内容
+                // iOS 26 Liquid Glass 风格：最高透明度
                 color: isDark
-                    ? Colors.black.withValues(alpha: 0.15)
-                    : Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(35),
+                    ? Colors.black.withValues(alpha: 0.08)
+                    : Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(40),
                 border: Border.all(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.1)

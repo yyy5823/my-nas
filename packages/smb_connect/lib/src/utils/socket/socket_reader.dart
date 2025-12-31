@@ -34,6 +34,9 @@ abstract class SocketReader {
     int count = 0;
     // int remain = length + _chunkOffset;
     do {
+      if (_chunks.isEmpty) {
+        throw "Socket connection closed unexpectedly";
+      }
       var chunk = _chunks[0];
       if (chunk.length <= length + _chunkOffset) {
         _chunks.removeAt(0);
@@ -74,6 +77,9 @@ abstract class SocketReader {
     int length = bytes;
     // int remain = bytes + _chunkOffset;
     do {
+      if (_chunks.isEmpty) {
+        throw "Socket connection closed unexpectedly";
+      }
       var chunk = _chunks[0];
       if (chunk.length <= length + _chunkOffset) {
         _chunks.removeAt(0);

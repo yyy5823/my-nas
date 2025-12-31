@@ -219,3 +219,11 @@ native/chromaprint/output/
 # iOS 编译的 framework (需要本地构建)
 ios/Frameworks/
 build_chromaprint/**
+
+# FFmpeg binaries (too large for Git, downloaded at build time)
+# macOS: ~147MB Universal binary
+macos/Runner/Resources/ffmpeg/ffmpeg
+# Windows: ~80MB
+windows/ffmpeg/ffmpeg.exe
+# Linux: ~80MB
+linux/ffmpeg/ffmpeg

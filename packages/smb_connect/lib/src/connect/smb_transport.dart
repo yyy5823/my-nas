@@ -77,6 +77,10 @@ class SmbTransport {
   SmbNegotiationResponse? _negotiated;
   Uint8List _preauthIntegrityHash = Uint8List(64);
 
+  /// SMB 3.1.1: 协商完成后的 preauth hash
+  /// 每个新会话应该从这个值开始计算自己的 preauth hash
+  Uint8List? _negotiatePreauthHash;
+
   final Map<int, CompleteResponse> responses = {};
 
   /// 缓冲区池（懒加载单例）
@@ -111,6 +115,27 @@ class SmbTransport {
   }
 
   SmbNegotiationResponse? getNegotiatedResponse() => _negotiated;
+
+  /// 获取 SMB 3.1.1 的 preauth integrity hash
+  /// 用于会话签名密钥派生
+  Uint8List get preauthIntegrityHash => _preauthIntegrityHash;
+
+  /// 获取协商完成后的 preauth hash 副本
+  /// 用于新会话开始时初始化其 preauth hash
+  Uint8List? getNewSessionPreauthHash() {
+    if (_negotiatePreauthHash == null) return null;
+    return Uint8List.fromList(_negotiatePreauthHash!);
+  }
+
+  /// 更新 SMB 3.1.1 的 preauth integrity hash
+  /// 用于 session setup 过程中更新 hash
+  void updatePreauthHash(Uint8List data) {
+    if (_negotiated != null &&
+        _negotiated!.getSelectedDialect()?.atLeast(DialectVersion.SMB311) ==
+            true) {
+      _updatePreauthHash(data);
+    }
+  }
 
   Future<bool> ensureConnected() async {
     if (_negotiated != null) {
@@ -147,10 +172,13 @@ class SmbTransport {
           true) {
         _updatePreauthHash(resp.requestBuffer!);
         _updatePreauthHash(resp.responseBuffer!);
+        // 保存协商后的 preauth hash，每个新会话从这里开始
+        _negotiatePreauthHash = Uint8List.fromList(_preauthIntegrityHash);
       }
       return true;
-    } catch (e) {
-      print(e);
+    } catch (e, st) {
+      print('SMB connect error: $e');
+      print('Stack trace: $st');
       return false;
     }
   }
@@ -331,8 +359,11 @@ class SmbTransport {
         "Failed to establish session with $host on port $_port");
   }
 
-  Future<int> _negotiateWrite(
-      CommonServerMessageBlockRequest req, bool setmid) async {
+  /// 执行协商写入，返回编码后的数据
+  /// [copyBuffer] 如果为 true，则返回编码后的数据副本（用于 preauth hash）
+  Future<({int length, Uint8List? buffer})> _negotiateWrite(
+      CommonServerMessageBlockRequest req, bool setmid,
+      {bool copyBuffer = false}) async {
     if (setmid) {
       makeKey(req);
     } else {
@@ -342,11 +373,19 @@ class SmbTransport {
     int n = req.encode(_sbuf, 4);
     Encdec.encUint32BE(n & 0xFFFF, _sbuf, 0);
 
+    // 如果需要，在发送前复制缓冲区（用于 preauth hash）
+    Uint8List? bufferCopy;
+    if (copyBuffer) {
+      bufferCopy = Uint8List(n);
+      byteArrayCopy(
+          src: _sbuf, srcOffset: 4, dst: bufferCopy, dstOffset: 0, length: n);
+    }
+
     /// 4 int ssn msg header */
     _out.write(_sbuf, 0, 4 + n);
     await _out.flush();
     _sbuf.fill();
-    return n;
+    return (length: n, buffer: bufferCopy);
   }
 
   Future<void> _negotiatePeek() async {
@@ -378,16 +417,12 @@ class SmbTransport {
       smb2neg.setRequestCredits(
           max(1, _desiredCredits - _credits.availablePermits()));
 
-      int reqLen = await _negotiateWrite(smb2neg, first != null);
       bool doPreauth = config.maximumVersion.atLeast(DialectVersion.SMB311);
+      // SMB 3.1.1: 在发送请求时复制缓冲区用于 preauth hash
+      final writeResult = await _negotiateWrite(smb2neg, first != null,
+          copyBuffer: doPreauth);
       if (doPreauth) {
-        negoReqBuffer = Uint8List(reqLen);
-        byteArrayCopy(
-            src: _sbuf,
-            srcOffset: 4,
-            dst: negoReqBuffer,
-            dstOffset: 0,
-            length: reqLen);
+        negoReqBuffer = writeResult.buffer;
       }
 
       await _negotiatePeek();
@@ -395,8 +430,8 @@ class SmbTransport {
       r = smb2neg.initResponse(config);
       int respLen = r.decode(_sbuf, 4);
       r.setReceived();
-      _sbuf.fill();
 
+      // SMB 3.1.1: 在清除缓冲区前复制响应数据用于 preauth hash
       if (doPreauth) {
         negoRespBuffer = Uint8List(respLen);
         byteArrayCopy(
@@ -405,9 +440,9 @@ class SmbTransport {
             dst: negoRespBuffer,
             dstOffset: 0,
             length: respLen);
-      } else {
-        negoReqBuffer = null;
       }
+      _sbuf.fill();
+
       return SmbNegotiation(smb2neg, r, negoReqBuffer, negoRespBuffer);
     } finally {
       int grantedCredits = r?.getGrantedCredits() ?? 0;
@@ -721,6 +756,10 @@ class SmbTransport {
       int n = smb.encode(buffer, 4);
       Encdec.encUint32BE(
           n & 0xFFFF, buffer, 0); /* 4 byte session message header */
+
+      // SMB 3.1.1: preauth hash 现在由每个 session 自己管理
+      // 不再在这里自动更新 transport 的 hash
+
       //
       // For some reason this can sometimes get broken up into another
       // "NBSS Continuation Message" frame according to WireShark
@@ -779,6 +818,9 @@ class SmbTransport {
       throw SmbIOException(
           "Message size $msgSize exceeds maxiumum buffer size $maximumBufferSize");
     }
+
+    // SMB 3.1.1: preauth hash 现在由每个 session 自己管理
+    // 不再在这里自动更新 transport 的 hash
 
     ServerMessageBlock2Response? cur = response as ServerMessageBlock2Response;
     Uint8List buffer = getBufferCache().getBuffer();

@@ -91,8 +91,8 @@ class ClientTranscodingService implements NasTranscodingService {
       return false;
     }
 
-    // iOS/macOS 使用 ffmpeg_kit_flutter
-    if (Platform.isIOS || Platform.isMacOS) {
+    // iOS 使用 ffmpeg_kit_flutter
+    if (Platform.isIOS) {
       try {
         // 执行简单命令验证 FFmpeg 可用
         final session = await FFmpegKit.execute('-version');
@@ -111,6 +111,23 @@ class ClientTranscodingService implements NasTranscodingService {
       }
     }
 
+    // macOS 使用打包的 FFmpeg 二进制
+    if (Platform.isMacOS) {
+      _ffmpegPath = await _findMacOSBundledFfmpeg();
+      if (_ffmpegPath != null) {
+        logger.i('ClientTranscoding: macOS 找到打包的 FFmpeg: $_ffmpegPath');
+        return true;
+      }
+      // 回退到系统 FFmpeg
+      _ffmpegPath = await _findSystemFfmpeg();
+      if (_ffmpegPath != null) {
+        logger.i('ClientTranscoding: macOS 使用系统 FFmpeg: $_ffmpegPath');
+        return true;
+      }
+      logger.w('ClientTranscoding: macOS 未找到可用的 FFmpeg');
+      return false;
+    }
+
     // Linux/Windows 使用系统/打包的 FFmpeg
     if (Platform.isLinux || Platform.isWindows) {
       _ffmpegPath = await _findDesktopFfmpeg();
@@ -123,18 +140,36 @@ class ClientTranscodingService implements NasTranscodingService {
     return false;
   }
 
-  /// 查找桌面端 FFmpeg 可执行文件（仅用于 Linux/Windows）
-  Future<String?> _findDesktopFfmpeg() async {
-    // 注意：macOS 现在使用 FFmpegKit，不需要单独的二进制文件
+  /// 查找 macOS 打包的 FFmpeg 可执行文件
+  ///
+  /// macOS app bundle 结构:
+  /// my_nas.app/Contents/MacOS/ffmpeg
+  Future<String?> _findMacOSBundledFfmpeg() async {
+    try {
+      // 获取应用程序可执行文件所在目录
+      final exePath = Platform.resolvedExecutable;
+      final exeDir = File(exePath).parent.path;
 
-    // 1. 优先查找应用目录中打包的 FFmpeg
-    final bundledPath = await _findBundledFfmpeg();
-    if (bundledPath != null) {
-      logger.d('ClientTranscoding: 使用打包的 FFmpeg: $bundledPath');
-      return bundledPath;
+      // macOS: 查找 MacOS/ffmpeg
+      final bundledFfmpegPath = '$exeDir/ffmpeg';
+      final ffmpegFile = File(bundledFfmpegPath);
+
+      if (await ffmpegFile.exists()) {
+        // 验证可执行
+        final result = await Process.run(bundledFfmpegPath, ['-version']);
+        if (result.exitCode == 0) {
+          logger.d('ClientTranscoding: macOS 找到打包的 FFmpeg: $bundledFfmpegPath');
+          return bundledFfmpegPath;
+        }
+      }
+    } catch (e) {
+      logger.d('ClientTranscoding: 查找 macOS 打包 FFmpeg 失败: $e');
     }
+    return null;
+  }
 
-    // 2. 回退到系统 PATH 中的 FFmpeg
+  /// 查找系统安装的 FFmpeg（通过 PATH）
+  Future<String?> _findSystemFfmpeg() async {
     try {
       final result = await Process.run('ffmpeg', ['-version']);
       if (result.exitCode == 0) {
@@ -144,8 +179,20 @@ class ClientTranscodingService implements NasTranscodingService {
     } catch (_) {
       // FFmpeg 不在 PATH 中
     }
-
     return null;
+  }
+
+  /// 查找桌面端 FFmpeg 可执行文件（仅用于 Linux/Windows）
+  Future<String?> _findDesktopFfmpeg() async {
+    // 1. 优先查找应用目录中打包的 FFmpeg
+    final bundledPath = await _findBundledFfmpeg();
+    if (bundledPath != null) {
+      logger.d('ClientTranscoding: 使用打包的 FFmpeg: $bundledPath');
+      return bundledPath;
+    }
+
+    // 2. 回退到系统 PATH 中的 FFmpeg
+    return _findSystemFfmpeg();
   }
 
   /// 查找应用目录中打包的 FFmpeg
@@ -368,14 +415,14 @@ class ClientTranscodingService implements NasTranscodingService {
       if (Platform.isAndroid) {
         // Android 使用 MediaCodec 硬件转码
         await _runMediaCodecTranscoding(task);
-      } else if (Platform.isIOS || Platform.isMacOS) {
-        // iOS/macOS 使用 FFmpegKit
+      } else if (Platform.isIOS) {
+        // iOS 使用 FFmpegKit
         final args = _buildFfmpegArgs(task);
         final command = args.join(' ');
         logger.d('ClientTranscoding: FFmpeg 命令 => $command');
         await _runFFmpegKitTranscoding(task, command);
       } else {
-        // Linux/Windows 使用 Process
+        // macOS/Linux/Windows 使用 Process 执行打包的 FFmpeg
         final args = _buildFfmpegArgs(task);
         final command = args.join(' ');
         logger.d('ClientTranscoding: FFmpeg 命令 => $command');
@@ -781,12 +828,13 @@ class ClientTranscodingService implements NasTranscodingService {
 
     if (Platform.isMacOS || Platform.isIOS) {
       // Apple 平台：VideoToolbox 硬件编码
-      // FFmpegKit 内置支持，速度快 10-20 倍
+      // macOS 使用打包的 FFmpeg，iOS 使用 FFmpegKit，都支持 VideoToolbox
       args.addAll(['-c:v', 'h264_videotoolbox']);
       args.addAll(['-profile:v', 'high']);
-      if (Platform.isMacOS) {
-        args.addAll(['-level', '4.1']); // Level 4.1 支持 1080p
-      }
+      args.addAll(['-level', '4.1']); // Level 4.1 支持 1080p
+      // VideoToolbox 特定优化
+      args.addAll(['-realtime', '1']); // 实时编码模式
+      args.addAll(['-allow_sw', '1']); // 允许软件回退
       logger.d('ClientTranscoding: 使用 VideoToolbox 硬件编码');
     } else if (Platform.isAndroid) {
       // Android：MediaCodec 硬件编码
