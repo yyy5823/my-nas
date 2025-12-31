@@ -179,11 +179,11 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   /// - 子页面需要自己处理底部 padding（使用 floatingNavBarPadding）
   Widget _buildFloatingNavLayout(BuildContext context, int currentIndex, bool isDark) {
     // iOS 26 Liquid Glass 标准尺寸（根据实测调整）
-    // 高度：标准约 1cm ≈ 80pt（减少0.1cm）
-    // 底部间距：标准约 0.3cm ≈ 12pt
-    // 宽度：增加0.3cm，减少水平边距
-    const horizontalPadding = 4.0;
-    const bottomPadding = 12.0;
+    // 高度：标准约 1cm ≈ 80pt
+    // 底部间距：往下移动 2/5，12 - 12*2/5 ≈ 7pt
+    // 宽度：与内部选项宽度一致，水平边距设为 0
+    const horizontalPadding = 0.0;
+    const bottomPadding = 7.0;
     const navBarHeight = 80.0;
 
     // 计算子页面需要的底部 padding（内容不被导航栏遮挡）

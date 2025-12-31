@@ -160,10 +160,12 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
 // MARK: - Tab Bar Controller
 
 /// 使用原生 UITabBarController 实现 Liquid Glass 效果
-/// iOS 26 的 UITabBar 自动获得 Liquid Glass 样式
+/// iOS 26+: 手动应用 UIGlassEffect（因为 Flutter PlatformView 不会自动获得系统效果）
+/// iOS < 26: 使用 UIBlurEffect 作为回退
 class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegate {
     private var items: [LiquidGlassNavItem]
     private var isDark: Bool
+    private var glassEffectView: UIVisualEffectView?
     var onTabSelected: ((Int) -> Void)?
 
     init(items: [LiquidGlassNavItem], selectedIndex: Int, isDark: Bool) {
@@ -189,13 +191,64 @@ class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegat
         // 设置代理
         delegate = self
 
+        // 配置玻璃效果背景（在 tabBar 下方）
+        setupGlassBackground()
+
         // 配置外观
         configureAppearance()
 
         // 创建 tab items
         rebuildTabs()
 
-        NSLog("🔮 LiquidGlassTabBarController: Setup complete, iOS 26+ will automatically apply Liquid Glass")
+        NSLog("🔮 LiquidGlassTabBarController: Setup complete")
+    }
+
+    private func setupGlassBackground() {
+        if #available(iOS 26.0, *) {
+            // iOS 26+: 使用 UIGlassEffect 手动创建玻璃效果
+            // 使用 .clear 风格获得最高透明度
+            let glassEffect = UIGlassEffect(style: .clear)
+
+            let effectView = UIVisualEffectView(effect: glassEffect)
+            effectView.translatesAutoresizingMaskIntoConstraints = false
+            effectView.layer.cornerRadius = 40 // 胶囊形圆角
+            effectView.clipsToBounds = true
+
+            // 插入到最底层
+            view.insertSubview(effectView, at: 0)
+
+            // 约束：填充整个视图
+            NSLayoutConstraint.activate([
+                effectView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                effectView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                effectView.topAnchor.constraint(equalTo: view.topAnchor),
+                effectView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+
+            glassEffectView = effectView
+            NSLog("🔮 LiquidGlassTabBarController: Applied UIGlassEffect with .clear style for maximum transparency")
+        } else {
+            // iOS < 26: 使用 UIBlurEffect 作为回退
+            let blurStyle: UIBlurEffect.Style = isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight
+            let blurEffect = UIBlurEffect(style: blurStyle)
+
+            let effectView = UIVisualEffectView(effect: blurEffect)
+            effectView.translatesAutoresizingMaskIntoConstraints = false
+            effectView.layer.cornerRadius = 40
+            effectView.clipsToBounds = true
+
+            view.insertSubview(effectView, at: 0)
+
+            NSLayoutConstraint.activate([
+                effectView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                effectView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                effectView.topAnchor.constraint(equalTo: view.topAnchor),
+                effectView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+
+            glassEffectView = effectView
+            NSLog("🔮 LiquidGlassTabBarController: Applied UIBlurEffect fallback for iOS < 26")
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -215,40 +268,25 @@ class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegat
     }
 
     private func configureAppearance() {
-        if #available(iOS 26.0, *) {
-            // iOS 26+: 完全依赖系统的 Liquid Glass 效果
-            // 不设置任何自定义背景，让系统自动应用玻璃效果
-            // 根据 Apple 文档：避免在已有 Liquid Glass 的组件上添加自定义背景
-            tabBar.isTranslucent = true
+        // 由于我们已经在 setupGlassBackground() 中添加了独立的玻璃效果视图，
+        // 这里只需要让 tabBar 完全透明即可
+        let appearance = UITabBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundColor = .clear
+        appearance.shadowColor = .clear
+        appearance.shadowImage = nil
 
-            // 只需要配置透明背景，其他交给系统
-            let appearance = UITabBarAppearance()
-            appearance.configureWithTransparentBackground()
-            tabBar.standardAppearance = appearance
+        tabBar.standardAppearance = appearance
+        if #available(iOS 15.0, *) {
             tabBar.scrollEdgeAppearance = appearance
-
-            NSLog("🔮 LiquidGlassTabBarController: iOS 26+ - Using system Liquid Glass (no custom background)")
-        } else {
-            // iOS < 26: 使用最薄的模糊效果作为回退
-            let appearance = UITabBarAppearance()
-            appearance.configureWithTransparentBackground()
-            appearance.backgroundEffect = UIBlurEffect(style: isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
-            appearance.backgroundColor = .clear
-            appearance.shadowColor = .clear
-            appearance.shadowImage = nil
-
-            tabBar.standardAppearance = appearance
-            if #available(iOS 15.0, *) {
-                tabBar.scrollEdgeAppearance = appearance
-            }
-
-            tabBar.isTranslucent = true
-            tabBar.backgroundColor = .clear
-            tabBar.backgroundImage = UIImage()
-            tabBar.shadowImage = UIImage()
-
-            NSLog("🔮 LiquidGlassTabBarController: iOS < 26 - Using systemUltraThinMaterial fallback")
         }
+
+        tabBar.isTranslucent = true
+        tabBar.backgroundColor = .clear
+        tabBar.backgroundImage = UIImage()
+        tabBar.shadowImage = UIImage()
+
+        NSLog("🔮 LiquidGlassTabBarController: TabBar configured with transparent background (glass effect handled separately)")
     }
 
     private func rebuildTabs() {
