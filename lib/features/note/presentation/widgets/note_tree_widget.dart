@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
 /// 树节点类型
@@ -95,7 +96,8 @@ class NoteTreeWidget extends StatelessWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      // 使用动态底部 padding 支持悬浮导航栏
+      padding: EdgeInsets.only(top: 8, bottom: context.scrollBottomPadding),
       children: nodes.map((node) => _buildNode(context, node, 0)).toList(),
     );
   }

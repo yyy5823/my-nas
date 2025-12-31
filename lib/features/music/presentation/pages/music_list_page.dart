@@ -4312,7 +4312,8 @@ class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage> {
                 ? _buildEmptyState(isDark)
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.only(bottom: 80),
+                    // 使用动态 padding 支持悬浮导航栏
+                    padding: EdgeInsets.only(bottom: context.scrollBottomPadding),
                     itemCount: widget.tracks.length,
                     itemBuilder: (context, index) => _ModernMusicTile(
                       track: widget.tracks[index],

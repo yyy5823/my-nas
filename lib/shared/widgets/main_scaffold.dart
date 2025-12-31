@@ -172,19 +172,30 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   }
 
   /// 构建悬浮导航栏布局 (iOS 26 风格)
+  ///
+  /// iOS 26 Liquid Glass 特点：
+  /// - 导航栏悬浮在内容上方
+  /// - 内容延伸到屏幕底部，透过透明导航栏可见
+  /// - 子页面需要自己处理底部 padding（使用 floatingNavBarPadding）
   Widget _buildFloatingNavLayout(BuildContext context, int currentIndex, bool isDark) {
     final bottomSafeArea = MediaQuery.of(context).padding.bottom;
     const horizontalPadding = 16.0;
-    const bottomPadding = 16.0;
+    const bottomPadding = 8.0; // iOS 26 风格：紧贴安全区域上方
     const navBarHeight = 70.0;
+
+    // 计算子页面需要的底部 padding
+    final floatingNavPadding = navBarHeight + bottomPadding + bottomSafeArea;
 
     return Stack(
       children: [
-        // 主体内容
+        // 主体内容 - 延伸到屏幕底部，内容可透过导航栏看到
         Positioned.fill(
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: navBarHeight + bottomPadding + bottomSafeArea,
+          child: MediaQuery(
+            // 注入底部 padding 信息，子页面可通过 MediaQuery.of(context).padding.bottom 获取
+            data: MediaQuery.of(context).copyWith(
+              padding: MediaQuery.of(context).padding.copyWith(
+                bottom: floatingNavPadding,
+              ),
             ),
             child: widget.child,
           ),

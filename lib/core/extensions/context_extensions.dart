@@ -10,6 +10,26 @@ extension BuildContextExtensions on BuildContext {
   TextTheme get textTheme => theme.textTheme;
   bool get isDarkMode => theme.brightness == Brightness.dark;
 
+  // ============ 悬浮导航栏支持 ============
+
+  /// 获取滚动内容的底部 padding
+  ///
+  /// 在 iOS 26 悬浮导航栏模式下，此值包含：
+  /// - 导航栏高度 (70)
+  /// - 导航栏距底部距离 (16)
+  /// - 安全区域
+  ///
+  /// 用于 ListView、GridView、CustomScrollView 等滚动组件的底部 padding，
+  /// 确保内容可以滚动到导航栏后面，而最后一项不会被遮挡。
+  ///
+  /// 使用示例:
+  /// ```dart
+  /// ListView(
+  ///   padding: EdgeInsets.only(bottom: context.scrollBottomPadding),
+  /// )
+  /// ```
+  double get scrollBottomPadding => mediaQuery.padding.bottom;
+
   // ============ 语义化颜色（根据亮暗模式自动调整）============
 
   /// 成功颜色

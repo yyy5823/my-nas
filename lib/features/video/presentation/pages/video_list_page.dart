@@ -2541,8 +2541,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     return CustomScrollView(
       slivers: [
         ...slivers,
-        // 底部留白
-        const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+        // 底部留白 - 使用动态 padding 支持悬浮导航栏
+        SliverPadding(padding: EdgeInsets.only(bottom: context.scrollBottomPadding)),
       ],
     );
   }
@@ -3210,7 +3210,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             maxCount: results.length, // 显示所有结果
           ),
         ),
-        const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+        // 底部留白 - 使用动态 padding 支持悬浮导航栏
+        SliverPadding(padding: EdgeInsets.only(bottom: context.scrollBottomPadding)),
       ],
     );
   }
@@ -8480,8 +8481,8 @@ class _MovieCollectionPage extends ConsumerWidget {
           _buildMovieCountLabel(isDark, tmdbCollectionAsync),
           // 电影列表
           _buildMovieGrid(context, isDark, localMovies, tmdbCollectionAsync),
-          // 底部留白
-          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+          // 底部留白 - 使用动态 padding 支持悬浮导航栏
+          SliverPadding(padding: EdgeInsets.only(bottom: context.scrollBottomPadding)),
         ],
       ),
     );

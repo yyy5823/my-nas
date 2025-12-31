@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		06F84FCC2EFF8ED7C8D8824C /* NativeAVPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAE94BB215E513CF36A665C7 /* NativeAVPlayerView.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		19D3A0F255843DAF8B274900 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9C725D728139051CBE5CEEE1 /* Pods_RunnerTests.framework */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
@@ -17,6 +18,11 @@
 		65CD6C022F00EA95003CEDC6 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 653E4EFE2EE3AF770080E2C6 /* WidgetKit.framework */; };
 		65CD6C032F00EA95003CEDC6 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 653E4F002EE3AF770080E2C6 /* SwiftUI.framework */; };
 		65CD6C142F00EA97003CEDC6 /* MyNasWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 65CD6C012F00EA95003CEDC6 /* MyNasWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		65IOSAUDC01E5F6A7B8C9D0E3 /* AudioCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65IOSAUDC02E5F6A7B8C9D0E4 /* AudioCapabilityChannel.swift */; };
+		65IOSDSPC01E5F6A7B8C9D0E1 /* DisplayCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65IOSDSPC02E5F6A7B8C9D0E2 /* DisplayCapabilityChannel.swift */; };
+		65LQGLC01E5F6A7B8C9D0E22 /* LiquidGlassChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */; };
+		65LQGLS01E5F6A7B8C9D0E20 /* LiquidGlassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */; };
+		65NBLUR02E5F6A7B8C9D0E11 /* NativeBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
@@ -27,11 +33,8 @@
 		A1B2C3D4E5F6A7B8C9D0E1F8 /* SharedLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F9 /* SharedLogger.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1FA /* ChromaprintChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1FB /* ChromaprintChannel.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1FC /* WidgetDataChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1FD /* WidgetDataChannel.swift */; };
-		65IOSDSPC01E5F6A7B8C9D0E1 /* DisplayCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65IOSDSPC02E5F6A7B8C9D0E2 /* DisplayCapabilityChannel.swift */; };
-		65IOSAUDC01E5F6A7B8C9D0E3 /* AudioCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65IOSAUDC02E5F6A7B8C9D0E4 /* AudioCapabilityChannel.swift */; };
-		65NBLUR02E5F6A7B8C9D0E11 /* NativeBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */; };
-		65LQGLS01E5F6A7B8C9D0E20 /* LiquidGlassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */; };
-		65LQGLC01E5F6A7B8C9D0E22 /* LiquidGlassChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */; };
+		A7BCCB5CBB68596C14E98377 /* NativeAVPlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A850A4D59F7623FB5156377 /* NativeAVPlayerController.swift */; };
+		F7E997A344550D9C5EB228A9 /* NativeAVPlayerChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71136157915D2CE3416F1EF /* NativeAVPlayerChannel.swift */; };
 		FCC16F813101025CE77013B6 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 637C312A0DE8B426DF0EEB14 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
 
@@ -85,6 +88,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0A850A4D59F7623FB5156377 /* NativeAVPlayerController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerController.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		1A1554027CCBB842A33D14E5 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -99,6 +103,11 @@
 		653E4EFE2EE3AF770080E2C6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		653E4F002EE3AF770080E2C6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		65CD6C012F00EA95003CEDC6 /* MyNasWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MyNasWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		65IOSAUDC02E5F6A7B8C9D0E4 /* AudioCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapabilityChannel.swift; sourceTree = "<group>"; };
+		65IOSDSPC02E5F6A7B8C9D0E2 /* DisplayCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayCapabilityChannel.swift; sourceTree = "<group>"; };
+		65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassChannel.swift; sourceTree = "<group>"; };
+		65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassView.swift; sourceTree = "<group>"; };
+		65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBlurView.swift; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
@@ -116,13 +125,10 @@
 		A1B2C3D4E5F6A7B8C9D0E1F9 /* SharedLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLogger.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1FB /* ChromaprintChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromaprintChannel.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1FD /* WidgetDataChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataChannel.swift; sourceTree = "<group>"; };
-		65IOSDSPC02E5F6A7B8C9D0E2 /* DisplayCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayCapabilityChannel.swift; sourceTree = "<group>"; };
-		65IOSAUDC02E5F6A7B8C9D0E4 /* AudioCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapabilityChannel.swift; sourceTree = "<group>"; };
-		65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBlurView.swift; sourceTree = "<group>"; };
-		65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassView.swift; sourceTree = "<group>"; };
-		65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassChannel.swift; sourceTree = "<group>"; };
+		B71136157915D2CE3416F1EF /* NativeAVPlayerChannel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerChannel.swift; sourceTree = "<group>"; };
 		B927AB7F3698D57CA0CFD80B /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		EBC6B44C3FFB46568FCA6801 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
+		FAE94BB215E513CF36A665C7 /* NativeAVPlayerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -215,6 +221,17 @@
 			path = RunnerTests;
 			sourceTree = "<group>";
 		};
+		688AE76255D7B475DC0D67DE /* NativeAVPlayer */ = {
+			isa = PBXGroup;
+			children = (
+				B71136157915D2CE3416F1EF /* NativeAVPlayerChannel.swift */,
+				0A850A4D59F7623FB5156377 /* NativeAVPlayerController.swift */,
+				FAE94BB215E513CF36A665C7 /* NativeAVPlayerView.swift */,
+			);
+			name = NativeAVPlayer;
+			path = NativeAVPlayer;
+			sourceTree = "<group>";
+		};
 		9740EEB11CF90186004384FC /* Flutter */ = {
 			isa = PBXGroup;
 			children = (
@@ -273,6 +290,7 @@
 				65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */,
 				65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
+				688AE76255D7B475DC0D67DE /* NativeAVPlayer */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -644,6 +662,9 @@
 				65LQGLS01E5F6A7B8C9D0E20 /* LiquidGlassView.swift in Sources */,
 				65LQGLC01E5F6A7B8C9D0E22 /* LiquidGlassChannel.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
+				F7E997A344550D9C5EB228A9 /* NativeAVPlayerChannel.swift in Sources */,
+				A7BCCB5CBB68596C14E98377 /* NativeAVPlayerController.swift in Sources */,
+				06F84FCC2EFF8ED7C8D8824C /* NativeAVPlayerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

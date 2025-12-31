@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/music/presentation/pages/playlist_detail_page.dart';
 import 'package:my_nas/features/music/presentation/providers/home_layout_provider.dart';
@@ -138,9 +139,9 @@ class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
             ),
           ),
         ),
-        // 可配置的内容区域
+        // 可配置的内容区域 - 使用动态 padding 支持悬浮导航栏
         SliverPadding(
-          padding: const EdgeInsets.only(bottom: 100),
+          padding: EdgeInsets.only(bottom: context.scrollBottomPadding),
           sliver: SliverList(
             delegate: SliverChildListDelegate(sections),
           ),

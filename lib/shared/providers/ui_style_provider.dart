@@ -56,8 +56,8 @@ class UIStyleNotifier extends StateNotifier<UIStyle> {
 
     // iOS 26+ 支持 Liquid Glass
     if (Platform.isIOS) {
-      final isSupported = await LiquidGlassService.instance.isLiquidGlassSupported();
-      if (isSupported) {
+      final supported = await LiquidGlassService.instance.isSupported;
+      if (supported) {
         return UIStyle.liquidClear;
       }
     }

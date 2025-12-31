@@ -198,6 +198,22 @@ class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegat
         NSLog("🔮 LiquidGlassTabBarController: Setup complete, iOS 26+ will automatically apply Liquid Glass")
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        // 强制 tabBar 填充整个视图，忽略 safe area
+        // 因为 safe area 已经在 Flutter 端处理了
+        tabBar.frame = view.bounds
+
+        NSLog("🔮 LiquidGlassTabBarController: viewDidLayoutSubviews - tabBar.frame: \(tabBar.frame), view.bounds: \(view.bounds)")
+    }
+
+    // 禁用额外的 safe area insets
+    override var additionalSafeAreaInsets: UIEdgeInsets {
+        get { return .zero }
+        set { }
+    }
+
     private func configureAppearance() {
         // 配置 TabBar 外观
         let appearance = UITabBarAppearance()
@@ -205,12 +221,18 @@ class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegat
         if #available(iOS 26.0, *) {
             // iOS 26+: 使用透明背景，让系统自动应用 Liquid Glass
             appearance.configureWithTransparentBackground()
+            appearance.backgroundColor = .clear
+            appearance.shadowColor = .clear
+            appearance.shadowImage = nil
             NSLog("🔮 LiquidGlassTabBarController: Using transparent background for iOS 26 Liquid Glass")
         } else {
-            // iOS < 26: 使用模糊效果作为回退
-            appearance.configureWithDefaultBackground()
-            appearance.backgroundEffect = UIBlurEffect(style: isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
-            NSLog("🔮 LiquidGlassTabBarController: Using blur effect fallback for iOS < 26")
+            // iOS < 26: 使用最薄的模糊效果作为回退
+            appearance.configureWithTransparentBackground()
+            appearance.backgroundEffect = UIBlurEffect(style: isDark ? .systemThinMaterialDark : .systemThinMaterialLight)
+            appearance.backgroundColor = (isDark ? UIColor.black : UIColor.white).withAlphaComponent(0.1)
+            appearance.shadowColor = .clear
+            appearance.shadowImage = nil
+            NSLog("🔮 LiquidGlassTabBarController: Using thin blur effect fallback for iOS < 26")
         }
 
         // 应用外观
@@ -222,6 +244,8 @@ class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegat
         // 设置 TabBar 透明
         tabBar.isTranslucent = true
         tabBar.backgroundColor = .clear
+        tabBar.backgroundImage = UIImage()
+        tabBar.shadowImage = UIImage()
     }
 
     private func rebuildTabs() {

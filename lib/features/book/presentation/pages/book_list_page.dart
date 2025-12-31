@@ -1808,7 +1808,8 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              // 底部留白 - 支持悬浮导航栏
+              SliverPadding(padding: EdgeInsets.only(bottom: context.scrollBottomPadding)),
             ],
           ),
         ),

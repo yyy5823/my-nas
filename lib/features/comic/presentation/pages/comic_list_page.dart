@@ -919,7 +919,8 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
   Widget _buildComicGrid(BuildContext context, ComicListLoaded state, bool isDark) => RefreshIndicator(
       onRefresh: () => ref.read(comicListProvider.notifier).forceRefresh(),
       child: GridView.builder(
-        padding: const EdgeInsets.all(AppSpacing.md),
+        // 使用动态底部 padding 支持悬浮导航栏
+        padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, context.scrollBottomPadding),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 160,
           mainAxisSpacing: 12,

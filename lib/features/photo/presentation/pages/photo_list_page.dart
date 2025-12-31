@@ -2024,6 +2024,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                     _buildGridView(context, ref, state, isDark)
                   else
                     _buildTimelineView(context, ref, state, isDark),
+                  // 底部留白 - 支持悬浮导航栏
+                  SliverPadding(padding: EdgeInsets.only(bottom: context.scrollBottomPadding)),
                 ],
               ),
             ),

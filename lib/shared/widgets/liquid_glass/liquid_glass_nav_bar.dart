@@ -120,7 +120,7 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
     if (!Platform.isIOS) return false;
     if (widget.forceNative) return true;
 
-    // 使用原生视图（无论是否支持 Liquid Glass，原生都有更好的回退）
+    // 使用原生自定义视图实现 Liquid Glass 效果
     return true;
   }
 
@@ -203,14 +203,15 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: DecoratedBox(
               decoration: BoxDecoration(
+                // iOS 26 Liquid Glass 风格：高透明度，能清晰看到背后内容
                 color: isDark
-                    ? Colors.black.withValues(alpha: 0.6)
-                    : Colors.white.withValues(alpha: 0.7),
+                    ? Colors.black.withValues(alpha: 0.15)
+                    : Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(35),
                 border: Border.all(
                   color: isDark
-                      ? Colors.white.withValues(alpha: 0.2)
-                      : Colors.black.withValues(alpha: 0.1),
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.05),
                   width: 0.5,
                 ),
               ),
