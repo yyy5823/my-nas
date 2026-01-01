@@ -80,6 +80,10 @@ class WebDavAdapter implements NasAdapter {
   @override
   Future<void> disconnect() async {
     if (!_connected) return;
+
+    // 关闭文件系统中的 Dio 实例
+    _fileSystem?.dispose();
+
     _client = null;
     _fileSystem = null;
     _connected = false;

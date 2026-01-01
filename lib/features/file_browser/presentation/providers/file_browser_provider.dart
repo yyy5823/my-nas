@@ -6,13 +6,43 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
+/// 可浏览的连接（统一 NAS 和媒体服务器）
+class BrowsableConnection {
+  const BrowsableConnection._({
+    required this.sourceId,
+    required this.fileSystem,
+    required this.status,
+    required this.isMediaServer,
+  });
+
+  factory BrowsableConnection.fromNas(SourceConnection conn) => BrowsableConnection._(
+        sourceId: conn.source.id,
+        fileSystem: conn.adapter.fileSystem,
+        status: conn.status,
+        isMediaServer: false,
+      );
+
+  factory BrowsableConnection.fromMediaServer(MediaServerConnection conn) =>
+      BrowsableConnection._(
+        sourceId: conn.source.id,
+        fileSystem: conn.adapter.virtualFileSystem,
+        status: conn.status,
+        isMediaServer: true,
+      );
+
+  final String sourceId;
+  final NasFileSystem fileSystem;
+  final SourceStatus status;
+  final bool isMediaServer;
+}
+
 /// 当前路径
 final currentPathProvider = StateProvider<String>((ref) => '/');
 
 /// 当前选中的源ID（用于文件浏览器）
 final selectedSourceIdProvider = StateProvider<String?>((ref) => null);
 
-/// 获取当前选中的源连接
+/// 获取当前选中的源连接（NAS）
 final selectedSourceConnectionProvider = Provider<SourceConnection?>((ref) {
   final selectedId = ref.watch(selectedSourceIdProvider);
   if (selectedId == null) return null;
@@ -21,7 +51,29 @@ final selectedSourceConnectionProvider = Provider<SourceConnection?>((ref) {
   return connections[selectedId];
 });
 
-/// 获取所有已连接的源列表
+/// 获取当前选中的可浏览连接（统一 NAS 和媒体服务器）
+final selectedBrowsableConnectionProvider = Provider<BrowsableConnection?>((ref) {
+  final selectedId = ref.watch(selectedSourceIdProvider);
+  if (selectedId == null) return null;
+
+  // 先检查 NAS 连接
+  final nasConnections = ref.watch(activeConnectionsProvider);
+  final nasConn = nasConnections[selectedId];
+  if (nasConn != null && nasConn.status == SourceStatus.connected) {
+    return BrowsableConnection.fromNas(nasConn);
+  }
+
+  // 再检查媒体服务器连接
+  final mediaConnections = ref.watch(activeMediaServerConnectionsProvider);
+  final mediaConn = mediaConnections[selectedId];
+  if (mediaConn != null && mediaConn.status == SourceStatus.connected) {
+    return BrowsableConnection.fromMediaServer(mediaConn);
+  }
+
+  return null;
+});
+
+/// 获取所有已连接的源列表（NAS）
 final connectedSourcesProvider = Provider<List<(SourceEntity, SourceConnection)>>((ref) {
   final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
   final connections = ref.watch(activeConnectionsProvider);
@@ -34,6 +86,37 @@ final connectedSourcesProvider = Provider<List<(SourceEntity, SourceConnection)>
     }
   }
   return result;
+});
+
+/// 获取所有可浏览的已连接源列表（包括 NAS 和媒体服务器）
+final browsableSourcesProvider = Provider<List<(SourceEntity, BrowsableConnection)>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  final nasConnections = ref.watch(activeConnectionsProvider);
+  final mediaConnections = ref.watch(activeMediaServerConnectionsProvider);
+
+  final result = <(SourceEntity, BrowsableConnection)>[];
+  for (final source in sources) {
+    // 检查 NAS 连接
+    final nasConn = nasConnections[source.id];
+    if (nasConn != null && nasConn.status == SourceStatus.connected) {
+      result.add((source, BrowsableConnection.fromNas(nasConn)));
+      continue;
+    }
+
+    // 检查媒体服务器连接
+    final mediaConn = mediaConnections[source.id];
+    if (mediaConn != null && mediaConn.status == SourceStatus.connected) {
+      result.add((source, BrowsableConnection.fromMediaServer(mediaConn)));
+    }
+  }
+  return result;
+});
+
+/// 当前选中的连接是否支持写操作
+final supportsWriteOperationsProvider = Provider<bool>((ref) {
+  final connection = ref.watch(selectedBrowsableConnectionProvider);
+  // 媒体服务器不支持写操作
+  return connection != null && !connection.isMediaServer;
 });
 
 /// 获取当前选中的源实体
@@ -112,8 +195,8 @@ class FileListNotifier extends StateNotifier<FileListState> {
 
   final Ref _ref;
 
-  /// 获取当前选中的适配器
-  SourceConnection? _getSelectedConnection() {
+  /// 获取当前选中的 NAS 连接（用于写操作）
+  SourceConnection? _getSelectedNasConnection() {
     final connection = _ref.read(selectedSourceConnectionProvider);
     if (connection != null && connection.status == SourceStatus.connected) {
       return connection;
@@ -134,30 +217,24 @@ class FileListNotifier extends StateNotifier<FileListState> {
     state = const FileListLoading();
 
     // 首先尝试使用选中的源
-    var connection = _ref.read(selectedSourceConnectionProvider);
+    var connection = _ref.read(selectedBrowsableConnectionProvider);
 
     // 如果没有选中的源，自动选择第一个已连接的源
     if (connection == null || connection.status != SourceStatus.connected) {
-      final connectedSources = _ref.read(connectedSourcesProvider);
-      if (connectedSources.isEmpty) {
+      final browsableSources = _ref.read(browsableSourcesProvider);
+      if (browsableSources.isEmpty) {
         state = const FileListNotConnected();
         return;
       }
       // 自动选择第一个已连接的源
-      final (source, conn) = connectedSources.first;
+      final (source, conn) = browsableSources.first;
       _ref.read(selectedSourceIdProvider.notifier).state = source.id;
       connection = conn;
     }
 
-    final adapter = connection.adapter;
-    if (!adapter.isConnected) {
-      state = const FileListNotConnected();
-      return;
-    }
-
     try {
       // 添加超时保护,防止长时间卡住
-      final files = await adapter.fileSystem
+      final files = await connection.fileSystem
           .listDirectory(path)
           .timeout(
             const Duration(seconds: 30),
@@ -249,8 +326,10 @@ class FileListNotifier extends StateNotifier<FileListState> {
   }
 
   Future<void> createFolder(String name) async {
-    final connection = _getSelectedConnection();
-    if (connection == null) return;
+    final connection = _getSelectedNasConnection();
+    if (connection == null) {
+      throw UnsupportedError('当前连接不支持创建文件夹');
+    }
 
     final currentPath = _ref.read(currentPathProvider);
     final newPath = currentPath == '/' ? '/$name' : '$currentPath/$name';
@@ -260,16 +339,20 @@ class FileListNotifier extends StateNotifier<FileListState> {
   }
 
   Future<void> delete(String path) async {
-    final connection = _getSelectedConnection();
-    if (connection == null) return;
+    final connection = _getSelectedNasConnection();
+    if (connection == null) {
+      throw UnsupportedError('当前连接不支持删除操作');
+    }
 
     await connection.adapter.fileSystem.delete(path);
     await refresh();
   }
 
   Future<void> rename(String oldPath, String newName) async {
-    final connection = _getSelectedConnection();
-    if (connection == null) return;
+    final connection = _getSelectedNasConnection();
+    if (connection == null) {
+      throw UnsupportedError('当前连接不支持重命名操作');
+    }
 
     // 检测是否是 Windows 路径
     final isWindowsPath = oldPath.length >= 2 &&
@@ -297,7 +380,7 @@ class FileListNotifier extends StateNotifier<FileListState> {
     String? fileName,
     void Function(int sent, int total)? onProgress,
   }) async {
-    final connection = _getSelectedConnection();
+    final connection = _getSelectedNasConnection();
     if (connection == null) return;
 
     final currentPath = _ref.read(currentPathProvider);
@@ -311,16 +394,20 @@ class FileListNotifier extends StateNotifier<FileListState> {
   }
 
   Future<void> copyTo(String sourcePath, String destPath) async {
-    final connection = _getSelectedConnection();
-    if (connection == null) return;
+    final connection = _getSelectedNasConnection();
+    if (connection == null) {
+      throw UnsupportedError('当前连接不支持复制操作');
+    }
 
     await connection.adapter.fileSystem.copy(sourcePath, destPath);
     await refresh();
   }
 
   Future<void> moveTo(String sourcePath, String destPath) async {
-    final connection = _getSelectedConnection();
-    if (connection == null) return;
+    final connection = _getSelectedNasConnection();
+    if (connection == null) {
+      throw UnsupportedError('当前连接不支持移动操作');
+    }
 
     await connection.adapter.fileSystem.move(sourcePath, destPath);
     await refresh();

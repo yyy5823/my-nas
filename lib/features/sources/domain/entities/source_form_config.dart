@@ -835,7 +835,8 @@ class SourceFormConfig {
             const SourceFormField(
               key: 'host',
               label: '服务器地址',
-              placeholder: '192.168.1.100',
+              placeholder: '192.168.1.100 或 jellyfin.example.com',
+              helpText: '支持 IP 地址或域名',
             ),
             SourceFormField(
               key: 'port',
@@ -848,10 +849,67 @@ class SourceFormConfig {
               label: '使用 HTTPS',
               type: SourceFormFieldType.toggle,
               defaultValue: 'false',
+              helpText: '如服务器启用了 SSL，请开启此选项',
             ),
           ],
         ),
-        _credentialSection(),
+        SourceFormSection(
+          title: '认证方式',
+          description: '支持用户名密码、API Key 或 Quick Connect 认证',
+          fields: [
+            const SourceFormField(
+              key: 'authType',
+              label: '认证类型',
+              type: SourceFormFieldType.select,
+              options: ['用户名密码', 'API Key', 'Quick Connect'],
+              defaultValue: '用户名密码',
+              helpText: 'Quick Connect 需要先在服务器上启用此功能',
+            ),
+            SourceFormField(
+              key: 'username',
+              label: '用户名',
+              visibilityCondition: (values) =>
+                  values['authType'] == '用户名密码',
+            ),
+            SourceFormField(
+              key: 'password',
+              label: '密码',
+              type: SourceFormFieldType.password,
+              visibilityCondition: (values) =>
+                  values['authType'] == '用户名密码',
+            ),
+            SourceFormField(
+              key: 'apiKey',
+              label: 'API Key',
+              type: SourceFormFieldType.password,
+              helpText: '在 Jellyfin 控制面板 → API 密钥 中生成',
+              visibilityCondition: (values) =>
+                  values['authType'] == 'API Key',
+            ),
+          ],
+        ),
+        const SourceFormSection(
+          title: '播放设置',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'preferDirectPlay',
+              label: '优先直接播放',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'true',
+              helpText: '关闭后优先使用转码播放，适合网络带宽不足时使用',
+            ),
+            SourceFormField(
+              key: 'maxBitrate',
+              label: '最大码率 (Mbps)',
+              type: SourceFormFieldType.number,
+              defaultValue: '120',
+              required: false,
+              helpText: '限制转码时的最大码率，0 表示不限制',
+            ),
+          ],
+        ),
         _advancedSection(defaultAutoConnect: false),
       ],
     );
@@ -866,7 +924,8 @@ class SourceFormConfig {
             const SourceFormField(
               key: 'host',
               label: '服务器地址',
-              placeholder: '192.168.1.100',
+              placeholder: '192.168.1.100 或 emby.example.com',
+              helpText: '支持 IP 地址或域名',
             ),
             SourceFormField(
               key: 'port',
@@ -879,30 +938,64 @@ class SourceFormConfig {
               label: '使用 HTTPS',
               type: SourceFormFieldType.toggle,
               defaultValue: 'false',
+              helpText: '如服务器启用了 SSL，请开启此选项',
             ),
           ],
         ),
-        const SourceFormSection(
-          title: '认证信息',
-          description: '使用 API Key 或用户名密码认证',
+        SourceFormSection(
+          title: '认证方式',
+          description: '支持用户名密码或 API Key 认证',
           fields: [
-            SourceFormField(
-              key: 'apiKey',
-              label: 'API Key',
-              type: SourceFormFieldType.password,
-              helpText: '在 Emby 控制面板中生成',
-              required: false,
+            const SourceFormField(
+              key: 'authType',
+              label: '认证类型',
+              type: SourceFormFieldType.select,
+              options: ['用户名密码', 'API Key'],
+              defaultValue: '用户名密码',
+              helpText: 'API Key 可在 Emby 控制面板 → API 密钥中生成',
             ),
             SourceFormField(
               key: 'username',
               label: '用户名',
-              required: false,
+              visibilityCondition: (values) =>
+                  values['authType'] != 'API Key',
             ),
             SourceFormField(
               key: 'password',
               label: '密码',
               type: SourceFormFieldType.password,
+              visibilityCondition: (values) =>
+                  values['authType'] != 'API Key',
+            ),
+            SourceFormField(
+              key: 'apiKey',
+              label: 'API Key',
+              type: SourceFormFieldType.password,
+              helpText: '在 Emby 控制面板 → API 密钥 中生成',
+              visibilityCondition: (values) =>
+                  values['authType'] == 'API Key',
+            ),
+          ],
+        ),
+        const SourceFormSection(
+          title: '播放设置',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'preferDirectPlay',
+              label: '优先直接播放',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'true',
+              helpText: '关闭后优先使用转码播放，适合网络带宽不足时使用',
+            ),
+            SourceFormField(
+              key: 'maxBitrate',
+              label: '最大码率 (Mbps)',
+              type: SourceFormFieldType.number,
+              defaultValue: '120',
               required: false,
+              helpText: '限制转码时的最大码率，0 表示不限制',
             ),
           ],
         ),
@@ -920,7 +1013,8 @@ class SourceFormConfig {
             const SourceFormField(
               key: 'host',
               label: '服务器地址',
-              placeholder: '192.168.1.100',
+              placeholder: '192.168.1.100 或 plex.example.com',
+              helpText: '支持 IP 地址或域名',
             ),
             SourceFormField(
               key: 'port',
@@ -933,17 +1027,43 @@ class SourceFormConfig {
               label: '使用 HTTPS',
               type: SourceFormFieldType.toggle,
               defaultValue: 'false',
+              helpText: '如服务器启用了 SSL，请开启此选项',
             ),
           ],
         ),
         const SourceFormSection(
           title: '认证信息',
+          description: '使用 X-Plex-Token 认证',
           fields: [
             SourceFormField(
               key: 'plexToken',
               label: 'Plex Token',
               type: SourceFormFieldType.password,
-              helpText: '从 Plex Web 获取 X-Plex-Token',
+              helpText: '获取方式：登录 Plex Web → 打开任意媒体 → '
+                  '在地址栏 URL 中找到 X-Plex-Token=xxx 参数\n'
+                  '或访问 plex.tv/claim 获取',
+            ),
+          ],
+        ),
+        const SourceFormSection(
+          title: '播放设置',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'preferDirectPlay',
+              label: '优先直接播放',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'true',
+              helpText: '关闭后优先使用转码播放，适合网络带宽不足时使用',
+            ),
+            SourceFormField(
+              key: 'maxBitrate',
+              label: '最大码率 (Mbps)',
+              type: SourceFormFieldType.number,
+              defaultValue: '120',
+              required: false,
+              helpText: '限制转码时的最大码率，建议设置为视频码率的 2 倍以确保直接播放',
             ),
           ],
         ),

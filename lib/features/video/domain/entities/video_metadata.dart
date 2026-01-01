@@ -81,6 +81,13 @@ class VideoMetadata {
     this.traktRating,
     // 内容分级
     this.certification,
+    // 媒体服务器相关
+    this.serverType,
+    this.serverItemId,
+    this.scrapeSource,
+    this.isWatched = false,
+    this.playbackPositionTicks,
+    this.lastPlayedAt,
   });
 
   /// 从 Map 创建
@@ -140,6 +147,15 @@ class VideoMetadata {
       traktRating: (map['traktRating'] as num?)?.toDouble(),
       // 内容分级
       certification: map['certification'] as String?,
+      // 媒体服务器相关
+      serverType: map['serverType'] as String?,
+      serverItemId: map['serverItemId'] as String?,
+      scrapeSource: map['scrapeSource'] as String?,
+      isWatched: map['isWatched'] == 1 || map['isWatched'] == true,
+      playbackPositionTicks: map['playbackPositionTicks'] as int?,
+      lastPlayedAt: map['lastPlayedAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['lastPlayedAt'] as int)
+          : null,
     );
 
   /// 解析多语言 Map（从 JSON 字符串或 Map）
@@ -221,6 +237,15 @@ class VideoMetadata {
   // === 内容分级 ===
 
   String? certification; // 内容分级（PG, PG-13, R, NC-17, G 等）
+
+  // === 媒体服务器相关 ===
+
+  String? serverType; // 服务器类型 (jellyfin, emby, plex)
+  String? serverItemId; // 服务器中的项目 ID
+  String? scrapeSource; // 元数据来源 (tmdb, server, nfo, filename)
+  bool isWatched; // 是否已观看
+  int? playbackPositionTicks; // 播放位置（时间刻度）
+  DateTime? lastPlayedAt; // 最后播放时间
 
   /// 海报显示优先级：
   /// 1. 本地缓存的海报（离线可用，file:// 路径）
@@ -506,6 +531,13 @@ class VideoMetadata {
       'traktRating': traktRating,
       // 内容分级
       'certification': certification,
+      // 媒体服务器相关
+      'serverType': serverType,
+      'serverItemId': serverItemId,
+      'scrapeSource': scrapeSource,
+      'isWatched': isWatched ? 1 : 0,
+      'playbackPositionTicks': playbackPositionTicks,
+      'lastPlayedAt': lastPlayedAt?.millisecondsSinceEpoch,
     };
 
   /// 复制
@@ -561,6 +593,13 @@ class VideoMetadata {
     double? traktRating,
     // 内容分级
     String? certification,
+    // 媒体服务器相关
+    String? serverType,
+    String? serverItemId,
+    String? scrapeSource,
+    bool? isWatched,
+    int? playbackPositionTicks,
+    DateTime? lastPlayedAt,
   }) => VideoMetadata(
       filePath: filePath ?? this.filePath,
       sourceId: sourceId ?? this.sourceId,
@@ -613,6 +652,13 @@ class VideoMetadata {
       traktRating: traktRating ?? this.traktRating,
       // 内容分级
       certification: certification ?? this.certification,
+      // 媒体服务器相关
+      serverType: serverType ?? this.serverType,
+      serverItemId: serverItemId ?? this.serverItemId,
+      scrapeSource: scrapeSource ?? this.scrapeSource,
+      isWatched: isWatched ?? this.isWatched,
+      playbackPositionTicks: playbackPositionTicks ?? this.playbackPositionTicks,
+      lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
     );
 
   /// 添加或更新多语言标题

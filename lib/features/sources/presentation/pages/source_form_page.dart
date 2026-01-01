@@ -8,7 +8,9 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/domain/entities/source_form_config.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
+import 'package:my_nas/media_server_adapters/jellyfin/jellyfin_adapter.dart';
 import 'package:my_nas/service_adapters/aria2/api/aria2_api.dart';
+import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/moviepilot/api/moviepilot_api.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
@@ -851,9 +853,30 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         } finally {
           mpApi.dispose();
         }
+      case SourceType.jellyfin:
+        final jellyfinAuthType = _formValues['authType'] as String? ?? '用户名密码';
+        final jellyfinAdapter = JellyfinAdapter();
+        try {
+          final config = ServiceConnectionConfig(
+            baseUrl: source.baseUrl,
+            username: jellyfinAuthType != 'API Key' ? source.username : null,
+            password: jellyfinAuthType != 'API Key'
+                ? (_formValues['password'] as String? ?? '')
+                : null,
+            apiKey: jellyfinAuthType == 'API Key'
+                ? (_formValues['apiKey'] as String? ?? '')
+                : null,
+          );
+          final result = await jellyfinAdapter.connect(config);
+          return result.when(
+            success: (_) => true,
+            failure: (_) => false,
+          );
+        } finally {
+          await jellyfinAdapter.dispose();
+        }
       // TODO: 添加其他服务类源的验证逻辑
       case SourceType.trakt:
-      case SourceType.jellyfin:
       case SourceType.emby:
       case SourceType.plex:
         // 暂时返回 false，待各服务 API 实现后添加验证逻辑

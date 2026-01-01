@@ -4,6 +4,107 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:smb_connect/smb_connect.dart';
 
+/// 心跳配置
+class HeartbeatConfig {
+  const HeartbeatConfig({
+    this.enabled = true,
+    this.interval = const Duration(minutes: 2),
+    this.timeout = const Duration(seconds: 10),
+  });
+
+  /// 是否启用心跳
+  final bool enabled;
+
+  /// 心跳间隔
+  final Duration interval;
+
+  /// 心跳超时时间
+  final Duration timeout;
+}
+
+/// 专用连接（带心跳支持）
+///
+/// 用于流传输等长时间操作，内置心跳保活机制
+class DedicatedConnection {
+  DedicatedConnection._({
+    required this.client,
+    required this.heartbeatConfig,
+    required void Function() onRelease,
+    void Function()? onDisconnect,
+  })  : _onRelease = onRelease,
+        _onDisconnect = onDisconnect;
+
+  final SmbConnect client;
+  final HeartbeatConfig heartbeatConfig;
+  final void Function() _onRelease;
+  final void Function()? _onDisconnect;
+
+  Timer? _heartbeatTimer;
+  bool _closed = false;
+  bool _heartbeatInProgress = false;
+
+  /// 连接是否已关闭
+  bool get isClosed => _closed;
+
+  /// 启动心跳（在连接空闲时调用，如视频暂停）
+  void startHeartbeat() {
+    if (_closed || !heartbeatConfig.enabled) return;
+    stopHeartbeat(); // 确保没有重复的定时器
+
+    _heartbeatTimer = Timer.periodic(heartbeatConfig.interval, (_) async {
+      if (_closed || _heartbeatInProgress) return;
+      _heartbeatInProgress = true;
+
+      try {
+        final isHealthy = await client.echo().timeout(
+          heartbeatConfig.timeout,
+          onTimeout: () => false,
+        );
+
+        if (!isHealthy && !_closed) {
+          logger.w('SMB DedicatedConnection: 心跳检测失败，标记连接为已断开');
+          _closed = true; // 标记为已关闭，防止继续使用
+          stopHeartbeat();
+          _onDisconnect?.call();
+        }
+      // ignore: avoid_catches_without_on_clauses
+      } catch (e) {
+        if (!_closed) {
+          logger.w('SMB DedicatedConnection: 心跳异常 $e');
+          _closed = true;
+          stopHeartbeat();
+          _onDisconnect?.call();
+        }
+      } finally {
+        _heartbeatInProgress = false;
+      }
+    });
+  }
+
+  /// 停止心跳（在连接活跃时调用，如视频播放中）
+  void stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// 关闭连接并释放资源
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+
+    stopHeartbeat();
+
+    try {
+      await client.close();
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
+      logger.w('SMB DedicatedConnection: 关闭连接失败', e, st);
+    }
+
+    _onRelease();
+  }
+}
+
 /// SMB 连接类型
 enum SmbConnectionType {
   /// 通用操作（目录列表、文件信息等短操作）
@@ -49,18 +150,16 @@ class _PooledConnection {
     _lastUsedAt = DateTime.now();
   }
 
-  /// 检查连接是否健康
-  Future<bool> isHealthy() async {
+  /// 检查连接是否健康（使用 echo 命令）
+  Future<bool> isHealthy({Duration timeout = const Duration(seconds: 10)}) async {
     try {
-      // 尝试列出共享来验证连接
-      await client.listShares().timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => throw TimeoutException('连接检查超时'),
+      return await client.echo().timeout(
+        timeout,
+        onTimeout: () => false,
       );
-      return true;
     // ignore: avoid_catches_without_on_clauses
     } catch (e, st) {
-      logger.w('SMB 连接健康检查失败', e,  st);
+      logger.w('SMB 连接健康检查失败', e, st);
       return false;
     }
   }
@@ -81,7 +180,10 @@ class SmbConnectionPool {
     this.maxConnections = 5,
     this.maxDedicatedConnections = 8,
     this.maxIdleTime = const Duration(minutes: 5),
-  });
+    this.heartbeatConfig = const HeartbeatConfig(),
+  }) {
+    _startHeartbeat();
+  }
 
   final String host;
   final String username;
@@ -90,10 +192,12 @@ class SmbConnectionPool {
   final int maxConnections;
   final int maxDedicatedConnections;
   final Duration maxIdleTime;
+  final HeartbeatConfig heartbeatConfig;
 
   final List<_PooledConnection> _connections = [];
   final _lock = _AsyncLock();
   bool _disposed = false;
+  Timer? _heartbeatTimer;
 
   /// 当前专用连接数
   int _dedicatedConnectionCount = 0;
@@ -117,7 +221,8 @@ class SmbConnectionPool {
       throw StateError('连接池已关闭');
     }
 
-    return _lock.synchronized(() async {
+    // 先尝试在锁内快速获取或创建连接
+    final result = await _lock.synchronized(() async {
       // 1. 尝试复用现有空闲连接（非独占模式）
       if (!exclusive) {
         final idle = _connections.where(
@@ -145,10 +250,17 @@ class SmbConnectionPool {
         return newConn.client;
       }
 
-      // 3. 等待空闲连接（独占模式或已达上限）
-      logger.d('SMB Pool: 等待空闲连接...');
-      return _waitForConnection(type, exclusive);
+      // 返回 null 表示需要等待
+      return null;
     });
+
+    if (result != null) {
+      return result;
+    }
+
+    // 3. 等待空闲连接（在锁外执行，避免死锁）
+    logger.d('SMB Pool: 等待空闲连接...');
+    return _waitForConnection(type, exclusive);
   }
 
   /// 释放连接
@@ -185,9 +297,6 @@ class SmbConnectionPool {
       domain: domain,
       username: username,
       password: password,
-      // 连接池连接启用心跳保活
-      enableHeartbeat: true,
-      heartbeatInterval: const Duration(minutes: 2),
     ).timeout(
       const Duration(seconds: 30),
       onTimeout: () => throw TimeoutException('SMB 连接超时'),
@@ -210,6 +319,8 @@ class SmbConnectionPool {
   }
 
   /// 等待空闲连接
+  ///
+  /// 注意：此方法应在 _lock 外部调用
   Future<SmbConnect> _waitForConnection(
     SmbConnectionType type,
     bool exclusive,
@@ -219,12 +330,18 @@ class SmbConnectionPool {
     final deadline = DateTime.now().add(maxWait);
 
     while (DateTime.now().isBefore(deadline)) {
-      // 检查是否有空闲连接
-      final idle = _connections.where((c) => !c.inUse).toList();
-      if (idle.isNotEmpty) {
-        final conn = idle.first
-        ..acquire();
-        return conn.client;
+      // 在锁内检查并获取连接，避免竞态条件
+      final client = await _lock.synchronized(() async {
+        final idle = _connections.where((c) => !c.inUse).toList();
+        if (idle.isNotEmpty) {
+          final conn = idle.first..acquire();
+          return conn.client;
+        }
+        return null;
+      });
+
+      if (client != null) {
+        return client;
       }
 
       await Future<void>.delayed(checkInterval);
@@ -250,12 +367,92 @@ class SmbConnectionPool {
     });
   }
 
+  /// 启动心跳定时器
+  void _startHeartbeat() {
+    if (!heartbeatConfig.enabled) return;
+
+    _heartbeatTimer = Timer.periodic(heartbeatConfig.interval, (_) {
+      _performHeartbeat();
+    });
+  }
+
+  /// 停止心跳定时器
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  bool _heartbeatInProgress = false;
+
+  /// 执行心跳检查
+  Future<void> _performHeartbeat() async {
+    if (_disposed || _heartbeatInProgress) return;
+    _heartbeatInProgress = true;
+
+    try {
+      // 1. 在锁内快速获取需要检查的连接列表
+      final connectionsToCheck = await _lock.synchronized(() async {
+        final idleConnections = _connections.where((c) => !c.inUse).toList();
+
+        // 分离过期连接和需要心跳检查的连接
+        final expiredConnections = idleConnections
+            .where((c) => c.idleTime > maxIdleTime)
+            .toList();
+        final toCheck = idleConnections
+            .where((c) => c.idleTime <= maxIdleTime)
+            .toList();
+
+        // 立即移除过期连接
+        for (final conn in expiredConnections) {
+          logger.d('SMB Pool: 移除过期连接 (空闲 ${conn.idleTime.inMinutes} 分钟)');
+          await _removeConnection(conn);
+        }
+
+        return toCheck;
+      });
+
+      // 2. 在锁外并发执行心跳检查（不阻塞其他操作）
+      final deadConnections = <_PooledConnection>[];
+
+      await Future.wait(
+        connectionsToCheck.map((conn) async {
+          // 再次检查是否被使用（可能在等待期间被获取）
+          if (conn.inUse) return;
+
+          final isHealthy = await conn.isHealthy(
+            timeout: heartbeatConfig.timeout,
+          );
+
+          if (!isHealthy) {
+            deadConnections.add(conn);
+          }
+        }),
+      );
+
+      // 3. 在锁内移除死连接
+      if (deadConnections.isNotEmpty) {
+        await _lock.synchronized(() async {
+          for (final conn in deadConnections) {
+            // 再次检查是否仍在连接池中且未被使用
+            if (_connections.contains(conn) && !conn.inUse) {
+              logger.w('SMB Pool: 心跳检测失败，移除死连接');
+              await _removeConnection(conn);
+            }
+          }
+        });
+      }
+    } finally {
+      _heartbeatInProgress = false;
+    }
+  }
+
   /// 获取一个专用连接（不放入池中，调用者负责关闭）
   ///
   /// 用于长时间运行的独占操作（如视频流传输）
   /// 会等待直到有可用的连接槽位
   ///
   /// 返回值包含连接和释放回调，调用者必须在完成后调用 releaseCallback
+  @Deprecated('使用 createDedicatedConnectionWithHeartbeat 代替，支持心跳保活')
   Future<({SmbConnect client, void Function() releaseCallback})>
       createDedicatedConnection() async {
     // 等待连接槽位
@@ -267,11 +464,6 @@ class SmbConnectionPool {
         domain: domain,
         username: username,
         password: password,
-        // 流传输连接禁用心跳（一直在传输数据，不需要心跳）
-        // 但如果播放器暂停时间过长，连接可能会断开
-        // 考虑启用心跳以防止暂停时断开
-        enableHeartbeat: true,
-        heartbeatInterval: const Duration(minutes: 2),
       ).timeout(
         const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException('SMB 专用连接超时 (30s)'),
@@ -283,6 +475,69 @@ class SmbConnectionPool {
       // 创建失败，释放槽位并上报错误
       _releaseDedicatedSlot();
       AppError.handle(e, st, 'SmbPool.createDedicatedConnection', {
+        'host': host,
+        'currentCount': _dedicatedConnectionCount,
+        'maxCount': maxDedicatedConnections,
+      });
+      rethrow;
+    }
+  }
+
+  /// 获取一个带心跳支持的专用连接
+  ///
+  /// 用于流传输等长时间操作（如视频播放）
+  /// 内置心跳保活机制，防止连接因缓冲导致的空闲超时
+  ///
+  /// [onDisconnect] 当心跳检测到连接断开时的回调
+  ///
+  /// 使用示例：
+  /// ```dart
+  /// final conn = await pool.createDedicatedConnectionWithHeartbeat(
+  ///   onDisconnect: () => print('连接断开'),
+  /// );
+  ///
+  /// // 开始播放视频时，停止心跳（数据传输中不需要）
+  /// conn.stopHeartbeat();
+  ///
+  /// // 视频暂停时，启动心跳保活
+  /// conn.startHeartbeat();
+  ///
+  /// // 完成后关闭连接
+  /// await conn.close();
+  /// ```
+  Future<DedicatedConnection> createDedicatedConnectionWithHeartbeat({
+    void Function()? onDisconnect,
+  }) async {
+    // 等待连接槽位
+    await _waitForDedicatedSlot();
+
+    try {
+      final client = await SmbConnect.connectAuth(
+        host: host,
+        domain: domain,
+        username: username,
+        password: password,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException('SMB 专用连接超时 (30s)'),
+      );
+
+      final connection = DedicatedConnection._(
+        client: client,
+        heartbeatConfig: heartbeatConfig,
+        onRelease: _releaseDedicatedSlot,
+        onDisconnect: onDisconnect,
+      );
+
+      // 默认启动心跳（连接刚建立时处于空闲状态）
+      connection.startHeartbeat();
+
+      return connection;
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
+      // 创建失败，释放槽位并上报错误
+      _releaseDedicatedSlot();
+      AppError.handle(e, st, 'SmbPool.createDedicatedConnectionWithHeartbeat', {
         'host': host,
         'currentCount': _dedicatedConnectionCount,
         'maxCount': maxDedicatedConnections,
@@ -315,14 +570,21 @@ class SmbConnectionPool {
 
   /// 释放专用连接槽位
   void _releaseDedicatedSlot() {
-    _dedicatedConnectionCount--;
-    logger.d('SMB Pool: 释放专用连接槽位 ($_dedicatedConnectionCount/$maxDedicatedConnections)');
+    // 使用同步方式更新计数，避免竞态条件
+    // ignore: discarded_futures
+    _dedicatedLock.synchronized(() async {
+      _dedicatedConnectionCount--;
+      logger.d('SMB Pool: 释放专用连接槽位 ($_dedicatedConnectionCount/$maxDedicatedConnections)');
+    });
   }
 
   /// 关闭连接池
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+
+    // 停止心跳定时器
+    _stopHeartbeat();
 
     await _lock.synchronized(() async {
       for (final conn in _connections) {

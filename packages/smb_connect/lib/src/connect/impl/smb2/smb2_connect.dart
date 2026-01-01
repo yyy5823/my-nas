@@ -13,6 +13,8 @@ import 'package:smb_connect/src/connect/impl/smb2/dcerpc.dart';
 import 'package:smb_connect/src/connect/impl/smb2/info/smb2_set_info_request.dart';
 import 'package:smb_connect/src/connect/impl/smb2/server_message_block2.dart';
 import 'package:smb_connect/src/connect/impl/smb2/smb2_constants.dart';
+import 'package:smb_connect/src/connect/impl/smb2/smb2_echo_request.dart';
+import 'package:smb_connect/src/connect/impl/smb2/smb2_echo_response.dart';
 import 'package:smb_connect/src/connect/impl/smb2/smb2_files_enumerator.dart';
 import 'package:smb_connect/src/connect/impl/smb2/smb2_random_access_file_controller.dart';
 import 'package:smb_connect/src/connect/impl/smb2/smb2_session.dart';
@@ -363,5 +365,17 @@ class Smb2Connect extends SmbConnect {
     // }
 
     return SmbRandomAccessFile(file, controller);
+  }
+
+  @override
+  Future<bool> echo() async {
+    try {
+      final request = Smb2EchoRequest(configuration);
+      // Echo 请求不需要 tree，直接发送
+      final response = await transport.sendrecv<Smb2EchoResponse>(request);
+      return response.status == NtStatus.NT_STATUS_OK;
+    } catch (_) {
+      return false;
+    }
   }
 }

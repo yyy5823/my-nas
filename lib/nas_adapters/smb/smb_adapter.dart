@@ -8,7 +8,6 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/smb/smb_connection_pool.dart';
 import 'package:my_nas/nas_adapters/smb/smb_file_system.dart';
 import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
-import 'package:smb_connect/smb_connect.dart';
 
 /// SMB/CIFS NAS 适配器
 ///
@@ -24,7 +23,6 @@ class SmbAdapter implements NasAdapter {
     logger.i('SmbAdapter: 初始化适配器');
   }
 
-  SmbConnect? _client;
   SmbConnectionPool? _connectionPool;
   SmbFileSystem? _fileSystem;
   ConnectionConfig? _config;
@@ -182,35 +180,7 @@ class SmbAdapter implements NasAdapter {
       try {
         logger.d('SmbAdapter: 连接尝试 $attempt/$maxRetries');
 
-        // SMB 连接
-        _client = await SmbConnect.connectAuth(
-          host: host,
-          domain: '',
-          username: username,
-          password: password,
-        ).timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {
-            throw Exception('SMB 连接超时 (30秒)');
-          },
-        );
-
-        logger.d('SmbAdapter: SMB 连接已建立，正在获取共享列表...');
-
-        // 测试连接 - 获取共享列表
-        final shares = await _client!.listShares().timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            throw Exception('获取共享列表超时');
-          },
-        );
-        logger.i('SmbAdapter: 连接成功，发现 ${shares.length} 个共享');
-
-        for (final share in shares) {
-          logger.d('SmbAdapter: 共享 => ${share.name} (${share.path})');
-        }
-
-        // 创建连接池
+        // 创建连接池（统一管理所有连接）
         logger.i('SmbAdapter: ${SmbPoolConfig.summary}');
         _connectionPool = SmbConnectionPool(
           host: host,
@@ -221,9 +191,28 @@ class SmbAdapter implements NasAdapter {
           maxIdleTime: SmbPoolConfig.maxIdleTime,
         );
 
+        // 通过连接池获取连接并测试
+        final shares = await _connectionPool!.withConnection(
+          (client) async {
+            logger.d('SmbAdapter: SMB 连接已建立，正在获取共享列表...');
+            return client.listShares();
+          },
+          type: SmbConnectionType.general,
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw Exception('SMB 连接超时 (30秒)');
+          },
+        );
+
+        logger.i('SmbAdapter: 连接成功，发现 ${shares.length} 个共享');
+
+        for (final share in shares) {
+          logger.d('SmbAdapter: 共享 => ${share.name} (${share.path})');
+        }
+
         _fileSystem = SmbFileSystem(
-          client: _client!,
-          connectionPool: _connectionPool,
+          connectionPool: _connectionPool!,
         );
         _connected = true;
 
@@ -239,11 +228,11 @@ class SmbAdapter implements NasAdapter {
         lastStackTrace = stackTrace;
         logger.w('SmbAdapter: 连接尝试 $attempt 失败: $e');
 
-        // 清理失败的连接
+        // 清理失败的连接池
         try {
-          await _client?.close();
+          await _connectionPool?.dispose();
         } catch (_) {}
-        _client = null;
+        _connectionPool = null;
 
         // 如果不是最后一次尝试，等待后重试
         if (attempt < maxRetries) {
@@ -349,17 +338,14 @@ class SmbAdapter implements NasAdapter {
     if (!_connected) return;
 
     try {
-      // 先关闭连接池
+      // 关闭连接池（会关闭所有连接）
       await _connectionPool?.dispose();
-      // 再关闭主连接
-      await _client?.close();
     // ignore: avoid_catches_without_on_clauses
     } catch (e) {
       logger.w('SmbAdapter: 断开连接时出错', e);
     }
 
     _connectionPool = null;
-    _client = null;
     _fileSystem = null;
     _connected = false;
     _config = null;
@@ -368,21 +354,29 @@ class SmbAdapter implements NasAdapter {
 
   @override
   Future<bool> checkConnectionHealth() async {
-    if (!_connected || _client == null) {
+    if (!_connected || _connectionPool == null) {
       logger.d('SmbAdapter: 连接健康检查 - 未连接');
       return false;
     }
 
     try {
-      // 尝试列出共享来验证连接是否有效
-      await _client!.listShares().timeout(
+      // 使用 echo 命令检查连接健康状态（比 listShares 更轻量）
+      final isHealthy = await _connectionPool!.withConnection(
+        (client) => client.echo(),
+        type: SmbConnectionType.general,
+      ).timeout(
         const Duration(seconds: 5),
-        onTimeout: () {
-          throw Exception('连接健康检查超时');
-        },
+        onTimeout: () => false,
       );
-      logger.d('SmbAdapter: 连接健康检查 - 正常');
-      return true;
+
+      if (isHealthy) {
+        logger.d('SmbAdapter: 连接健康检查 - 正常');
+        return true;
+      } else {
+        logger.w('SmbAdapter: 连接健康检查 - echo 失败');
+        _connected = false;
+        return false;
+      }
     // ignore: avoid_catches_without_on_clauses
     } catch (e) {
       logger.w('SmbAdapter: 连接健康检查 - 失败', e);

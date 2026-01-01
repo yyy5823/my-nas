@@ -10,6 +10,7 @@ import 'package:smb_connect/src/connect/impl/smb1/com/smb_com_close.dart';
 import 'package:smb_connect/src/connect/impl/smb1/com/smb_com_create_directory.dart';
 import 'package:smb_connect/src/connect/impl/smb1/com/smb_com_delete.dart';
 import 'package:smb_connect/src/connect/impl/smb1/com/smb_com_delete_directory.dart';
+import 'package:smb_connect/src/connect/impl/smb1/com/smb_com_echo.dart';
 import 'package:smb_connect/src/connect/impl/smb1/com/smb_com_negotiate_response.dart';
 import 'package:smb_connect/src/connect/impl/smb1/com/smb_com_nt_create_and_x.dart';
 import 'package:smb_connect/src/connect/impl/smb1/com/smb_com_nt_create_and_x_response.dart';
@@ -355,5 +356,17 @@ class Smb1Connect extends SmbConnect {
     Smb1RandomAccessFileController controller = Smb1RandomAccessFileController(
         file, tree, mode, _openFile, isCapabilitiyNtSMBS());
     return SmbRandomAccessFile(file, controller);
+  }
+
+  @override
+  Future<bool> echo() async {
+    try {
+      final request = SmbComEcho(configuration);
+      final response = SmbComEchoResponse(configuration);
+      await transport.sendrecv(request, response: response);
+      return response.errorCode == 0;
+    } catch (_) {
+      return false;
+    }
   }
 }

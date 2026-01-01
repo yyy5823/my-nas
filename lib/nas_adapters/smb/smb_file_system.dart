@@ -13,32 +13,17 @@ import 'package:smb_connect/smb_connect.dart';
 /// SMB 文件系统实现
 ///
 /// 使用 smb_connect 库实现文件操作
-/// 支持连接池，长操作（视频流）使用独立连接
+/// 使用连接池管理所有连接，支持并发操作和心跳保活
 class SmbFileSystem implements NasFileSystem {
   SmbFileSystem({
-    required this.client,
-    this.connectionPool,
-  });
+    required SmbConnectionPool connectionPool,
+  }) : _connectionPool = connectionPool;
 
-  /// 主连接（用于快速操作）
-  final SmbConnect client;
-
-  /// 连接池（用于并发操作）
-  final SmbConnectionPool? connectionPool;
+  /// 连接池（统一管理所有连接）
+  final SmbConnectionPool _connectionPool;
 
   /// 缓存的共享列表
   List<SmbFile>? _cachedShares;
-
-  /// 检查是否是连接断开错误
-  bool _isConnectionError(Object e) {
-    final msg = e.toString().toLowerCase();
-    return msg.contains('network name is no longer available') ||
-        msg.contains('connection closed') ||
-        msg.contains('socket closed') ||
-        msg.contains('streamsink is closed') ||
-        msg.contains('connection reset') ||
-        msg.contains('broken pipe');
-  }
 
   @override
   Future<List<FileItem>> listDirectory(String path) async {
@@ -49,21 +34,11 @@ class SmbFileSystem implements NasFileSystem {
       return listShares();
     }
 
-    // 尝试使用主连接
-    try {
-      return await _listDirectoryWithClient(client, path);
-    // 使用通用 catch 捕获所有类型的异常（包括 SMB 库抛出的 String 异常）
-    } catch (e) {
-      // 如果是连接错误且有连接池，尝试用新连接重试
-      if (_isConnectionError(e) && connectionPool != null) {
-        logger.w('SmbFileSystem: 主连接断开，使用连接池重试');
-        return connectionPool!.withConnection(
-          (poolClient) => _listDirectoryWithClient(poolClient, path),
-          type: SmbConnectionType.general,
-        );
-      }
-      rethrow;
-    }
+    // 使用连接池获取连接
+    return _connectionPool.withConnection(
+      (client) => _listDirectoryWithClient(client, path),
+      type: SmbConnectionType.general,
+    );
   }
 
   /// 使用指定连接列出目录
@@ -84,7 +59,6 @@ class SmbFileSystem implements NasFileSystem {
   /// 并行列出多个目录
   ///
   /// 利用连接池同时列出多个目录，大幅提升扫描速度
-  /// 如果没有连接池，则回退到串行执行
   ///
   /// [paths] 要列出的目录路径列表
   /// [concurrency] 最大并发数（默认根据连接池配置自动调整）
@@ -98,23 +72,8 @@ class SmbFileSystem implements NasFileSystem {
 
     final results = <String, List<FileItem>>{};
 
-    // 如果没有连接池，回退到串行执行
-    if (connectionPool == null) {
-      // logger.d('SmbFileSystem: 无连接池，使用串行目录列表'); // 减少日志输出
-      for (final path in paths) {
-        try {
-          results[path] = await listDirectory(path);
-        // ignore: avoid_catches_without_on_clauses
-        } catch (e) {
-          logger.w('SmbFileSystem: 列出目录失败: $path - $e');
-        }
-      }
-      return results;
-    }
-
     // 使用连接池并行执行
-    final pool = connectionPool!;
-    final maxConcurrency = concurrency ?? pool.maxConnections;
+    final maxConcurrency = concurrency ?? _connectionPool.maxConnections;
     final actualConcurrency = maxConcurrency < paths.length ? maxConcurrency : paths.length;
 
     // logger.d('SmbFileSystem: 并行列出 ${paths.length} 个目录，并发数: $actualConcurrency'); // 减少日志输出
@@ -125,7 +84,7 @@ class SmbFileSystem implements NasFileSystem {
 
       final futures = batch.map((path) async {
         try {
-          final files = await pool.withConnection(
+          final files = await _connectionPool.withConnection(
             (client) => _listDirectoryWithClient(client, path),
             type: SmbConnectionType.general,
           );
@@ -161,24 +120,9 @@ class SmbFileSystem implements NasFileSystem {
 
     final results = <String, DateTime?>{};
 
-    // 如果没有连接池，回退到串行执行
-    if (connectionPool == null) {
-      for (final path in paths) {
-        try {
-          final info = await getFileInfo(path);
-          results[path] = info.modifiedTime;
-        // ignore: avoid_catches_without_on_clauses
-        } catch (e) {
-          results[path] = null;
-        }
-      }
-      return results;
-    }
-
     // 使用连接池并行执行
-    final pool = connectionPool!;
-    final maxConcurrency = pool.maxConnections < paths.length
-        ? pool.maxConnections
+    final maxConcurrency = _connectionPool.maxConnections < paths.length
+        ? _connectionPool.maxConnections
         : paths.length;
 
     // 分批处理
@@ -186,17 +130,17 @@ class SmbFileSystem implements NasFileSystem {
       final batch = paths.skip(i).take(maxConcurrency).toList();
       final futures = batch.map((path) async {
         try {
-          final conn = await pool.acquire(type: SmbConnectionType.general);
-          try {
-            final smbFile = await conn.file(path);
-            // SmbFile.lastModified 是毫秒时间戳
-            final mtime = smbFile.lastModified > 0
-                ? DateTime.fromMillisecondsSinceEpoch(smbFile.lastModified)
-                : null;
-            return MapEntry(path, mtime);
-          } finally {
-            pool.release(conn);
-          }
+          return await _connectionPool.withConnection(
+            (conn) async {
+              final smbFile = await conn.file(path);
+              // SmbFile.lastModified 是毫秒时间戳
+              final mtime = smbFile.lastModified > 0
+                  ? DateTime.fromMillisecondsSinceEpoch(smbFile.lastModified)
+                  : null;
+              return MapEntry(path, mtime);
+            },
+            type: SmbConnectionType.general,
+          );
         // ignore: avoid_catches_without_on_clauses
         } catch (e) {
           return MapEntry<String, DateTime?>(path, null);
@@ -260,7 +204,10 @@ class SmbFileSystem implements NasFileSystem {
       return _cachedShares!.map(_toFileItem).toList();
     }
 
-    final shares = await client.listShares();
+    final shares = await _connectionPool.withConnection(
+      (client) => client.listShares(),
+      type: SmbConnectionType.general,
+    );
     _cachedShares = shares;
 
     logger.i('SmbFileSystem: 获取到 ${shares.length} 个共享');
@@ -302,53 +249,40 @@ class SmbFileSystem implements NasFileSystem {
 
   @override
   Future<FileItem> getFileInfo(String path) async {
-    // 尝试使用主连接
-    try {
-      final file = await client.file(path);
-      return _toFileItem(file);
-    } catch (e) {
-      // 如果是连接错误且有连接池，尝试用新连接重试
-      if (_isConnectionError(e) && connectionPool != null) {
-        logger.w('SmbFileSystem: getFileInfo 主连接断开，使用连接池重试');
-        return connectionPool!.withConnection(
-          (poolClient) async {
-            final file = await poolClient.file(path);
-            return _toFileItem(file);
-          },
-          type: SmbConnectionType.general,
-        );
-      }
-      rethrow;
-    }
+    return _connectionPool.withConnection(
+      (client) async {
+        final file = await client.file(path);
+        return _toFileItem(file);
+      },
+      type: SmbConnectionType.general,
+    );
   }
 
   @override
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
     // 连接策略：
-    // - 有 range 参数 = 视频播放（需要长时间占用）-> 使用专用连接
-    // - 无 range 参数 = 普通文件下载 -> 使用连接池（支持并发）或主连接
+    // - 有 range 参数 = 视频播放（需要长时间占用）-> 使用专用连接（带心跳）
+    // - 无 range 参数 = 普通文件下载 -> 使用连接池（支持并发）
     SmbConnect streamClient;
-    void Function()? releaseCallback;
+    DedicatedConnection? dedicatedConnection;
+    void Function()? releasePoolConnection;
 
     final needsDedicatedConnection = range != null;
 
-    // 标记是否需要关闭连接（专用连接需要关闭，连接池连接只需释放）
-    var shouldCloseOnCleanup = false;
-
-    if (connectionPool != null && needsDedicatedConnection) {
-      // 视频播放：使用专用连接，避免阻塞其他操作
-      final dedicated = await connectionPool!.createDedicatedConnection();
-      streamClient = dedicated.client;
-      releaseCallback = dedicated.releaseCallback;
-      shouldCloseOnCleanup = true;
-    } else if (connectionPool != null) {
-      // 普通文件下载：使用连接池分配连接（支持并发读取多个文件）
-      streamClient = await connectionPool!.acquire(type: SmbConnectionType.background);
-      releaseCallback = () => connectionPool!.release(streamClient);
-      shouldCloseOnCleanup = false; // 连接池连接只释放，不关闭
+    if (needsDedicatedConnection) {
+      // 视频播放：使用专用连接（带心跳保活），避免阻塞其他操作
+      dedicatedConnection = await _connectionPool.createDedicatedConnectionWithHeartbeat(
+        onDisconnect: () {
+          logger.w('SmbFileSystem: 流传输连接断开');
+        },
+      );
+      streamClient = dedicatedConnection.client;
+      // 开始传输时停止心跳（有数据流动不需要心跳）
+      dedicatedConnection.stopHeartbeat();
     } else {
-      // 无连接池：使用主连接（不支持并发）
-      streamClient = client;
+      // 普通文件下载：使用连接池分配连接（支持并发读取多个文件）
+      streamClient = await _connectionPool.acquire(type: SmbConnectionType.background);
+      releasePoolConnection = () => _connectionPool.release(streamClient);
     }
 
     /// 清理连接资源（确保只执行一次）
@@ -357,15 +291,12 @@ class SmbFileSystem implements NasFileSystem {
       if (cleanupCalled) return; // 防止重复调用
       cleanupCalled = true;
 
-      if (releaseCallback != null) {
-        if (shouldCloseOnCleanup) {
-          // 专用连接：先关闭再释放槽位
-          try {
-            await streamClient.close();
-            // ignore: avoid_catches_without_on_clauses
-          } catch (_) {}
-        }
-        releaseCallback();
+      if (dedicatedConnection != null) {
+        // 专用连接：使用 DedicatedConnection.close() 统一处理
+        await dedicatedConnection.close();
+      } else if (releasePoolConnection != null) {
+        // 连接池连接：只释放不关闭
+        releasePoolConnection();
       }
     }
 
@@ -389,9 +320,17 @@ class SmbFileSystem implements NasFileSystem {
           // 使用暂停/恢复机制控制内存使用
           var isPaused = false;
 
-          controller.onPause = () => isPaused = true;
+          controller.onPause = () {
+            isPaused = true;
+            // 流暂停时启动心跳保活（如视频暂停）
+            dedicatedConnection?.startHeartbeat();
+          };
           // ignore: cascade_invocations
-          controller.onResume = () => isPaused = false;
+          controller.onResume = () {
+            isPaused = false;
+            // 流恢复时停止心跳（有数据传输不需要心跳）
+            dedicatedConnection?.stopHeartbeat();
+          };
           // ignore: cascade_invocations
           controller.onCancel = () async {
             // 客户端取消，清理资源
@@ -476,7 +415,7 @@ class SmbFileSystem implements NasFileSystem {
         // 完整文件流 - 包装以便在完成时关闭连接
         final rawStream = await streamClient.openRead(file);
 
-        if (releaseCallback != null) {
+        if (releasePoolConnection != null) {
           // 包装流，在完成时关闭专用连接
           final controller = StreamController<List<int>>();
           rawStream.listen(
@@ -511,19 +450,32 @@ class SmbFileSystem implements NasFileSystem {
 
   @override
   Future<void> createDirectory(String path) async {
-    await client.createFolder(path);
+    await _connectionPool.withConnection(
+      (client) => client.createFolder(path),
+      type: SmbConnectionType.general,
+    );
   }
 
   @override
   Future<void> delete(String path) async {
-    final file = await client.file(path);
-    await client.delete(file);
+    await _connectionPool.withConnection(
+      (client) async {
+        final file = await client.file(path);
+        await client.delete(file);
+      },
+      type: SmbConnectionType.general,
+    );
   }
 
   @override
   Future<void> rename(String oldPath, String newPath) async {
-    final file = await client.file(oldPath);
-    await client.rename(file, newPath);
+    await _connectionPool.withConnection(
+      (client) async {
+        final file = await client.file(oldPath);
+        await client.rename(file, newPath);
+      },
+      type: SmbConnectionType.general,
+    );
   }
 
   @override
@@ -552,59 +504,69 @@ class SmbFileSystem implements NasFileSystem {
     final name = fileName ?? p.basename(localPath);
     final targetPath = remotePath.endsWith('/') ? '$remotePath$name' : '$remotePath/$name';
 
-    // 创建远程文件
-    await client.createFile(targetPath);
-    final remoteFile = await client.file(targetPath);
+    await _connectionPool.withConnection(
+      (client) async {
+        // 创建远程文件
+        await client.createFile(targetPath);
+        final remoteFile = await client.file(targetPath);
 
-    // 获取写入流
-    final writer = await client.openWrite(remoteFile);
+        // 获取写入流
+        final writer = await client.openWrite(remoteFile);
 
-    try {
-      final total = await file.length();
-      var sent = 0;
+        try {
+          final total = await file.length();
+          var sent = 0;
 
-      await for (final chunk in file.openRead()) {
-        writer.add(chunk);
-        sent += chunk.length;
-        onProgress?.call(sent, total);
-      }
+          await for (final chunk in file.openRead()) {
+            writer.add(chunk);
+            sent += chunk.length;
+            onProgress?.call(sent, total);
+          }
 
-      await writer.flush();
-      await writer.close();
-    } on Exception {
-      await writer.close();
-      rethrow;
-    }
+          await writer.flush();
+          await writer.close();
+        } on Exception {
+          await writer.close();
+          rethrow;
+        }
+      },
+      type: SmbConnectionType.background,
+    );
   }
 
   @override
   Future<void> writeFile(String remotePath, List<int> data) async {
-    // 先尝试删除已存在的文件（如果存在）
-    // 使用通用 catch 捕获所有类型的异常（包括 String 异常）
-    try {
-      final existingFile = await client.file(remotePath);
-      await client.delete(existingFile);
-    // ignore: avoid_catches_without_on_clauses
-    } catch (_) {
-      // 文件不存在或删除失败，忽略错误继续写入
-    }
+    await _connectionPool.withConnection(
+      (client) async {
+        // 先尝试删除已存在的文件（如果存在）
+        // 使用通用 catch 捕获所有类型的异常（包括 String 异常）
+        try {
+          final existingFile = await client.file(remotePath);
+          await client.delete(existingFile);
+        // ignore: avoid_catches_without_on_clauses
+        } catch (_) {
+          // 文件不存在或删除失败，忽略错误继续写入
+        }
 
-    // 创建远程文件
-    await client.createFile(remotePath);
-    final remoteFile = await client.file(remotePath);
+        // 创建远程文件
+        await client.createFile(remotePath);
+        final remoteFile = await client.file(remotePath);
 
-    // 获取写入流
-    final writer = await client.openWrite(remoteFile);
+        // 获取写入流
+        final writer = await client.openWrite(remoteFile);
 
-    try {
-      writer.add(data);
-      await writer.flush();
-      await writer.close();
-    // ignore: avoid_catches_without_on_clauses
-    } catch (e) {
-      await writer.close();
-      rethrow;
-    }
+        try {
+          writer.add(data);
+          await writer.flush();
+          await writer.close();
+        // ignore: avoid_catches_without_on_clauses
+        } catch (e) {
+          await writer.close();
+          rethrow;
+        }
+      },
+      type: SmbConnectionType.general,
+    );
   }
 
   @override

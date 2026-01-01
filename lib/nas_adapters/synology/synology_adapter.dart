@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:my_nas/core/constants/app_constants.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/network/dio_client.dart';
@@ -23,6 +25,9 @@ class SynologyAdapter implements NasAdapter {
   ConnectionConfig? _config;
   ServerInfo? _serverInfo;
   bool _connected = false;
+
+  /// 会话刷新锁，防止多个请求同时刷新会话
+  Completer<String?>? _sessionRefreshCompleter;
 
   @override
   NasAdapterInfo get info => NasAdapterInfo(
@@ -150,13 +155,24 @@ class SynologyAdapter implements NasAdapter {
   }
 
   /// 刷新会话（重新登录）
+  ///
+  /// 使用锁机制确保多个请求同时检测到会话过期时，只有一个请求执行刷新，
+  /// 其他请求等待刷新结果。
   Future<String?> _refreshSession() async {
+    // 如果已有刷新操作在进行中，等待其完成
+    if (_sessionRefreshCompleter != null) {
+      logger.d('SynologyAdapter: 等待现有会话刷新完成...');
+      return _sessionRefreshCompleter!.future;
+    }
+
     final config = _config;
     if (config == null) {
       logger.w('SynologyAdapter: 无法刷新会话，配置为空');
       return null;
     }
 
+    // 创建新的刷新操作
+    _sessionRefreshCompleter = Completer<String?>();
     logger.i('SynologyAdapter: 正在刷新会话...');
 
     try {
@@ -168,7 +184,7 @@ class SynologyAdapter implements NasAdapter {
         enableDeviceToken: config.enableDeviceToken,
       );
 
-      return switch (authResult) {
+      final result = switch (authResult) {
         AuthSuccess(:final sid) => () {
             logger.i('SynologyAdapter: 会话刷新成功');
             return sid;
@@ -185,9 +201,18 @@ class SynologyAdapter implements NasAdapter {
             return null;
           }(),
       };
+
+      _sessionRefreshCompleter!.complete(result);
+      return result;
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '会话刷新失败');
+      _sessionRefreshCompleter!.complete(null);
       return null;
+    } finally {
+      // 延迟清除 completer，给等待中的请求一些时间获取结果
+      Future<void>.delayed(const Duration(milliseconds: 100), () {
+        _sessionRefreshCompleter = null;
+      });
     }
   }
 

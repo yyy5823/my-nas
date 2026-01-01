@@ -30,6 +30,11 @@ final activeConnectionsProvider =
     StateNotifierProvider<ActiveConnectionsNotifier, Map<String, SourceConnection>>(
         ActiveConnectionsNotifier.new);
 
+/// 活跃媒体服务器连接 Provider
+final activeMediaServerConnectionsProvider =
+    StateNotifierProvider<ActiveMediaServerConnectionsNotifier, Map<String, MediaServerConnection>>(
+        ActiveMediaServerConnectionsNotifier.new);
+
 /// 媒体库配置 Provider
 final mediaLibraryConfigProvider =
     StateNotifierProvider<MediaLibraryConfigNotifier, AsyncValue<MediaLibraryConfig>>(
@@ -354,6 +359,75 @@ class ActiveConnectionsNotifier
   }
 }
 
+/// 活跃媒体服务器连接管理
+class ActiveMediaServerConnectionsNotifier
+    extends StateNotifier<Map<String, MediaServerConnection>> {
+  ActiveMediaServerConnectionsNotifier(this._ref) : super({});
+
+  final Ref _ref;
+
+  void refresh() {
+    final manager = _ref.read(sourceManagerProvider);
+    final connections = <String, MediaServerConnection>{};
+    final sources = _ref.read(sourcesProvider).valueOrNull ?? <SourceEntity>[];
+    for (final source in sources) {
+      final conn = manager.getMediaServerConnection(source.id);
+      if (conn != null) {
+        connections[source.id] = conn;
+        // 注册虚拟文件系统到全局 Registry
+        if (conn.status == SourceStatus.connected) {
+          NasFileSystemRegistry.instance.register(
+            source.id,
+            conn.adapter.virtualFileSystem,
+          );
+        }
+      }
+    }
+    state = connections;
+  }
+
+  Future<MediaServerConnection> connect(
+    SourceEntity source, {
+    String? password,
+    String? apiKey,
+    bool saveCredential = true,
+  }) async {
+    final manager = _ref.read(sourceManagerProvider);
+    final connection = await manager.connectMediaServer(
+      source,
+      password: password,
+      apiKey: apiKey,
+      saveCredential: saveCredential,
+    );
+    state = {...state, source.id: connection};
+    // 注册虚拟文件系统到全局 Registry
+    if (connection.status == SourceStatus.connected) {
+      NasFileSystemRegistry.instance.register(
+        source.id,
+        connection.adapter.virtualFileSystem,
+      );
+    }
+    return connection;
+  }
+
+  Future<void> disconnect(String sourceId) async {
+    final manager = _ref.read(sourceManagerProvider);
+    await manager.disconnect(sourceId);
+    // 从全局 Registry 注销
+    NasFileSystemRegistry.instance.unregister(sourceId);
+    state = Map.from(state)..remove(sourceId);
+  }
+
+  Future<void> disconnectAll() async {
+    for (final sourceId in state.keys.toList()) {
+      await disconnect(sourceId);
+    }
+  }
+
+  /// 获取指定源的媒体服务器连接
+  MediaServerConnection? getConnection(String sourceId) => state[sourceId];
+}
+
 /// 媒体库配置管理
 class MediaLibraryConfigNotifier
     extends StateNotifier<AsyncValue<MediaLibraryConfig>> {
@@ -557,4 +631,12 @@ final subtitleSourcesProvider = Provider<List<SourceEntity>>((ref) {
 final nastoolSourcesProvider = Provider<List<SourceEntity>>((ref) {
   final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
   return sources.where((s) => s.type == SourceType.nastool).toList();
+});
+
+/// 媒体服务器源列表（Jellyfin、Emby、Plex）
+final mediaServerSourcesProvider = Provider<List<SourceEntity>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources
+      .where((s) => s.type.category == SourceCategory.mediaServers)
+      .toList();
 });

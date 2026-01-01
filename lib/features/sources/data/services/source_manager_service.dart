@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
@@ -6,6 +7,10 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/media_server_adapters/base/media_server_adapter.dart';
+import 'package:my_nas/media_server_adapters/emby/emby_adapter.dart';
+import 'package:my_nas/media_server_adapters/jellyfin/jellyfin_adapter.dart';
+import 'package:my_nas/media_server_adapters/plex/plex_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/fnos/fnos_adapter.dart';
@@ -15,6 +20,7 @@ import 'package:my_nas/nas_adapters/smb/smb_adapter.dart';
 import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
 import 'package:my_nas/nas_adapters/ugreen/ugreen_adapter.dart';
 import 'package:my_nas/nas_adapters/webdav/webdav_adapter.dart';
+import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 源连接信息
@@ -67,6 +73,34 @@ class SourceCredential {
       };
 }
 
+/// 媒体服务器连接信息
+class MediaServerConnection {
+  const MediaServerConnection({
+    required this.source,
+    required this.adapter,
+    this.status = SourceStatus.disconnected,
+    this.errorMessage,
+  });
+
+  final SourceEntity source;
+  final MediaServerAdapter adapter;
+  final SourceStatus status;
+  final String? errorMessage;
+
+  MediaServerConnection copyWith({
+    SourceEntity? source,
+    MediaServerAdapter? adapter,
+    SourceStatus? status,
+    String? errorMessage,
+  }) =>
+      MediaServerConnection(
+        source: source ?? this.source,
+        adapter: adapter ?? this.adapter,
+        status: status ?? this.status,
+        errorMessage: errorMessage,
+      );
+}
+
 /// 源管理服务
 class SourceManagerService {
   factory SourceManagerService() => _instance ??= SourceManagerService._();
@@ -91,8 +125,11 @@ class SourceManagerService {
   /// 凭证存储键前缀
   static const _credentialPrefix = 'source_credential_';
 
-  /// 活跃的连接
+  /// 活跃的 NAS 连接
   final Map<String, SourceConnection> _connections = {};
+
+  /// 活跃的媒体服务器连接
+  final Map<String, MediaServerConnection> _mediaServerConnections = {};
 
   /// 安全存储是否可用
   bool _secureStorageAvailable = true;
@@ -519,14 +556,132 @@ class SourceManagerService {
 
   /// 断开连接
   Future<void> disconnect(String sourceId) async {
+    // 尝试断开 NAS 连接
     final connection = _connections[sourceId];
     if (connection != null) {
       await connection.adapter.disconnect();
       await connection.adapter.dispose();
       _connections.remove(sourceId);
-      logger.i('SourceManagerService: 断开连接 $sourceId');
+      logger.i('SourceManagerService: 断开 NAS 连接 $sourceId');
+      return;
+    }
+
+    // 尝试断开媒体服务器连接
+    final mediaServerConnection = _mediaServerConnections[sourceId];
+    if (mediaServerConnection != null) {
+      await mediaServerConnection.adapter.disconnect();
+      await mediaServerConnection.adapter.dispose();
+      _mediaServerConnections.remove(sourceId);
+      logger.i('SourceManagerService: 断开媒体服务器连接 $sourceId');
     }
   }
+
+  // ============ 媒体服务器连接管理 ============
+
+  /// 检查源类型是否为媒体服务器
+  bool isMediaServerType(SourceType type) => switch (type) {
+        SourceType.jellyfin ||
+        SourceType.emby ||
+        SourceType.plex =>
+          true,
+        _ => false,
+      };
+
+  /// 获取媒体服务器连接
+  MediaServerConnection? getMediaServerConnection(String sourceId) =>
+      _mediaServerConnections[sourceId];
+
+  /// 获取所有活跃的媒体服务器连接
+  List<MediaServerConnection> getActiveMediaServerConnections() =>
+      _mediaServerConnections.values
+          .where((c) => c.status == SourceStatus.connected)
+          .toList();
+
+  /// 连接到媒体服务器
+  ///
+  /// 适用于 Jellyfin、Emby、Plex 等媒体服务器类型
+  Future<MediaServerConnection> connectMediaServer(
+    SourceEntity source, {
+    String? password,
+    String? apiKey,
+    bool saveCredential = true,
+  }) async {
+    logger.i('SourceManagerService: 连接到媒体服务器 ${source.name}');
+
+    if (!isMediaServerType(source.type)) {
+      throw UnsupportedError('${source.type.displayName} 不是媒体服务器类型');
+    }
+
+    // 创建适配器
+    final adapter = _createMediaServerAdapter(source.type);
+
+    // 更新状态为连接中
+    _mediaServerConnections[source.id] = MediaServerConnection(
+      source: source,
+      adapter: adapter,
+      status: SourceStatus.connecting,
+    );
+
+    // 构建连接配置
+    final config = ServiceConnectionConfig(
+      baseUrl: source.baseUrl,
+      username: source.username.isNotEmpty ? source.username : null,
+      password: password,
+      apiKey: apiKey ?? source.apiKey,
+      extraConfig: source.extraConfig,
+    );
+
+    try {
+      final result = await adapter.connect(config);
+
+      final connection = result.when(
+        success: (_) {
+          // 保存凭证
+          if (saveCredential && password != null) {
+            this.saveCredential(
+              source.id,
+              SourceCredential(password: password),
+            );
+          }
+
+          // 更新最后连接时间
+          updateSource(source.copyWith(lastConnected: DateTime.now()));
+
+          return MediaServerConnection(
+            source: source,
+            adapter: adapter,
+            status: SourceStatus.connected,
+          );
+        },
+        failure: (error) => MediaServerConnection(
+          source: source,
+          adapter: adapter,
+          status: SourceStatus.error,
+          errorMessage: error,
+        ),
+      );
+
+      _mediaServerConnections[source.id] = connection;
+      return connection;
+    } on Exception catch (e) {
+      final connection = MediaServerConnection(
+        source: source,
+        adapter: adapter,
+        status: SourceStatus.error,
+        errorMessage: e.toString(),
+      );
+      _mediaServerConnections[source.id] = connection;
+      return connection;
+    }
+  }
+
+  /// 创建媒体服务器适配器
+  MediaServerAdapter _createMediaServerAdapter(SourceType type) => switch (type) {
+        SourceType.jellyfin => JellyfinAdapter(),
+        SourceType.emby => EmbyAdapter(),
+        SourceType.plex => PlexAdapter(),
+        _ => throw UnsupportedError('${type.displayName} 不是媒体服务器类型'),
+      };
 
   /// 检查连接健康状态
   ///
@@ -596,12 +751,9 @@ class SourceManagerService {
         const Duration(seconds: 15),
         onTimeout: () {
           logger.w('SourceManagerService: 重连超时 $sourceId');
-          return SourceConnection(
-            source: source,
-            adapter: _createAdapter(source.type),
-            status: SourceStatus.error,
-            errorMessage: '重连超时',
-          );
+          // 注意：这里不创建新适配器，返回 null 表示超时
+          // 由调用方处理超时情况
+          throw TimeoutException('重连超时');
         },
       );
 
@@ -612,6 +764,9 @@ class SourceManagerService {
       }
 
       return connection;
+    } on TimeoutException {
+      logger.e('SourceManagerService: 重连超时 $sourceId');
+      return null;
     } on Exception catch (e, st) {
       logger.e('SourceManagerService: 重连异常 $sourceId', e, st);
       return null;
@@ -637,7 +792,12 @@ class SourceManagerService {
 
   /// 断开所有连接
   Future<void> disconnectAll() async {
+    // 断开 NAS 连接
     for (final sourceId in _connections.keys.toList()) {
+      await disconnect(sourceId);
+    }
+    // 断开媒体服务器连接
+    for (final sourceId in _mediaServerConnections.keys.toList()) {
       await disconnect(sourceId);
     }
     // 清理图片内存缓存
@@ -697,24 +857,20 @@ class SourceManagerService {
       // 本地存储不需要凭证，直接连接
       if (source.type == SourceType.local) {
         logger.i('SourceManagerService: 自动连接 ${source.type.displayName} ${source.name}');
-        final connection = await connect(
-          source,
-          password: '',
-          saveCredential: false,
-        ).timeout(timeout, onTimeout: () {
-          logger.w('SourceManagerService: ${source.name} 连接超时');
-          return SourceConnection(
-            source: source,
-            adapter: _createAdapter(source.type),
-            status: SourceStatus.error,
-            errorMessage: '连接超时',
-          );
-        });
+        try {
+          final connection = await connect(
+            source,
+            password: '',
+            saveCredential: false,
+          ).timeout(timeout);
 
-        if (connection.status == SourceStatus.connected) {
-          logger.i('SourceManagerService: ${source.name} 自动连接成功');
-        } else {
-          logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
+          if (connection.status == SourceStatus.connected) {
+            logger.i('SourceManagerService: ${source.name} 自动连接成功');
+          } else {
+            logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
+          }
+        } on TimeoutException {
+          logger.w('SourceManagerService: ${source.name} 连接超时');
         }
         return;
       }
@@ -732,24 +888,24 @@ class SourceManagerService {
             await Future<void>.delayed(const Duration(seconds: 2));
           }
 
-          // saveCredential=true 确保如果连接返回新的 deviceId，会被保存
-          connection = await connect(
-            source,
-            password: credential.password,
-          ).timeout(timeout, onTimeout: () {
-            logger.w('SourceManagerService: ${source.name} 连接超时 (第 $attempt 次)');
-            return SourceConnection(
-              source: source,
-              adapter: _createAdapter(source.type),
-              status: SourceStatus.error,
-              errorMessage: '连接超时',
-            );
-          });
+          try {
+            // saveCredential=true 确保如果连接返回新的 deviceId，会被保存
+            connection = await connect(
+              source,
+              password: credential.password,
+            ).timeout(timeout);
 
-          // 如果连接成功或者需要2FA，不再重试
-          if (connection.status == SourceStatus.connected ||
-              connection.status == SourceStatus.requires2FA) {
-            break;
+            // 如果连接成功或者需要2FA，不再重试
+            if (connection.status == SourceStatus.connected ||
+                connection.status == SourceStatus.requires2FA) {
+              break;
+            }
+          } on TimeoutException {
+            logger.w('SourceManagerService: ${source.name} 连接超时 (第 $attempt 次)');
+            // 超时时不创建无效的 SourceConnection，继续重试或退出
+            if (attempt == maxRetries) {
+              logger.e('SourceManagerService: ${source.name} 连接超时，已达最大重试次数');
+            }
           }
         }
 

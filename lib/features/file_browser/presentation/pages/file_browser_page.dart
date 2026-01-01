@@ -9,7 +9,6 @@ import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/file_browser/presentation/providers/file_browser_provider.dart';
 import 'package:my_nas/features/file_browser/presentation/widgets/file_item_widget.dart';
-import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -60,7 +59,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     final viewMode = ref.watch(viewModeProvider);
     final isGridView = viewMode == ViewMode.grid;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final connectedSources = ref.watch(connectedSourcesProvider);
+    final browsableSources = ref.watch(browsableSourcesProvider);
     final selectedSourceId = ref.watch(selectedSourceIdProvider);
     final isMultiSelectMode = ref.watch(multiSelectModeProvider);
     final selectedFiles = ref.watch(selectedFilesProvider);
@@ -75,8 +74,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           else
             _buildAppBar(context, currentPath, isGridView, isDark),
           // 源选择器（只有多个已连接源时显示，多选模式下隐藏）
-          if (connectedSources.length > 1 && !isMultiSelectMode)
-            _buildSourceSelector(connectedSources, selectedSourceId, isDark),
+          if (browsableSources.length > 1 && !isMultiSelectMode)
+            _buildSourceSelector(browsableSources, selectedSourceId, isDark),
           // 面包屑导航（多选模式下隐藏）
           if (!isMultiSelectMode) _buildBreadcrumb(currentPath, isDark),
           // 文件列表
@@ -317,14 +316,14 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     );
 
   Widget _buildSourceSelector(
-    List<(SourceEntity, SourceConnection)> connectedSources,
+    List<(SourceEntity, BrowsableConnection)> browsableSources,
     String? selectedSourceId,
     bool isDark,
   ) {
     // 查找当前选中的源
-    final selectedSource = connectedSources.firstWhere(
+    final selectedSource = browsableSources.firstWhere(
       (item) => item.$1.id == selectedSourceId,
-      orElse: () => connectedSources.first,
+      orElse: () => browsableSources.first,
     );
 
     return Container(
@@ -367,7 +366,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 ref.read(fileListProvider.notifier).loadDirectory('/');
               },
               offset: const Offset(0, 44),
-              itemBuilder: (context) => connectedSources.map((item) {
+              itemBuilder: (context) => browsableSources.map((item) {
                 final (source, _) = item;
                 return PopupMenuItem<String>(
                   value: source.id,
@@ -465,6 +464,10 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         SourceType.qnap => Icons.storage_rounded,
         SourceType.webdav => Icons.cloud_rounded,
         SourceType.smb => Icons.lan_rounded,
+        SourceType.jellyfin => Icons.play_circle_rounded,
+        SourceType.emby => Icons.play_circle_rounded,
+        SourceType.plex => Icons.play_circle_rounded,
+        SourceType.local => Icons.phone_android_rounded,
         _ => Icons.dns_rounded,
       };
 
@@ -1754,8 +1757,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
   }
 
   Future<void> _batchDownload(Set<String> paths) async {
-    final connection = ref.read(selectedSourceConnectionProvider);
-    if (connection == null || !connection.adapter.isConnected) return;
+    final connection = ref.read(selectedBrowsableConnectionProvider);
+    if (connection == null || connection.status != SourceStatus.connected) return;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -1781,7 +1784,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
 
     for (final file in files) {
       try {
-        final url = await connection.adapter.fileSystem.getFileUrl(file.path);
+        final url = await connection.fileSystem.getFileUrl(file.path);
         final service = ref.read(downloadServiceProvider);
         final task = await service.addTask(url: url, fileName: file.name);
         await service.startDownload(task.id);
@@ -1818,13 +1821,13 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
   }
 
   Future<void> _downloadFile(FileItem file) async {
-    final connection = ref.read(selectedSourceConnectionProvider);
-    if (connection == null || !connection.adapter.isConnected) return;
+    final connection = ref.read(selectedBrowsableConnectionProvider);
+    if (connection == null || connection.status != SourceStatus.connected) return;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     try {
-      final url = await connection.adapter.fileSystem.getFileUrl(file.path);
+      final url = await connection.fileSystem.getFileUrl(file.path);
       final service = ref.read(downloadServiceProvider);
       final task = await service.addTask(url: url, fileName: file.name);
       await service.startDownload(task.id);
@@ -2252,8 +2255,8 @@ class _DestinationBrowserState extends ConsumerState<_DestinationBrowser> {
     });
 
     try {
-      final connection = ref.read(selectedSourceConnectionProvider);
-      if (connection == null || !connection.adapter.isConnected) {
+      final connection = ref.read(selectedBrowsableConnectionProvider);
+      if (connection == null || connection.status != SourceStatus.connected) {
         setState(() {
           _error = '未连接';
           _isLoading = false;
@@ -2261,7 +2264,7 @@ class _DestinationBrowserState extends ConsumerState<_DestinationBrowser> {
         return;
       }
 
-      final files = await connection.adapter.fileSystem.listDirectory(_currentPath);
+      final files = await connection.fileSystem.listDirectory(_currentPath);
       final dirs = files.where((f) => f.isDirectory).toList();
 
       setState(() {

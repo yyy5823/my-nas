@@ -80,8 +80,14 @@ class VideoDatabaseService {
   Database? _db;
   bool _initialized = false;
 
+  /// 获取数据库实例（供其他服务使用，如媒体服务器缓存）
+  /// 调用前请确保已调用 init()
+  Database? get database => _db;
+
   // 表名和列名常量
   static const String _tableMetadata = 'video_metadata';
+  static const String _tableMediaServerCache = 'media_server_cache';
+  static const String _tablePlaybackSyncQueue = 'playback_sync_queue';
   static const String _colId = 'id';
   static const String _colSourceId = 'source_id';
   static const String _colFilePath = 'file_path';
@@ -135,6 +141,14 @@ class VideoDatabaseService {
   static const String _colTraktRating = 'trakt_rating'; // Trakt 评分
   // 内容分级
   static const String _colCertification = 'certification'; // 内容分级（PG, R 等）
+
+  // 媒体服务器相关字段
+  static const String _colServerType = 'server_type'; // 服务器类型 (jellyfin, emby, plex)
+  static const String _colServerItemId = 'server_item_id'; // 服务器中的项目 ID
+  static const String _colScrapeSource = 'scrape_source'; // 元数据来源 (tmdb, server, nfo, filename)
+  static const String _colIsWatched = 'is_watched'; // 是否已观看
+  static const String _colPlaybackPositionTicks = 'playback_position_ticks'; // 播放位置（时间刻度）
+  static const String _colLastPlayedAt = 'last_played_at'; // 最后播放时间
 
   // 字幕表
   static const String _tableSubtitles = 'video_subtitles';
@@ -204,7 +218,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 18, // 添加增量同步支持（目录修改时间字段）
+        version: 19, // 添加媒体服务器支持字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -293,6 +307,12 @@ class VideoDatabaseService {
         $_colMetacriticRating INTEGER,
         $_colTraktRating REAL,
         $_colCertification TEXT,
+        $_colServerType TEXT,
+        $_colServerItemId TEXT,
+        $_colScrapeSource TEXT,
+        $_colIsWatched INTEGER DEFAULT 0,
+        $_colPlaybackPositionTicks INTEGER,
+        $_colLastPlayedAt INTEGER,
         UNIQUE($_colSourceId, $_colFilePath)
       )
     ''');
@@ -321,6 +341,12 @@ class VideoDatabaseService {
     // 刮削优先级索引（用于智能排序）
     await db.execute(
         'CREATE INDEX idx_scrape_priority ON $_tableMetadata($_colScrapePriority, $_colScrapeStatus)');
+    // 媒体服务器索引（用于快速查找服务器项目）
+    await db.execute(
+        'CREATE INDEX idx_server_item ON $_tableMetadata($_colSourceId, $_colServerItemId)');
+    // 观看状态索引
+    await db.execute(
+        'CREATE INDEX idx_watched ON $_tableMetadata($_colIsWatched)');
 
     // 创建字幕索引表
     await _createSubtitleTable(db);
@@ -332,7 +358,66 @@ class VideoDatabaseService {
     await _createTvShowGroupsTable(db);
     await _createMovieCollectionGroupsTable(db);
 
+    // 创建媒体服务器相关表
+    await _createMediaServerCacheTable(db);
+    await _createPlaybackSyncQueueTable(db);
+
     logger.i('VideoDatabaseService: 表和索引创建完成');
+  }
+
+  /// 创建媒体服务器缓存表
+  Future<void> _createMediaServerCacheTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableMediaServerCache (
+        id TEXT PRIMARY KEY,
+        source_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        parent_id TEXT,
+        item_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        metadata_json TEXT NOT NULL,
+        image_urls_json TEXT,
+        last_updated INTEGER NOT NULL,
+        UNIQUE(source_id, item_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_msc_source_parent
+      ON $_tableMediaServerCache(source_id, parent_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_msc_type
+      ON $_tableMediaServerCache(source_id, item_type)
+    ''');
+    logger.i('VideoDatabaseService: 媒体服务器缓存表创建完成');
+  }
+
+  /// 创建播放同步队列表
+  Future<void> _createPlaybackSyncQueueTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tablePlaybackSyncQueue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        position_ticks INTEGER NOT NULL,
+        is_watched INTEGER NOT NULL DEFAULT 0,
+        event_type TEXT NOT NULL,
+        sync_status TEXT NOT NULL DEFAULT 'pending',
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        synced_at INTEGER,
+        error_message TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_psq_status
+      ON $_tablePlaybackSyncQueue(sync_status, created_at)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_psq_source
+      ON $_tablePlaybackSyncQueue(source_id, item_id)
+    ''');
+    logger.i('VideoDatabaseService: 播放同步队列表创建完成');
   }
 
   /// 创建字幕索引表
@@ -944,6 +1029,81 @@ class VideoDatabaseService {
       await _safeAddColumn(db, _tableScanProgress, _scanColDirModifiedTime, 'INTEGER');
 
       logger.i('VideoDatabaseService: 版本17->18 升级完成（添加增量同步支持）');
+    }
+
+    // 从版本18升级到版本19
+    if (oldVersion < 19) {
+      // 添加媒体服务器支持字段
+      await _safeAddColumn(db, _tableMetadata, _colServerType, 'TEXT');
+      await _safeAddColumn(db, _tableMetadata, _colServerItemId, 'TEXT');
+      await _safeAddColumn(db, _tableMetadata, _colScrapeSource, 'TEXT');
+      await _safeAddColumn(db, _tableMetadata, _colIsWatched, 'INTEGER DEFAULT 0');
+      await _safeAddColumn(db, _tableMetadata, _colPlaybackPositionTicks, 'INTEGER');
+      await _safeAddColumn(db, _tableMetadata, _colLastPlayedAt, 'INTEGER');
+
+      // 创建索引
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_server_item ON $_tableMetadata($_colSourceId, $_colServerItemId)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_watched ON $_tableMetadata($_colIsWatched)');
+
+      // 回填 scrape_source：有 tmdb_id 的记录设为 'tmdb'
+      await db.execute('''
+        UPDATE $_tableMetadata
+        SET $_colScrapeSource = 'tmdb'
+        WHERE $_colTmdbId IS NOT NULL AND $_colScrapeSource IS NULL
+      ''');
+
+      // 创建媒体服务器缓存表
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $_tableMediaServerCache (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          parent_id TEXT,
+          item_type TEXT NOT NULL,
+          name TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          image_urls_json TEXT,
+          last_updated INTEGER NOT NULL,
+          UNIQUE(source_id, item_id)
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_msc_source_parent
+        ON $_tableMediaServerCache(source_id, parent_id)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_msc_type
+        ON $_tableMediaServerCache(source_id, item_type)
+      ''');
+
+      // 创建播放同步队列表
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $_tablePlaybackSyncQueue (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          position_ticks INTEGER NOT NULL,
+          is_watched INTEGER NOT NULL DEFAULT 0,
+          event_type TEXT NOT NULL,
+          sync_status TEXT NOT NULL DEFAULT 'pending',
+          retry_count INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          synced_at INTEGER,
+          error_message TEXT
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_psq_status
+        ON $_tablePlaybackSyncQueue(sync_status, created_at)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_psq_source
+        ON $_tablePlaybackSyncQueue(source_id, item_id)
+      ''');
+
+      logger.i('VideoDatabaseService: 版本18->19 升级完成（添加媒体服务器支持）');
     }
   }
 
@@ -2778,6 +2938,13 @@ class VideoDatabaseService {
         _colTraktRating: m.traktRating,
         // 内容分级
         _colCertification: m.certification,
+        // 媒体服务器相关
+        _colServerType: m.serverType,
+        _colServerItemId: m.serverItemId,
+        _colScrapeSource: m.scrapeSource,
+        _colIsWatched: m.isWatched ? 1 : 0,
+        _colPlaybackPositionTicks: m.playbackPositionTicks,
+        _colLastPlayedAt: m.lastPlayedAt?.millisecondsSinceEpoch,
       };
 
   /// 编码多语言 Map 为 JSON 字符串
@@ -2857,6 +3024,15 @@ class VideoDatabaseService {
         traktRating: (row[_colTraktRating] as num?)?.toDouble(),
         // 内容分级
         certification: row[_colCertification] as String?,
+        // 媒体服务器相关
+        serverType: row[_colServerType] as String?,
+        serverItemId: row[_colServerItemId] as String?,
+        scrapeSource: row[_colScrapeSource] as String?,
+        isWatched: row[_colIsWatched] == 1,
+        playbackPositionTicks: row[_colPlaybackPositionTicks] as int?,
+        lastPlayedAt: row[_colLastPlayedAt] != null
+            ? DateTime.fromMillisecondsSinceEpoch(row[_colLastPlayedAt] as int)
+            : null,
       );
 
   /// 解析 JSON 字符串为多语言 Map

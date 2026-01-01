@@ -179,6 +179,11 @@ abstract class SmbConnect {
 
   Future<List<SmbFile>> listFiles(SmbFile folder, [String wildcard = "*"]);
 
+  /// 发送 echo 请求以检测连接是否仍然有效（心跳）
+  ///
+  /// 返回 true 表示连接正常，false 表示连接已断开
+  Future<bool> echo();
+
   List<SmbFile> mapFileEntries(SmbFile folder, List<FileEntry> entries) {
     return entries.mapNotNull((e) {
       var name = e.getName();

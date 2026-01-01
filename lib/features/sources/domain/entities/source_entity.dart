@@ -109,9 +109,9 @@ enum SourceType {
         // 媒体管理
         SourceType.nastool => true,
         SourceType.moviepilot => true,
-        SourceType.jellyfin => false,
-        SourceType.emby => false,
-        SourceType.plex => false,
+        SourceType.jellyfin => true,
+        SourceType.emby => true,
+        SourceType.plex => true,
         // PT 站点
         SourceType.ptSite => true,
         // 字幕站点

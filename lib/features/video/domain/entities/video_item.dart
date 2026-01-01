@@ -12,6 +12,8 @@ class VideoItem {
     this.thumbnailUrl,
     this.lastPosition,
     this.subtitles = const [],
+    this.serverItemId,
+    this.serverType,
   });
 
   factory VideoItem.fromFileItem(FileItem file, String url, {String? sourceId}) => VideoItem(
@@ -33,6 +35,15 @@ class VideoItem {
   final Duration? lastPosition;
   final List<VideoSubtitle> subtitles;
 
+  /// 媒体服务器中的项目 ID（Jellyfin/Emby/Plex）
+  final String? serverItemId;
+
+  /// 媒体服务器类型（jellyfin, emby, plex）
+  final String? serverType;
+
+  /// 是否来自媒体服务器
+  bool get isFromMediaServer => serverItemId != null && serverType != null;
+
   /// 检查是否需要代理（SMB 等不支持直接 URL 访问的协议）
   bool get needsProxy => url.startsWith('smb://');
   
@@ -49,6 +60,8 @@ class VideoItem {
     String? thumbnailUrl,
     Duration? lastPosition,
     List<VideoSubtitle>? subtitles,
+    String? serverItemId,
+    String? serverType,
   }) =>
       VideoItem(
         name: name ?? this.name,
@@ -60,6 +73,8 @@ class VideoItem {
         thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
         lastPosition: lastPosition ?? this.lastPosition,
         subtitles: subtitles ?? this.subtitles,
+        serverItemId: serverItemId ?? this.serverItemId,
+        serverType: serverType ?? this.serverType,
       );
 }
 

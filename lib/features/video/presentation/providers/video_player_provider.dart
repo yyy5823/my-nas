@@ -19,6 +19,7 @@ import 'package:my_nas/features/video/data/services/player/dolby_vision_detector
 import 'package:my_nas/features/video/data/services/player/native_av_player_backend.dart';
 import 'package:my_nas/features/video/data/services/player/video_player_backend.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
+import 'package:my_nas/features/video/data/services/media_server_playback_reporter.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
@@ -550,6 +551,15 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       duration: totalDuration,
     );
 
+    // 上报媒体服务器播放进度
+    final reporter = _ref.read(mediaServerPlaybackReporterProvider);
+    if (reporter.hasActiveSession) {
+      await reporter.reportProgress(
+        positionTicks: actualPos.inMicroseconds * 10,
+        isPaused: !state.isPlaying,
+      );
+    }
+
     // 每3次保存进度时（每30秒），同时保存进度截图
     _progressSaveCount++;
     if (_progressSaveCount >= 3) {
@@ -625,16 +635,38 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         }
 
         try {
-          final connections = _ref.read(activeConnectionsProvider);
-          final connection = connections[video.sourceId];
+          // 先检查 NAS 连接
+          final nasConnections = _ref.read(activeConnectionsProvider);
+          final nasConnection = nasConnections[video.sourceId];
 
-          if (connection == null || connection.status != SourceStatus.connected) {
+          // 再检查媒体服务器连接
+          final mediaConnections = _ref.read(activeMediaServerConnectionsProvider);
+          final mediaConnection = mediaConnections[video.sourceId];
+
+          String? resolvedUrl;
+
+          if (nasConnection != null && nasConnection.status == SourceStatus.connected) {
+            // 使用 NAS 连接获取 URL
+            resolvedUrl = await nasConnection.adapter.fileSystem.getFileUrl(video.path);
+          } else if (mediaConnection != null && mediaConnection.status == SourceStatus.connected) {
+            // 使用媒体服务器连接获取 URL
+            resolvedUrl = await mediaConnection.adapter.virtualFileSystem.getFileUrl(video.path);
+
+            // 上报媒体服务器播放开始
+            if (video.serverItemId != null) {
+              final reporter = _ref.read(mediaServerPlaybackReporterProvider);
+              await reporter.reportStart(
+                sourceId: video.sourceId!,
+                serverItemId: video.serverItemId!,
+                positionTicks: (startPosition?.inMicroseconds ?? 0) * 10,
+              );
+            }
+          } else {
             logger.e('VideoPlayer: 数据源未连接');
             state = state.copyWith(errorMessage: '无法播放：数据源未连接');
             return;
           }
 
-          final resolvedUrl = await connection.adapter.fileSystem.getFileUrl(video.path);
           resolvedVideo = video.copyWith(url: resolvedUrl);
 
           // 更新当前视频信息
@@ -963,6 +995,13 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     await _captureProgressThumbnail();
     await _saveCurrentProgress();
     _stopProgressSaveTimer();
+
+    // 上报媒体服务器播放停止
+    final reporter = _ref.read(mediaServerPlaybackReporterProvider);
+    if (reporter.hasActiveSession) {
+      final positionTicks = state.actualPosition.inMicroseconds * 10;
+      await reporter.reportStop(positionTicks: positionTicks);
+    }
 
     // 停止播放器
     if (isUsingNativePlayer && _nativeBackend != null) {
