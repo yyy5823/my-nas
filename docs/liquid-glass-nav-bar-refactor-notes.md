@@ -902,3 +902,79 @@ double get scrollBottomPadding {
 | `lib/shared/widgets/app_bottom_sheet.dart` | 添加原生 Tab Bar 高度补偿 |
 | `lib/shared/widgets/adaptive_sheet.dart` | 添加原生 Tab Bar 高度补偿 |
 | `lib/core/extensions/context_extensions.dart` | 更新 scrollBottomPadding 支持玻璃风格 |
+
+---
+
+## 2025年1月1日更新：玻璃风格顶栏适配
+
+### iOS 26 顶栏 Liquid Glass 设计
+
+根据 [WWDC25 Session 284](https://developer.apple.com/videos/play/wwdc2025/284/) 和相关资料研究：
+
+**iOS 26 Navigation Bar 特点**：
+1. **Liquid Glass 材质** - 透明模糊效果，动态反射和折射
+2. **按钮悬浮层** - 按钮不再集成在导航栏中，而是悬浮在玻璃层上方
+3. **大标题滚动** - 大标题放置在内容滚动视图顶部，随内容滚动
+4. **不要设置 UIBarAppearance** - 会破坏原生玻璃效果
+
+### AdaptiveGlassHeader 组件
+
+创建了 `AdaptiveGlassHeader` 组件用于页面顶栏，支持：
+
+- **iOS 26+/macOS 26+**: 使用原生 UIVisualEffectView (Liquid Glass)
+- **iOS 13-25/macOS 10.14-25**: 使用原生 UIVisualEffectView 模糊效果
+- **Android/Windows/Linux**: 使用 Flutter BackdropFilter
+- **经典模式**: 使用不透明背景
+
+```dart
+AdaptiveGlassHeader(
+  height: 72,
+  backgroundColor: uiStyle.isGlass
+      ? Colors.amber.withValues(alpha: 0.15)  // 玻璃模式染色
+      : const Color(0xFF2E2A1A),               // 经典模式背景色
+  child: Padding(
+    padding: EdgeInsets.all(16),
+    child: YourHeaderContent(),
+  ),
+)
+```
+
+### 页面适配
+
+已适配的页面：
+
+| 页面 | 染色 | 说明 |
+|------|------|------|
+| 影视 (Video) | 蓝紫色 | `AppColors.primary` |
+| 曲库 (Music) | 橙红色 | `Colors.deepOrange` |
+| 相册 (Photo) | 绿色 | `AppColors.success` |
+| 阅读 (Reading) | 琥珀色 | `Colors.amber` |
+
+每个页面在玻璃模式下会有轻微的主题色染色，增加视觉区分度。
+
+### 相关修改文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `lib/shared/widgets/adaptive_glass_app_bar.dart` | 新增玻璃风格顶栏组件 |
+| `lib/features/video/presentation/pages/video_list_page.dart` | 使用 AdaptiveGlassHeader |
+| `lib/features/music/presentation/pages/music_list_page.dart` | 使用 AdaptiveGlassHeader |
+| `lib/features/photo/presentation/pages/photo_list_page.dart` | 使用 AdaptiveGlassHeader |
+| `lib/features/reading/presentation/pages/reading_page.dart` | 使用 AdaptiveGlassHeader |
+
+### 组件说明
+
+**AdaptiveGlassHeader**: 简化版玻璃顶栏，用于普通 Scaffold 页面
+- `height`: 内容高度（不含安全区域）
+- `backgroundColor`: 背景颜色/染色
+- `enableBorder`: 是否显示底部边框
+- `forceClassic`: 强制使用经典模式
+- `child`: 顶栏内容
+
+**AdaptiveGlassAppBar**: SliverAppBar 替代品，用于 CustomScrollView
+- 支持 `expandedHeight`、`flexibleSpace` 等 SliverAppBar 属性
+- 自动处理安全区域
+
+**GlassButton**: iOS 26 风格的悬浮按钮
+- 按钮带有自己的玻璃背景
+- 适用于导航栏中的操作按钮

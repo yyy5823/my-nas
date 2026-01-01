@@ -1937,31 +1937,25 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ],
           ),
         ),
-        // 操作按钮（与音乐页面风格一致）
-        IconButton(
-          onPressed: () => setState(() => _showSearch = true),
-          icon: Icon(
-            Icons.search_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '搜索',
-        ),
-        // 分类设置按钮
-        IconButton(
-          onPressed: () => VideoCategorySettingsSheet.show(context),
-          icon: Icon(
-            Icons.tune_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '分类设置',
-        ),
-        IconButton(
-          onPressed: () => _showSettingsMenu(context),
-          icon: Icon(
-            Icons.more_vert_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '更多',
+        // 操作按钮 - iOS 26 玻璃风格下使用浮动按钮组
+        GlassButtonGroup(
+          children: [
+            GlassGroupIconButton(
+              icon: Icons.search_rounded,
+              onPressed: () => setState(() => _showSearch = true),
+              tooltip: '搜索',
+            ),
+            GlassGroupIconButton(
+              icon: Icons.tune_rounded,
+              onPressed: () => VideoCategorySettingsSheet.show(context),
+              tooltip: '分类设置',
+            ),
+            GlassGroupIconButton(
+              icon: Icons.more_vert_rounded,
+              onPressed: () => _showSettingsMenu(context),
+              tooltip: '更多',
+            ),
+          ],
         ),
       ],
     );

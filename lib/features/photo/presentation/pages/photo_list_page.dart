@@ -1488,42 +1488,34 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             ],
           ),
         ),
-        // 操作按钮（与音乐页面风格一致）
-        IconButton(
-          onPressed: () => setState(() => _showSearch = true),
-          icon: Icon(
-            Icons.search_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '搜索',
-        ),
-        if (state is PhotoListLoaded) ...[
-          IconButton(
-            onPressed: () => ref.read(photoListProvider.notifier).enterSelectMode(),
-            icon: Icon(
-              Icons.check_circle_outline_rounded,
-              color: isDark ? Colors.white : Colors.black87,
+        // 操作按钮 - iOS 26 玻璃风格下使用浮动按钮组
+        GlassButtonGroup(
+          children: [
+            GlassGroupIconButton(
+              icon: Icons.search_rounded,
+              onPressed: () => setState(() => _showSearch = true),
+              tooltip: '搜索',
             ),
-            tooltip: '多选',
-          ),
-          IconButton(
-            onPressed: () => ref.read(photoListProvider.notifier).toggleViewMode(),
-            icon: Icon(
-              state.viewMode == PhotoViewMode.grid
-                  ? Icons.view_timeline_rounded
-                  : Icons.grid_view_rounded,
-              color: isDark ? Colors.white : Colors.black87,
+            if (state is PhotoListLoaded) ...[
+              GlassGroupIconButton(
+                icon: Icons.check_circle_outline_rounded,
+                onPressed: () => ref.read(photoListProvider.notifier).enterSelectMode(),
+                tooltip: '多选',
+              ),
+              GlassGroupIconButton(
+                icon: state.viewMode == PhotoViewMode.grid
+                    ? Icons.view_timeline_rounded
+                    : Icons.grid_view_rounded,
+                onPressed: () => ref.read(photoListProvider.notifier).toggleViewMode(),
+                tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
+              ),
+            ],
+            GlassGroupIconButton(
+              icon: Icons.more_vert_rounded,
+              onPressed: () => _showSettingsMenu(context),
+              tooltip: '更多',
             ),
-            tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
-          ),
-        ],
-        IconButton(
-          onPressed: () => _showSettingsMenu(context),
-          icon: Icon(
-            Icons.more_vert_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '更多',
+          ],
         ),
       ],
     );

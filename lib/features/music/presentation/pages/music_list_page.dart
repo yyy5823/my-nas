@@ -1822,30 +1822,25 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             ],
           ),
         ),
-        IconButton(
-          onPressed: () => setState(() => _showSearch = true),
-          icon: Icon(
-            Icons.search_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '搜索',
-        ),
-        // 播放队列按钮
-        IconButton(
-          onPressed: () => showMusicQueueSheet(context),
-          icon: Icon(
-            Icons.queue_music_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '播放队列',
-        ),
-        IconButton(
-          onPressed: () => _showSettingsMenu(context),
-          icon: Icon(
-            Icons.more_vert_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '更多',
+        // 操作按钮 - iOS 26 玻璃风格下使用浮动按钮组
+        GlassButtonGroup(
+          children: [
+            GlassGroupIconButton(
+              icon: Icons.search_rounded,
+              onPressed: () => setState(() => _showSearch = true),
+              tooltip: '搜索',
+            ),
+            GlassGroupIconButton(
+              icon: Icons.queue_music_rounded,
+              onPressed: () => showMusicQueueSheet(context),
+              tooltip: '播放队列',
+            ),
+            GlassGroupIconButton(
+              icon: Icons.more_vert_rounded,
+              onPressed: () => _showSettingsMenu(context),
+              tooltip: '更多',
+            ),
+          ],
         ),
       ],
     );

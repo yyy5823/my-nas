@@ -1,6 +1,9 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
@@ -165,7 +168,10 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     return '夜深了';
   }
 
-  Widget _buildTypeSwitcher(BuildContext context, bool isDark, int currentTab) => PopupMenuButton<int>(
+  Widget _buildTypeSwitcher(BuildContext context, bool isDark, int currentTab) {
+    final uiStyle = ref.watch(uiStyleProvider);
+
+    final popupButton = PopupMenuButton<int>(
       offset: const Offset(0, 40),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       padding: EdgeInsets.zero,
@@ -208,34 +214,66 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         );
       }).toList(),
       onSelected: _onTabChanged,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            ReadingContentType.values[currentTab].icon,
+            size: 22,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          const SizedBox(width: 4),
+          Icon(
+            Icons.arrow_drop_down_rounded,
+            size: 20,
+            color: isDark ? Colors.white70 : Colors.black54,
+          ),
+        ],
+      ),
+    );
+
+    // 玻璃模式下使用浮动玻璃按钮样式
+    if (uiStyle.isGlass) {
+      final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
+      final bgColor = isDark
+          ? Colors.white.withValues(alpha: 0.12)
+          : Colors.black.withValues(alpha: 0.06);
+      final borderColor = isDark
+          ? Colors.white.withValues(alpha: glassStyle.borderOpacity * 0.8)
+          : Colors.black.withValues(alpha: glassStyle.borderOpacity * 0.4);
+
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
           child: Container(
             height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+              color: bgColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: borderColor, width: 0.5),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  ReadingContentType.values[currentTab].icon,
-                  size: 22,
-                  color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.arrow_drop_down_rounded,
-                  size: 20,
-                  color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
-                ),
-              ],
-            ),
+            child: popupButton,
           ),
+        ),
+      );
+    }
+
+    // 经典模式
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: popupButton,
         ),
       ),
     );
+  }
 }
