@@ -33,26 +33,22 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   /// 是否正在处理 Tab 切换（防止循环）
   bool _isHandlingTabChange = false;
 
+  /// 缓存的 UI 风格（用于判断是否需要重新订阅原生 Tab Bar）
+  UIStyle? _cachedUiStyle;
+
   /// 是否使用原生 Tab Bar
-  bool get _useNativeTabBar {
+  /// 仅在 iOS 玻璃风格时使用原生 Tab Bar（Liquid Glass 效果）
+  /// 经典风格使用 Flutter 自己的导航栏
+  bool _shouldUseNativeTabBar(UIStyle uiStyle) {
     if (kIsWeb) return false;
-    return Platform.isIOS;
+    if (!Platform.isIOS) return false;
+    // 仅玻璃风格使用原生 Tab Bar
+    return uiStyle.isGlass;
   }
 
   @override
   void initState() {
     super.initState();
-
-    // 订阅原生 Tab Bar 事件（服务已在 main.dart 中初始化）
-    if (_useNativeTabBar) {
-      _tabSelectedSubscription =
-          NativeTabBarService.instance.onTabSelected.listen(_handleNativeTabSelected);
-
-      // 显示原生 Tab Bar（初始时是隐藏的）
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        NativeTabBarService.instance.setTabBarVisible(true);
-      });
-    }
 
     // 仅在首次显示 MainScaffold 时检查更新
     if (!_hasCheckedForUpdates) {
@@ -71,8 +67,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
 
   /// 处理原生 Tab 选择事件
   void _handleNativeTabSelected(TabSelectedEvent event) {
-    if (_isHandlingTabChange) return;
-    if (!mounted) return;
+    if (_isHandlingTabChange || !mounted) return;
 
     _isHandlingTabChange = true;
 
@@ -80,7 +75,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     context.go(event.route);
 
     // 延迟重置标志，避免路由变化时触发循环
-    Future.delayed(const Duration(milliseconds: 100), () {
+    Future.delayed(const Duration(milliseconds: 50), () {
       _isHandlingTabChange = false;
     });
   }
@@ -158,29 +153,10 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     _isHandlingTabChange = true;
     context.go(_destinations[index].route);
 
-    // 同步到原生 Tab Bar
-    if (_useNativeTabBar) {
-      NativeTabBarService.instance.setSelectedIndex(index);
-    }
-
     // 延迟重置标志
     Future.delayed(const Duration(milliseconds: 100), () {
       _isHandlingTabChange = false;
     });
-  }
-
-  @override
-  void didUpdateWidget(MainScaffold oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // 当 Flutter 路由变化时，同步到原生 Tab Bar
-    if (_useNativeTabBar && !_isHandlingTabChange) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final currentIndex = _getCurrentIndex(context);
-        NativeTabBarService.instance.setSelectedIndex(currentIndex);
-      });
-    }
   }
 
   @override
@@ -191,6 +167,10 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     final glassStyle = GlassTheme.getNavBarStyle(uiStyle, isDark: isDark);
     final optimizedStyle = PlatformGlassConfig.getOptimizedStyle(glassStyle, isDark: isDark);
     final enableGlass = PlatformGlassConfig.shouldEnableGlass(uiStyle);
+    final useNativeTabBar = _shouldUseNativeTabBar(uiStyle);
+
+    // 处理 UI 风格变化时的原生 Tab Bar 订阅
+    _handleUiStyleChange(uiStyle, useNativeTabBar, currentIndex);
 
     // Use NavigationRail for desktop, NavigationBar for mobile
     if (context.isDesktop) {
@@ -205,15 +185,15 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       );
     }
 
-    // iOS 平台：使用原生 UITabBarController，不显示 Flutter 底部导航栏
-    if (_useNativeTabBar) {
+    // iOS 玻璃风格：使用原生 UITabBar，不显示 Flutter 底部导航栏
+    if (useNativeTabBar) {
       return Scaffold(
         backgroundColor: isDark ? AppColors.darkBackground : null,
         body: widget.child,
       );
     }
 
-    // 其他平台: 使用传统底部导航栏
+    // 其他情况: 使用 Flutter 底部导航栏
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
       // 玻璃模式下让内容延伸到导航栏下方
@@ -221,6 +201,42 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       body: widget.child,
       bottomNavigationBar: _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
     );
+  }
+
+  /// 处理 UI 风格变化
+  void _handleUiStyleChange(UIStyle uiStyle, bool useNativeTabBar, int currentIndex) {
+    // 首次调用或风格变化时
+    if (_cachedUiStyle != uiStyle) {
+      final wasUsingNative = _cachedUiStyle != null && _shouldUseNativeTabBar(_cachedUiStyle!);
+      _cachedUiStyle = uiStyle;
+
+      if (useNativeTabBar && !wasUsingNative) {
+        // 切换到玻璃风格：订阅原生事件并显示原生 Tab Bar
+        _tabSelectedSubscription?.cancel();
+        _tabSelectedSubscription =
+            NativeTabBarService.instance.onTabSelected.listen(_handleNativeTabSelected);
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          NativeTabBarService.instance.setTabBarVisible(true);
+          NativeTabBarService.instance.setSelectedIndex(currentIndex);
+        });
+      } else if (!useNativeTabBar && wasUsingNative) {
+        // 切换到经典风格：取消订阅并隐藏原生 Tab Bar
+        _tabSelectedSubscription?.cancel();
+        _tabSelectedSubscription = null;
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          NativeTabBarService.instance.setTabBarVisible(false);
+        });
+      }
+    } else if (useNativeTabBar && !_isHandlingTabChange) {
+      // 同步 Flutter 路由到原生 Tab Bar
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        NativeTabBarService.instance.setSelectedIndex(currentIndex);
+      });
+    }
   }
 
   Widget _buildDesktopNav(

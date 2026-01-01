@@ -1,19 +1,20 @@
 import Flutter
 import UIKit
 
-/// 原生 UITabBarController 作为根控制器
+/// 原生 Tab Bar 根控制器
 ///
-/// 将 FlutterViewController 嵌入到 UITabBarController 中，
-/// 让 UITabBar 可以正确模糊 Flutter 内容，实现真正的 iOS 26 Liquid Glass 效果
+/// 使用 UIViewController + UITabBar（而非 UITabBarController）实现
+/// 这样 FlutterView 可以接收所有触摸事件，同时 UITabBar 悬浮在上方
 ///
 /// 架构：
 /// ```
 /// UIWindow
-/// └── NativeTabBarController (根控制器)
-///     ├── FlutterViewController.view (作为底层内容)
-///     └── UITabBar (可以正确模糊 Flutter 内容)
+/// └── NativeTabBarController (UIViewController)
+///     └── view
+///         ├── FlutterViewController.view (全屏，接收触摸)
+///         └── UITabBar (底部悬浮，Liquid Glass 效果)
 /// ```
-class NativeTabBarController: UITabBarController, UITabBarControllerDelegate {
+class NativeTabBarController: UIViewController, UITabBarDelegate {
 
     // MARK: - Properties
 
@@ -22,6 +23,9 @@ class NativeTabBarController: UITabBarController, UITabBarControllerDelegate {
 
     /// Flutter 视图控制器
     private let flutterViewController: FlutterViewController
+
+    /// 原生 Tab Bar
+    private let tabBar = UITabBar()
 
     /// 与 Flutter 通信的 Method Channel
     private var methodChannel: FlutterMethodChannel?
@@ -42,6 +46,9 @@ class NativeTabBarController: UITabBarController, UITabBarControllerDelegate {
         NavTabConfig(icon: "book", selectedIcon: "book.fill", label: "阅读", route: "/reading"),
         NavTabConfig(icon: "person.circle", selectedIcon: "person.circle.fill", label: "我的", route: "/mine"),
     ]
+
+    /// 当前选中的 Tab 索引
+    private var selectedIndex: Int = 0
 
     /// 是否正在处理 tab 切换（防止循环）
     private var isHandlingTabChange = false
@@ -66,94 +73,97 @@ class NativeTabBarController: UITabBarController, UITabBarControllerDelegate {
 
         NSLog("🔮 NativeTabBarController: viewDidLoad")
 
-        // 设置代理
-        delegate = self
+        // 1. 嵌入 FlutterViewController
+        embedFlutterViewController()
 
-        // 创建 Tab 视图控制器
-        setupTabs()
+        // 2. 设置 Tab Bar
+        setupTabBar()
 
-        // 设置 Method Channel
+        // 3. 设置 Method Channel
         setupMethodChannel()
 
-        // 初始时隐藏 tab bar，等待 Flutter 通知显示
-        // 这样在 loading 页面时不会显示 tab bar
+        NSLog("🔮 NativeTabBarController: Setup complete")
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        // 确保 Tab Bar 在最前面
+        view.bringSubviewToFront(tabBar)
+    }
+
+    // MARK: - Flutter Embedding
+
+    /// 嵌入 FlutterViewController 作为子视图控制器
+    private func embedFlutterViewController() {
+        // 添加 FlutterViewController 作为子视图控制器
+        addChild(flutterViewController)
+
+        // 获取 Flutter view
+        let flutterView = flutterViewController.view!
+        flutterView.translatesAutoresizingMaskIntoConstraints = false
+
+        // 添加到 self.view
+        view.addSubview(flutterView)
+
+        // 设置约束 - 全屏（包括安全区域）
+        // Flutter 自己会处理 SafeArea
+        NSLayoutConstraint.activate([
+            flutterView.topAnchor.constraint(equalTo: view.topAnchor),
+            flutterView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            flutterView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            flutterView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        // 完成子视图控制器的添加
+        flutterViewController.didMove(toParent: self)
+
+        NSLog("🔮 NativeTabBarController: Embedded FlutterViewController")
+    }
+
+    // MARK: - Tab Bar Setup
+
+    /// 设置 Tab Bar
+    private func setupTabBar() {
+        tabBar.delegate = self
+        tabBar.translatesAutoresizingMaskIntoConstraints = false
+
+        // 创建 Tab Items
+        var items: [UITabBarItem] = []
+        for (index, config) in tabConfigs.enumerated() {
+            let image = UIImage(systemName: config.icon)
+            let selectedImage = UIImage(systemName: config.selectedIcon)
+            let item = UITabBarItem(title: config.label, image: image, selectedImage: selectedImage)
+            item.tag = index
+            items.append(item)
+        }
+        tabBar.items = items
+        tabBar.selectedItem = items.first
+
+        // 添加到视图
+        view.addSubview(tabBar)
+
+        // 设置约束 - 底部悬浮
+        NSLayoutConstraint.activate([
+            tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        // 初始时隐藏，等待 Flutter 通知显示
         tabBar.isHidden = true
         tabBar.alpha = 0.0
 
         // iOS 26+: 不设置任何 appearance，让系统自动应用 Liquid Glass
-        // 这是最关键的一点！
         if #available(iOS 26.0, *) {
-            NSLog("🔮 NativeTabBarController: iOS 26+ - NOT setting any appearance (letting system apply Liquid Glass)")
+            NSLog("🔮 NativeTabBarController: iOS 26+ - NOT setting any appearance (Liquid Glass)")
             // 不做任何事情！让系统默认的 Liquid Glass 生效
         } else {
             // iOS < 26: 使用模糊效果作为回退
             configureAppearanceFallback()
         }
 
-        NSLog("🔮 NativeTabBarController: Setup complete with \(tabConfigs.count) tabs")
-    }
-
-    // MARK: - Tab Setup
-
-    /// 创建 Tab 视图控制器
-    ///
-    /// 关键：每个 Tab 都使用同一个 FlutterViewController 的 view 作为内容
-    /// 这样 UITabBar 就能正确模糊 Flutter 内容
-    private func setupTabs() {
-        var controllers: [UIViewController] = []
-
-        for (index, tab) in tabConfigs.enumerated() {
-            // 创建容器 ViewController
-            let containerVC = FlutterContainerViewController()
-            containerVC.view.backgroundColor = .clear
-
-            // 配置 tab bar item
-            let image = UIImage(systemName: tab.icon)
-            let selectedImage = UIImage(systemName: tab.selectedIcon)
-
-            containerVC.tabBarItem = UITabBarItem(
-                title: tab.label,
-                image: image,
-                selectedImage: selectedImage
-            )
-            containerVC.tabBarItem.tag = index
-
-            controllers.append(containerVC)
-
-            NSLog("🔮 NativeTabBarController: Added tab '\(tab.label)' with icon '\(tab.icon)'")
-        }
-
-        setViewControllers(controllers, animated: false)
-
-        // 将 FlutterViewController 的 view 添加到当前选中的 tab
-        embedFlutterView()
-    }
-
-    /// 将 FlutterViewController 的 view 嵌入到当前选中的 tab
-    private func embedFlutterView() {
-        guard let selectedVC = selectedViewController else { return }
-
-        // 将 Flutter view 作为子视图添加
-        // 这样 UITabBar 就能正确模糊 Flutter 内容
-        let flutterView = flutterViewController.view!
-        flutterView.translatesAutoresizingMaskIntoConstraints = false
-
-        // 先移除旧的 Flutter view（如果存在）
-        flutterView.removeFromSuperview()
-
-        // 添加到新的容器
-        selectedVC.view.addSubview(flutterView)
-
-        // 设置约束，让 Flutter view 填满整个容器
-        // 注意：不设置底部约束到 safeAreaLayoutGuide，让内容延伸到 tab bar 下方
-        NSLayoutConstraint.activate([
-            flutterView.topAnchor.constraint(equalTo: selectedVC.view.topAnchor),
-            flutterView.leadingAnchor.constraint(equalTo: selectedVC.view.leadingAnchor),
-            flutterView.trailingAnchor.constraint(equalTo: selectedVC.view.trailingAnchor),
-            flutterView.bottomAnchor.constraint(equalTo: selectedVC.view.bottomAnchor),
-        ])
-
-        NSLog("🔮 NativeTabBarController: Embedded Flutter view in tab \(selectedIndex)")
+        NSLog("🔮 NativeTabBarController: Tab bar setup complete with \(tabConfigs.count) tabs")
     }
 
     // MARK: - Appearance
@@ -190,6 +200,28 @@ class NativeTabBarController: UITabBarController, UITabBarControllerDelegate {
         // 通知 Flutter 深色模式变化
         let isDark = traitCollection.userInterfaceStyle == .dark
         methodChannel?.invokeMethod("onThemeChanged", arguments: isDark)
+    }
+
+    // MARK: - UITabBarDelegate
+
+    func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
+        guard !isHandlingTabChange else { return }
+
+        isHandlingTabChange = true
+
+        let index = item.tag
+        selectedIndex = index
+        let route = tabConfigs[index].route
+
+        // 通知 Flutter 切换路由
+        methodChannel?.invokeMethod("onTabSelected", arguments: [
+            "index": index,
+            "route": route,
+        ])
+
+        NSLog("🔮 NativeTabBarController: User selected tab \(index) -> \(route)")
+
+        isHandlingTabChange = false
     }
 
     // MARK: - Method Channel
@@ -250,19 +282,17 @@ class NativeTabBarController: UITabBarController, UITabBarControllerDelegate {
     /// 从 Flutter 设置选中的 tab
     private func setSelectedTab(_ index: Int) {
         guard !isHandlingTabChange else { return }
-        guard index >= 0, index < (viewControllers?.count ?? 0) else { return }
+        guard index >= 0, index < (tabBar.items?.count ?? 0) else { return }
 
         isHandlingTabChange = true
         selectedIndex = index
-        embedFlutterView()
+        tabBar.selectedItem = tabBar.items?[index]
         isHandlingTabChange = false
 
         NSLog("🔮 NativeTabBarController: Flutter set tab to \(index)")
     }
 
     /// 设置 Tab Bar 是否可见
-    ///
-    /// 用于在 loading 页面隐藏 tab bar
     private func setTabBarVisible(_ visible: Bool) {
         UIView.animate(withDuration: 0.25) {
             self.tabBar.isHidden = !visible
@@ -271,52 +301,9 @@ class NativeTabBarController: UITabBarController, UITabBarControllerDelegate {
         NSLog("🔮 NativeTabBarController: Tab bar visibility set to \(visible)")
     }
 
-    // MARK: - UITabBarControllerDelegate
-
-    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-        guard !isHandlingTabChange else { return }
-
-        isHandlingTabChange = true
-
-        let index = viewController.tabBarItem.tag
-        let route = tabConfigs[index].route
-
-        // 重新嵌入 Flutter view 到新选中的 tab
-        embedFlutterView()
-
-        // 通知 Flutter 切换路由
-        methodChannel?.invokeMethod("onTabSelected", arguments: [
-            "index": index,
-            "route": route,
-        ])
-
-        NSLog("🔮 NativeTabBarController: User selected tab \(index) -> \(route)")
-
-        isHandlingTabChange = false
-    }
-
-    // iOS 26+ 的 Liquid Glass 交互效果由系统自动处理：
-    // - 选中指示器的玻璃"药丸"效果（Selection Bubble）
-    // - 长按拖动切换 tab（Drag to switch）
-    // - 按压动画效果（Press animation）
-    // - tab 之间的变形动画（Morphing）
-    // - 透镜效果（Lensing）
-    // - 色差效果（Chromatic aberration）
-}
-
-// MARK: - Flutter Container View Controller
-
-/// Flutter 内容的容器视图控制器
-///
-/// 每个 Tab 都使用这个容器，FlutterViewController 的 view 会被嵌入其中
-class FlutterContainerViewController: UIViewController {
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .clear
-
-        // 让内容延伸到 tab bar 下方
-        edgesForExtendedLayout = .all
-        extendedLayoutIncludesOpaqueBars = true
-    }
+    // iOS 26+ 的 Liquid Glass 交互效果：
+    // 使用独立 UITabBar（非 UITabBarController）时：
+    // - 基本的 Liquid Glass 视觉效果 ✅
+    // - 选中高亮效果 ✅
+    // - 注意：部分高级交互（如长按拖动）可能需要 UITabBarController
 }

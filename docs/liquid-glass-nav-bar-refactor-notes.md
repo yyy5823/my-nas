@@ -677,6 +677,92 @@ view.addSubview(tabBar)
 
 ## 相关文件
 
-- `ios/Runner/LiquidGlassView.swift` - 原生视图实现
-- `lib/shared/widgets/liquid_glass/liquid_glass_nav_bar.dart` - Flutter 包装
-- `lib/shared/widgets/main_scaffold.dart` - 布局定位
+- `ios/Runner/NativeTabBarController.swift` - 原生根控制器（UIViewController + UITabBar）
+- `ios/Runner/AppDelegate.swift` - 应用入口，创建 FlutterEngine
+- `lib/shared/services/native_tab_bar_service.dart` - Flutter-Native 通信服务
+- `lib/shared/widgets/main_scaffold.dart` - 布局定位和 Tab 同步
+
+---
+
+## 2024年12月31日更新：UIViewController + UITabBar 方案
+
+### 问题记录
+
+使用 `UITabBarController` 作为根控制器时遇到以下问题：
+
+1. **状态栏被遮挡** - FlutterView 插入到 UITabBarController.view 的最底层 (index 0)，但占位 ViewController 的 view 在上面
+2. **触摸事件被拦截** - 占位 ViewController 的透明 view 拦截了所有触摸，导致页面无法滚动
+3. **Tab 切换卡顿** - UITabBarController 在切换 VC 同时 Flutter 也在导航，造成双重动画
+
+### 解决方案：使用 UIViewController + UITabBar
+
+改用普通 `UIViewController` 而非 `UITabBarController`：
+
+```swift
+class NativeTabBarController: UIViewController, UITabBarDelegate {
+    private let flutterEngine: FlutterEngine
+    private let flutterViewController: FlutterViewController
+    private let tabBar = UITabBar()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        embedFlutterViewController()  // FlutterView 全屏
+        setupTabBar()                  // UITabBar 悬浮在底部
+        setupMethodChannel()
+    }
+}
+```
+
+### 新架构
+
+```
+UIWindow
+└── NativeTabBarController (UIViewController)
+    └── view
+        ├── FlutterViewController.view (全屏，接收触摸)
+        └── UITabBar (底部悬浮，Liquid Glass 效果)
+```
+
+**优势**：
+- FlutterView 在视图层级中正确放置，接收所有触摸事件
+- UITabBar 悬浮在上方，可以正确显示 Liquid Glass 效果
+- 没有占位 VC 拦截触摸
+- Tab 切换只触发 Flutter 路由，无原生 VC 切换动画
+
+### UI 风格切换支持
+
+`MainScaffold` 现在根据 `UIStyle` 动态切换：
+
+```dart
+bool _shouldUseNativeTabBar(UIStyle uiStyle) {
+  if (kIsWeb) return false;
+  if (!Platform.isIOS) return false;
+  // 仅玻璃风格使用原生 Tab Bar
+  return uiStyle.isGlass;
+}
+```
+
+- **经典风格 (classic)**: 使用 Flutter 自己的导航栏
+- **玻璃风格 (liquidClear/liquidTinted)**: 使用原生 UITabBar (Liquid Glass)
+
+切换时自动：
+- 订阅/取消原生 Tab 事件
+- 显示/隐藏原生 Tab Bar
+- 同步当前 Tab 索引
+
+### 相关修改文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `ios/Runner/NativeTabBarController.swift` | 改为 UIViewController + UITabBar |
+| `lib/shared/widgets/main_scaffold.dart` | 添加 UI 风格切换逻辑 |
+
+### 已知限制
+
+使用独立 `UITabBar`（非 `UITabBarController`）时：
+- 基本的 Liquid Glass 视觉效果 ✅
+- 选中高亮效果 ✅
+- 长按拖动切换 tab ❌（需要 UITabBarController）
+- Selection Bubble 变形动画 ❌（需要 UITabBarController）
+
+如需完整的 Liquid Glass 交互效果，可能需要探索其他方案。
