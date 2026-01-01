@@ -920,6 +920,10 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     await _db.upsertBatch(metadataList);
     logger.i('MusicListNotifier: 迁移完成，已保存 ${metadataList.length} 首音乐');
 
+    // 清除旧缓存，防止重复迁移
+    await _cacheService.clearCache();
+    logger.i('MusicListNotifier: 已清除旧的 Hive 缓存');
+
     // 重新加载数据
     await _loadCategorizedData();
   }

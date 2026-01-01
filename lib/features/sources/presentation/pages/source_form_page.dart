@@ -1181,9 +1181,11 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         try {
           ServiceConnectionConfig config;
           if (embyAuthType == 'API Key') {
+            final apiKey = _formValues['apiKey'] as String? ?? '';
+            if (apiKey.isEmpty) return false;
             config = ServiceConnectionConfig(
               baseUrl: source.baseUrl,
-              apiKey: _formValues['apiKey'] as String? ?? '',
+              apiKey: apiKey,
             );
           } else {
             config = ServiceConnectionConfig(

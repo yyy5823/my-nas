@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:math';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:my_nas/core/utils/hive_utils.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/media_server_adapters/plex/api/plex_api.dart';
 import 'package:my_nas/media_server_adapters/plex/api/plex_models.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 
 /// Plex PIN 认证状态
 enum PlexAuthStatus {
@@ -69,11 +73,77 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
   Timer? _pollingTimer;
   int _remainingSeconds = 300; // 5 分钟超时
   PlexApi? _api;
+  bool _isPolling = false; // 防止并发轮询
+  bool _isOffline = false; // 网络离线状态
+
+  // 指数退避参数
+  int _pollAttempts = 0;
+  static const int _basePollIntervalSeconds = 2;
+  static const int _maxPollIntervalSeconds = 10;
+
+  // Hive 存储的 key
+  static const String _clientIdKey = 'plex_client_identifier';
+
+  // 缓存的 clientIdentifier
+  static String? _cachedClientId;
 
   @override
   void initState() {
     super.initState();
-    _initiatePinAuth();
+    _initializeAndAuth();
+  }
+
+  /// 初始化并开始认证
+  Future<void> _initializeAndAuth() async {
+    // 先检查网络
+    if (!await _checkConnectivity()) {
+      setState(() {
+        _status = PlexAuthStatus.error;
+        _errorMessage = '网络不可用，请检查网络连接';
+        _isOffline = true;
+      });
+      return;
+    }
+
+    // 加载或生成 clientIdentifier
+    await _loadOrGenerateClientId();
+
+    // 开始 PIN 认证
+    await _initiatePinAuth();
+  }
+
+  /// 从 Hive 加载或生成新的 clientIdentifier
+  Future<void> _loadOrGenerateClientId() async {
+    if (_cachedClientId != null) return;
+
+    try {
+      final box = await HiveUtils.getSettingsBox();
+      final storedId = box.get(_clientIdKey) as String?;
+
+      if (storedId != null && storedId.isNotEmpty) {
+        _cachedClientId = storedId;
+        logger.d('PlexAuth: 加载已存储的 clientIdentifier');
+      } else {
+        // 生成新的 clientIdentifier
+        _cachedClientId = 'mynas-${const Uuid().v4()}';
+        await box.put(_clientIdKey, _cachedClientId);
+        logger.d('PlexAuth: 生成并存储新的 clientIdentifier');
+      }
+    } on Exception catch (e) {
+      logger.w('PlexAuth: 无法访问 Hive 存储，使用临时 ID', e);
+      _cachedClientId = 'mynas-${const Uuid().v4()}';
+    }
+  }
+
+  /// 检查网络连接
+  Future<bool> _checkConnectivity() async {
+    try {
+      final result = await Connectivity().checkConnectivity();
+      return !result.contains(ConnectivityResult.none);
+    } on Exception catch (e) {
+      logger.w('PlexAuth: 检查网络状态失败', e);
+      return true; // 默认假设有网络
+    }
   }
 
   @override
@@ -87,13 +157,17 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
   Future<void> _initiatePinAuth() async {
     setState(() {
       _status = PlexAuthStatus.gettingPin;
+      _isOffline = false;
     });
 
     try {
+      // 先释放旧的 API 实例
+      _api?.dispose();
+
       _api = PlexApi(
         serverUrl: 'https://plex.tv', // 初始使用 plex.tv
         authToken: '',
-        clientIdentifier: 'mynas-${DateTime.now().millisecondsSinceEpoch}',
+        clientIdentifier: _cachedClientId ?? 'mynas-fallback',
         clientName: 'MyNas App',
       );
 
@@ -109,6 +183,7 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
           clientName: 'MyNas App',
         );
         _remainingSeconds = 300;
+        _pollAttempts = 0; // 重置轮询计数
       });
 
       // 开始轮询
@@ -116,30 +191,59 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
     } on Exception catch (e) {
       logger.e('PlexAuth: 获取 PIN 失败', e);
       if (mounted) {
+        // 判断是否是网络错误
+        final isNetworkError = e.toString().contains('SocketException') ||
+            e.toString().contains('Connection') ||
+            e.toString().contains('timeout');
+
         setState(() {
           _status = PlexAuthStatus.error;
-          _errorMessage = '无法获取 PIN 码';
+          _errorMessage = isNetworkError ? '网络连接失败，请检查网络' : '无法获取 PIN 码';
+          _isOffline = isNetworkError;
         });
       }
     }
   }
 
-  /// 开始轮询检查授权状态
+  /// 开始轮询检查授权状态（使用指数退避策略）
   void _startPolling() {
     setState(() {
       _status = PlexAuthStatus.polling;
     });
 
-    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      if (_pinInfo == null) {
-        timer.cancel();
-        return;
-      }
+    _scheduleNextPoll();
+  }
+
+  /// 计算下一次轮询间隔（指数退避）
+  int _getNextPollInterval() {
+    // 指数退避：2s -> 3s -> 4s -> 6s -> 8s -> 10s (max)
+    final interval = (_basePollIntervalSeconds * pow(1.5, _pollAttempts)).round();
+    return min(interval, _maxPollIntervalSeconds);
+  }
+
+  /// 调度下一次轮询
+  void _scheduleNextPoll() {
+    if (!mounted || _pinInfo == null) return;
+
+    final intervalSeconds = _getNextPollInterval();
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer(Duration(seconds: intervalSeconds), _doPoll);
+  }
+
+  /// 执行一次轮询
+  Future<void> _doPoll() async {
+    // 防止并发轮询
+    if (_isPolling || !mounted) return;
+    _isPolling = true;
+
+    try {
+      if (_pinInfo == null) return;
 
       // 更新剩余时间
-      _remainingSeconds -= 2;
+      final intervalSeconds = _getNextPollInterval();
+      _remainingSeconds -= intervalSeconds;
+
       if (_remainingSeconds <= 0) {
-        timer.cancel();
         if (mounted) {
           setState(() {
             _status = PlexAuthStatus.expired;
@@ -149,33 +253,44 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
         return;
       }
 
-      try {
-        final result = await _api!.checkPin(_pinInfo!.id);
+      final result = await _api!.checkPin(_pinInfo!.id);
 
-        if (!mounted) return;
+      if (!mounted) return;
 
-        if (result.isAuthorized) {
-          timer.cancel();
+      if (result.isAuthorized) {
+        setState(() {
+          _status = PlexAuthStatus.authorized;
+        });
 
-          setState(() {
-            _status = PlexAuthStatus.authorized;
-          });
+        widget.onResult(PlexAuthResult(
+          success: true,
+          authToken: result.authToken,
+        ));
+      } else {
+        // 成功轮询但未授权，重置退避计数
+        _pollAttempts = 0;
 
-          widget.onResult(PlexAuthResult(
-            success: true,
-            authToken: result.authToken,
-          ));
-        } else {
-          // 继续轮询，更新 UI
-          if (mounted) {
-            setState(() {});
-          }
+        // 更新倒计时 UI
+        if (mounted) {
+          setState(() {});
         }
-      } on Exception catch (e) {
-        logger.w('PlexAuth: 轮询失败', e);
-        // 轮询失败不立即停止，继续尝试
+
+        // 调度下一次轮询
+        _scheduleNextPoll();
       }
-    });
+    } on Exception catch (e) {
+      logger.w('PlexAuth: 轮询失败', e);
+
+      // 失败时增加退避计数
+      _pollAttempts++;
+
+      // 继续尝试，除非超时
+      if (_remainingSeconds > 0 && mounted) {
+        _scheduleNextPoll();
+      }
+    } finally {
+      _isPolling = false;
+    }
   }
 
   /// 打开授权链接
@@ -223,7 +338,20 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
       _authUrl = null;
       _errorMessage = null;
       _remainingSeconds = 300;
+      _pollAttempts = 0;
+      _isOffline = false;
     });
+
+    // 如果之前是离线状态，重新检查网络
+    if (!await _checkConnectivity()) {
+      setState(() {
+        _status = PlexAuthStatus.error;
+        _errorMessage = '网络不可用，请检查网络连接';
+        _isOffline = true;
+      });
+      return;
+    }
+
     await _initiatePinAuth();
   }
 
@@ -344,10 +472,10 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Icon(
+                const Icon(
                   Icons.copy,
                   size: 20,
-                  color: const Color(0xFFE5A00D),
+                  color: Color(0xFFE5A00D),
                 ),
               ],
             ),
@@ -411,26 +539,24 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
     );
   }
 
-  Widget _buildSuccessState(ThemeData theme) {
-    return Row(
-      children: [
-        const Icon(
-          Icons.check_circle,
-          color: Colors.green,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            '认证成功！',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.green,
-              fontWeight: FontWeight.bold,
+  Widget _buildSuccessState(ThemeData theme) => Row(
+        children: [
+          const Icon(
+            Icons.check_circle,
+            color: Colors.green,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '认证成功！',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: Colors.green,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-        ),
-      ],
-    );
-  }
+        ],
+      );
 
   Widget _buildErrorState(
       ThemeData theme, String message, {required bool canRetry}) {
@@ -440,7 +566,7 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
         Row(
           children: [
             Icon(
-              Icons.error_outline,
+              _isOffline ? Icons.wifi_off : Icons.error_outline,
               color: theme.colorScheme.error,
             ),
             const SizedBox(width: 12),
@@ -458,8 +584,8 @@ class _PlexAuthWidgetState extends State<PlexAuthWidget> {
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _restart,
-            icon: const Icon(Icons.refresh),
-            label: const Text('重试'),
+            icon: Icon(_isOffline ? Icons.wifi : Icons.refresh),
+            label: Text(_isOffline ? '重新检查网络' : '重试'),
           ),
         ],
       ],

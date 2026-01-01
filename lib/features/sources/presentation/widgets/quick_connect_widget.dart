@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -75,11 +77,18 @@ class _QuickConnectWidgetState extends State<QuickConnectWidget> {
   Timer? _pollingTimer;
   int _remainingSeconds = 180; // 3 分钟超时
   JellyfinApi? _api;
+  bool _isPolling = false; // 防止并发轮询
+  bool _isOffline = false; // 网络离线状态
+
+  // 指数退避参数
+  int _pollAttempts = 0;
+  static const int _basePollIntervalSeconds = 2;
+  static const int _maxPollIntervalSeconds = 10;
 
   @override
   void initState() {
     super.initState();
-    _checkQuickConnectAvailability();
+    _initializeAndCheck();
   }
 
   @override
@@ -88,10 +97,37 @@ class _QuickConnectWidgetState extends State<QuickConnectWidget> {
     super.dispose();
   }
 
+  /// 初始化并检查
+  Future<void> _initializeAndCheck() async {
+    // 先检查网络
+    if (!await _checkConnectivity()) {
+      setState(() {
+        _status = QuickConnectStatus.error;
+        _errorMessage = '网络不可用，请检查网络连接';
+        _isOffline = true;
+      });
+      return;
+    }
+
+    await _checkQuickConnectAvailability();
+  }
+
+  /// 检查网络连接
+  Future<bool> _checkConnectivity() async {
+    try {
+      final result = await Connectivity().checkConnectivity();
+      return !result.contains(ConnectivityResult.none);
+    } on Exception catch (e) {
+      logger.w('QuickConnect: 检查网络状态失败', e);
+      return true; // 默认假设有网络
+    }
+  }
+
   /// 检查 Quick Connect 是否可用
   Future<void> _checkQuickConnectAvailability() async {
     setState(() {
       _status = QuickConnectStatus.checking;
+      _isOffline = false;
     });
 
     try {
@@ -155,22 +191,45 @@ class _QuickConnectWidgetState extends State<QuickConnectWidget> {
     }
   }
 
+  /// 计算下次轮询间隔（指数退避）
+  int _getNextPollInterval() {
+    final interval =
+        (_basePollIntervalSeconds * pow(1.5, _pollAttempts)).round();
+    return min(interval, _maxPollIntervalSeconds);
+  }
+
   /// 开始轮询检查授权状态
   void _startPolling() {
     setState(() {
       _status = QuickConnectStatus.polling;
+      _pollAttempts = 0;
     });
 
-    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      if (_secret == null) {
-        timer.cancel();
-        return;
-      }
+    _scheduleNextPoll();
+  }
 
+  /// 调度下一次轮询
+  void _scheduleNextPoll() {
+    if (!mounted || _secret == null) return;
+
+    final interval = _getNextPollInterval();
+    _pollingTimer = Timer(Duration(seconds: interval), _doPoll);
+  }
+
+  /// 执行轮询
+  Future<void> _doPoll() async {
+    if (!mounted || _secret == null) return;
+
+    // 防止并发轮询
+    if (_isPolling) return;
+    _isPolling = true;
+
+    try {
       // 更新剩余时间
-      _remainingSeconds -= 2;
+      final interval = _getNextPollInterval();
+      _remainingSeconds -= interval;
+
       if (_remainingSeconds <= 0) {
-        timer.cancel();
         if (mounted) {
           setState(() {
             _status = QuickConnectStatus.expired;
@@ -180,45 +239,69 @@ class _QuickConnectWidgetState extends State<QuickConnectWidget> {
         return;
       }
 
-      try {
-        final result = await _api!.checkQuickConnect(_secret!);
-
-        if (!mounted) return;
-
-        if (result?.isAuthenticated == true) {
-          timer.cancel();
-
-          // 使用 secret 完成认证
-          final authResult =
-              await _api!.authenticateWithQuickConnect(_secret!);
-
-          if (authResult != null) {
-            setState(() {
-              _status = QuickConnectStatus.authorized;
-            });
-
-            widget.onResult(QuickConnectResult(
-              success: true,
-              accessToken: authResult.accessToken,
-              userId: authResult.userId,
-            ));
-          } else {
-            setState(() {
-              _status = QuickConnectStatus.error;
-              _errorMessage = '认证失败';
-            });
-          }
-        } else {
-          // 继续轮询，更新 UI
-          if (mounted) {
-            setState(() {});
-          }
+      // 检查网络
+      if (!await _checkConnectivity()) {
+        if (mounted) {
+          setState(() {
+            _isOffline = true;
+          });
         }
-      } on Exception catch (e) {
-        logger.w('QuickConnect: 轮询失败', e);
-        // 轮询失败不立即停止，继续尝试
+        // 网络不可用时继续调度，等待网络恢复
+        _pollAttempts++;
+        _scheduleNextPoll();
+        return;
       }
-    });
+
+      // 网络恢复
+      if (_isOffline && mounted) {
+        setState(() {
+          _isOffline = false;
+        });
+      }
+
+      final result = await _api!.checkQuickConnect(_secret!);
+
+      if (!mounted) return;
+
+      if (result?.isAuthenticated ?? false) {
+        // 使用 secret 完成认证
+        final authResult = await _api!.authenticateWithQuickConnect(_secret!);
+
+        if (authResult != null) {
+          setState(() {
+            _status = QuickConnectStatus.authorized;
+          });
+
+          widget.onResult(QuickConnectResult(
+            success: true,
+            accessToken: authResult.accessToken,
+            userId: authResult.userId,
+          ));
+        } else {
+          setState(() {
+            _status = QuickConnectStatus.error;
+            _errorMessage = '认证失败';
+          });
+        }
+      } else {
+        // 继续轮询，更新 UI
+        if (mounted) {
+          setState(() {});
+          // 成功请求后重置退避
+          _pollAttempts = 0;
+          _scheduleNextPoll();
+        }
+      }
+    } on Exception catch (e) {
+      logger.w('QuickConnect: 轮询失败', e);
+      // 轮询失败增加退避
+      _pollAttempts++;
+      if (mounted) {
+        _scheduleNextPoll();
+      }
+    } finally {
+      _isPolling = false;
+    }
   }
 
   /// 复制代码到剪贴板
@@ -246,8 +329,10 @@ class _QuickConnectWidgetState extends State<QuickConnectWidget> {
       _secret = null;
       _errorMessage = null;
       _remainingSeconds = 180;
+      _pollAttempts = 0;
+      _isPolling = false;
     });
-    await _checkQuickConnectAvailability();
+    await _initializeAndCheck();
   }
 
   @override
@@ -448,15 +533,19 @@ class _QuickConnectWidgetState extends State<QuickConnectWidget> {
         Row(
           children: [
             Icon(
-              Icons.error_outline,
-              color: theme.colorScheme.error,
+              _isOffline ? Icons.wifi_off : Icons.error_outline,
+              color: _isOffline
+                  ? theme.colorScheme.outline
+                  : theme.colorScheme.error,
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 message,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.error,
+                  color: _isOffline
+                      ? theme.colorScheme.outline
+                      : theme.colorScheme.error,
                 ),
               ),
             ),
