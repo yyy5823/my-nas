@@ -96,6 +96,10 @@ class UIStyleNotifier extends StateNotifier<UIStyle> {
 
   /// 解析 UI 风格
   UIStyle? _parseUIStyle(String value) {
+    // 处理旧版名称迁移：如果用户之前设置的是 'glass'，转换为 liquidClear
+    if (value == 'glass') {
+      return UIStyle.liquidClear;
+    }
     for (final style in UIStyle.values) {
       if (style.name == value) {
         return style;

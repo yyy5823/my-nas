@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -91,8 +94,8 @@ class _ScrollableBottomSheet extends ConsumerWidget {
             Expanded(
               child: builder(context, scrollController),
             ),
-            // 底部安全区域
-            SizedBox(height: _getBottomPadding(context)),
+            // 底部安全区域（包含原生 Tab Bar 高度）
+            SizedBox(height: _getBottomPadding(context, uiStyle)),
           ],
         ),
       ),
@@ -196,11 +199,25 @@ class _ScrollableBottomSheet extends ConsumerWidget {
     return const SizedBox.shrink();
   }
 
-  double _getBottomPadding(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
-    // 确保至少有一点底部间距
-    return bottomPadding > 0 ? bottomPadding : AppSpacing.md;
+}
+
+/// 计算底部弹窗的底部间距
+///
+/// 在 iOS 玻璃风格下需要额外添加原生 Tab Bar 的高度，
+/// 因为原生 UITabBar 悬浮在 Flutter 内容之上。
+double _getBottomPadding(BuildContext context, UIStyle uiStyle) {
+  final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+  // 确保至少有一点底部间距
+  var padding = bottomPadding > 0 ? bottomPadding : AppSpacing.md;
+
+  // iOS 玻璃风格下需要额外添加原生 Tab Bar 的高度
+  // 因为原生 UITabBar 悬浮在 Flutter 内容之上
+  if (!kIsWeb && Platform.isIOS && uiStyle.isGlass) {
+    // UITabBar 标准高度约 49pt
+    padding += 49;
   }
+
+  return padding;
 }
 
 /// 固定高度的底部弹窗（内容较少时使用）
@@ -220,7 +237,7 @@ class _FixedBottomSheet extends ConsumerWidget {
     final uiStyle = ref.watch(uiStyleProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    final bottomPadding = _getBottomPadding(context, uiStyle);
     final borderRadius = const BorderRadius.vertical(top: Radius.circular(24));
 
     // 计算背景色
@@ -289,10 +306,8 @@ class _FixedBottomSheet extends ConsumerWidget {
               child: builder(context, null),
             ),
           ),
-          // 底部安全区域
-          SizedBox(
-            height: bottomPadding > 0 ? bottomPadding : AppSpacing.lg,
-          ),
+          // 底部安全区域（包含原生 Tab Bar 高度）
+          SizedBox(height: bottomPadding),
         ],
       ),
     );

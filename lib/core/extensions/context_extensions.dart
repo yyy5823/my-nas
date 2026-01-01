@@ -1,6 +1,11 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/services/toast_service.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/toast_overlay.dart';
 
 extension BuildContextExtensions on BuildContext {
@@ -14,10 +19,9 @@ extension BuildContextExtensions on BuildContext {
 
   /// 获取滚动内容的底部 padding
   ///
-  /// 在 iOS 26 悬浮导航栏模式下，此值包含：
-  /// - 导航栏高度 (70)
-  /// - 导航栏距底部距离 (16)
-  /// - 安全区域
+  /// 在 iOS 玻璃风格模式下，此值包含：
+  /// - 系统安全区域（Home Indicator）
+  /// - 原生 UITabBar 高度 (49pt)
   ///
   /// 用于 ListView、GridView、CustomScrollView 等滚动组件的底部 padding，
   /// 确保内容可以滚动到导航栏后面，而最后一项不会被遮挡。
@@ -28,7 +32,26 @@ extension BuildContextExtensions on BuildContext {
   ///   padding: EdgeInsets.only(bottom: context.scrollBottomPadding),
   /// )
   /// ```
-  double get scrollBottomPadding => mediaQuery.padding.bottom;
+  double get scrollBottomPadding {
+    var padding = mediaQuery.padding.bottom;
+
+    // iOS 玻璃风格下需要额外添加原生 Tab Bar 的高度
+    // 因为原生 UITabBar 悬浮在 Flutter 内容之上
+    if (!kIsWeb && Platform.isIOS) {
+      try {
+        final container = ProviderScope.containerOf(this);
+        final uiStyle = container.read(uiStyleProvider);
+        if (uiStyle.isGlass) {
+          // UITabBar 标准高度约 49pt
+          padding += 49;
+        }
+      } on Exception catch (_) {
+        // 如果无法访问 provider，使用默认值
+      }
+    }
+
+    return padding;
+  }
 
   // ============ 语义化颜色（根据亮暗模式自动调整）============
 

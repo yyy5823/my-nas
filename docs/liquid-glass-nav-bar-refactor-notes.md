@@ -743,7 +743,7 @@ bool _shouldUseNativeTabBar(UIStyle uiStyle) {
 ```
 
 - **经典风格 (classic)**: 使用 Flutter 自己的导航栏
-- **玻璃风格 (liquidClear/liquidTinted)**: 使用原生 UITabBar (Liquid Glass)
+- **玻璃风格 (glass)**: 使用原生 UITabBar (Liquid Glass)
 
 切换时自动：
 - 订阅/取消原生 Tab 事件
@@ -766,3 +766,139 @@ bool _shouldUseNativeTabBar(UIStyle uiStyle) {
 - Selection Bubble 变形动画 ❌（需要 UITabBarController）
 
 如需完整的 Liquid Glass 交互效果，可能需要探索其他方案。
+
+---
+
+## 2025年1月1日更新：UIStyle 和底部弹窗修复
+
+### UIStyle：两种玻璃风格
+
+支持三种 UI 风格：
+
+```dart
+/// UI 风格枚举
+/// - classic: 经典不透明风格
+/// - liquidClear: 液态玻璃 - 清澈模式（更透明）
+/// - liquidTinted: 液态玻璃 - 染色模式（更高对比度）
+enum UIStyle {
+  classic('经典', Icons.square_rounded),
+  liquidClear('玻璃 · 清澈', Icons.blur_on),
+  liquidTinted('玻璃 · 染色', Icons.blur_circular);
+
+  bool get isGlass => this != classic;
+  bool get isTinted => this == liquidTinted;
+}
+```
+
+**两种玻璃风格的差异**：
+
+| 参数 | liquidClear | liquidTinted |
+|------|-------------|--------------|
+| blurIntensity | 20-25 | 25-30 |
+| backgroundOpacity | 0.5-0.6 | 0.75-0.85 |
+| tintOpacity | 0.05-0.1 | 0.1-0.15 |
+| borderOpacity | 0.15-0.2 | 0.2-0.25 |
+| 视觉效果 | 更透明、清澈 | 更高对比度、有色调 |
+
+**注意**：这些差异主要体现在 Flutter 侧组件（如 AdaptiveGlassContainer）。
+iOS 26 原生 UITabBar 只有一种 Liquid Glass 样式（.regular），无法区分。
+
+**迁移处理**：旧版 `glass` 设置自动迁移到 `liquidClear`：
+
+```dart
+UIStyle? _parseUIStyle(String value) {
+  // 处理旧版名称迁移
+  if (value == 'glass') {
+    return UIStyle.liquidClear;
+  }
+  // ...
+}
+```
+
+### 底部弹窗被导航栏遮挡问题
+
+**问题**：iOS 玻璃风格下，原生 UITabBar 悬浮在 Flutter 内容之上，导致底部弹窗被遮挡。
+
+**根本原因**：Flutter 的 `MediaQuery.viewPadding.bottom` 只包含系统安全区域（如 Home Indicator），
+不知道有一个原生 UITabBar 悬浮在上方。
+
+**解决方案**：在底部弹窗中添加额外的底部间距来适应原生 Tab Bar 高度：
+
+```dart
+/// 计算底部弹窗的底部间距
+double _getBottomPadding(BuildContext context, UIStyle uiStyle) {
+  final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+  var padding = bottomPadding > 0 ? bottomPadding : AppSpacing.md;
+
+  // iOS 玻璃风格下需要额外添加原生 Tab Bar 的高度
+  if (!kIsWeb && Platform.isIOS && uiStyle.isGlass) {
+    padding += 49;  // UITabBar 标准高度
+  }
+
+  return padding;
+}
+```
+
+**修改的文件**：
+- `lib/shared/widgets/app_bottom_sheet.dart` - 添加原生 Tab Bar 高度补偿
+- `lib/shared/widgets/adaptive_sheet.dart` - 添加原生 Tab Bar 高度补偿
+
+### iOS 26 底部弹窗最佳实践
+
+根据 iOS 26 设计指南：
+- iOS 26 的 sheet 自动具有 Liquid Glass 背景
+- 使用 `presentationDetents`（.medium, .large）控制高度
+- 不要设置自定义 `presentationBackground`
+- 弹窗可以从触发按钮进行 "morphing" 变形动画
+
+Flutter 中的适配：
+- 使用 `showModalBottomSheet` 配合 `DraggableScrollableSheet`
+- 添加额外的底部间距来避免被原生 Tab Bar 遮挡
+- 使用 `BackdropFilter` 实现玻璃效果（Flutter 侧）
+
+### 列表页面底部间距
+
+**问题**：列表页面（影视、音乐、相册、阅读等）滚动到底部时，最后的内容被原生 Tab Bar 遮挡。
+
+**解决方案**：更新 `context.scrollBottomPadding` 扩展方法，自动检测 iOS 玻璃风格并添加额外间距：
+
+```dart
+double get scrollBottomPadding {
+  var padding = mediaQuery.padding.bottom;
+
+  // iOS 玻璃风格下需要额外添加原生 Tab Bar 的高度
+  if (!kIsWeb && Platform.isIOS) {
+    try {
+      final container = ProviderScope.containerOf(this);
+      final uiStyle = container.read(uiStyleProvider);
+      if (uiStyle.isGlass) {
+        padding += 49;  // UITabBar 标准高度
+      }
+    } on Exception catch (_) {
+      // 如果无法访问 provider，使用默认值
+    }
+  }
+
+  return padding;
+}
+```
+
+**已使用此方法的页面**（自动获得修复）：
+- `video_list_page.dart`
+- `music_list_page.dart`
+- `music_home_page.dart`
+- `photo_list_page.dart`
+- `book_list_page.dart`
+- `comic_list_page.dart`
+- `note_tree_widget.dart`
+
+### 相关修改文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `lib/app/theme/ui_style.dart` | 定义 liquidClear/liquidTinted 两种玻璃风格及其参数 |
+| `lib/shared/providers/ui_style_provider.dart` | 添加旧设置迁移逻辑（glass → liquidClear） |
+| `lib/shared/widgets/adaptive_glass_container.dart` | 根据 UIStyle 选择原生模糊样式 |
+| `lib/shared/widgets/app_bottom_sheet.dart` | 添加原生 Tab Bar 高度补偿 |
+| `lib/shared/widgets/adaptive_sheet.dart` | 添加原生 Tab Bar 高度补偿 |
+| `lib/core/extensions/context_extensions.dart` | 更新 scrollBottomPadding 支持玻璃风格 |

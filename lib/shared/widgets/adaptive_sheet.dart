@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -373,7 +376,7 @@ class _MobileBottomSheet extends ConsumerWidget {
     final uiStyle = ref.watch(uiStyleProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    final bottomPadding = _getBottomPadding(context, uiStyle);
     final borderRadius = const BorderRadius.vertical(top: Radius.circular(24));
 
     final bgColor = glassStyle.needsBlur
@@ -402,7 +405,7 @@ class _MobileBottomSheet extends ConsumerWidget {
             else
               Flexible(child: SingleChildScrollView(child: builder(context, null))),
             if (actions != null && actions!.isNotEmpty) _buildActions(context, isDark),
-            SizedBox(height: bottomPadding > 0 ? bottomPadding : AppSpacing.lg),
+            SizedBox(height: bottomPadding),
           ],
         );
 
@@ -829,4 +832,27 @@ class _AdaptiveOptionTile<T> extends StatelessWidget {
       ),
     );
   }
+}
+
+// ============================================================================
+// 工具函数
+// ============================================================================
+
+/// 计算底部弹窗的底部间距
+///
+/// 在 iOS 玻璃风格下需要额外添加原生 Tab Bar 的高度，
+/// 因为原生 UITabBar 悬浮在 Flutter 内容之上。
+double _getBottomPadding(BuildContext context, UIStyle uiStyle) {
+  final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+  // 确保至少有一点底部间距
+  var padding = bottomPadding > 0 ? bottomPadding : AppSpacing.lg;
+
+  // iOS 玻璃风格下需要额外添加原生 Tab Bar 的高度
+  // 因为原生 UITabBar 悬浮在 Flutter 内容之上
+  if (!kIsWeb && Platform.isIOS && uiStyle.isGlass) {
+    // UITabBar 标准高度约 49pt
+    padding += 49;
+  }
+
+  return padding;
 }
