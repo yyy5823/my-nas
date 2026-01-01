@@ -889,6 +889,31 @@ class SourceFormConfig {
           ],
         ),
         const SourceFormSection(
+          title: '连接模式',
+          description: '选择媒体数据的获取方式',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'connectionMode',
+              label: '数据模式',
+              type: SourceFormFieldType.select,
+              options: ['直连模式', '库模式'],
+              defaultValue: '直连模式',
+              helpText: '直连模式：实时从服务器获取数据\n'
+                  '库模式：预缓存元数据到本地，支持离线浏览',
+            ),
+            SourceFormField(
+              key: 'syncInterval',
+              label: '同步间隔',
+              type: SourceFormFieldType.select,
+              options: ['手动', '每小时', '每天', '每周'],
+              defaultValue: '每天',
+              helpText: '库模式下自动同步元数据的频率',
+            ),
+          ],
+        ),
+        const SourceFormSection(
           title: '播放设置',
           collapsible: true,
           defaultExpanded: false,
@@ -978,6 +1003,31 @@ class SourceFormConfig {
           ],
         ),
         const SourceFormSection(
+          title: '连接模式',
+          description: '选择媒体数据的获取方式',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'connectionMode',
+              label: '数据模式',
+              type: SourceFormFieldType.select,
+              options: ['直连模式', '库模式'],
+              defaultValue: '直连模式',
+              helpText: '直连模式：实时从服务器获取数据\n'
+                  '库模式：预缓存元数据到本地，支持离线浏览',
+            ),
+            SourceFormField(
+              key: 'syncInterval',
+              label: '同步间隔',
+              type: SourceFormFieldType.select,
+              options: ['手动', '每小时', '每天', '每周'],
+              defaultValue: '每天',
+              helpText: '库模式下自动同步元数据的频率',
+            ),
+          ],
+        ),
+        const SourceFormSection(
           title: '播放设置',
           collapsible: true,
           defaultExpanded: false,
@@ -1031,17 +1081,52 @@ class SourceFormConfig {
             ),
           ],
         ),
-        const SourceFormSection(
-          title: '认证信息',
-          description: '使用 X-Plex-Token 认证',
+        SourceFormSection(
+          title: '认证方式',
+          description: '支持 PIN 码授权或手动输入 Token',
           fields: [
+            const SourceFormField(
+              key: 'authType',
+              label: '认证类型',
+              type: SourceFormFieldType.select,
+              options: ['PIN 码授权', '手动输入 Token'],
+              defaultValue: 'PIN 码授权',
+              helpText: 'PIN 码授权：在 plex.tv/link 上输入 PIN 码完成授权\n'
+                  '手动输入 Token：手动获取并输入 X-Plex-Token',
+            ),
             SourceFormField(
               key: 'plexToken',
               label: 'Plex Token',
               type: SourceFormFieldType.password,
               helpText: '获取方式：登录 Plex Web → 打开任意媒体 → '
-                  '在地址栏 URL 中找到 X-Plex-Token=xxx 参数\n'
-                  '或访问 plex.tv/claim 获取',
+                  '在地址栏 URL 中找到 X-Plex-Token=xxx 参数',
+              visibilityCondition: (values) =>
+                  values['authType'] == '手动输入 Token',
+            ),
+          ],
+        ),
+        const SourceFormSection(
+          title: '连接模式',
+          description: '选择媒体数据的获取方式',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'connectionMode',
+              label: '数据模式',
+              type: SourceFormFieldType.select,
+              options: ['直连模式', '库模式'],
+              defaultValue: '直连模式',
+              helpText: '直连模式：实时从服务器获取数据\n'
+                  '库模式：预缓存元数据到本地，支持离线浏览',
+            ),
+            SourceFormField(
+              key: 'syncInterval',
+              label: '同步间隔',
+              type: SourceFormFieldType.select,
+              options: ['手动', '每小时', '每天', '每周'],
+              defaultValue: '每天',
+              helpText: '库模式下自动同步元数据的频率',
             ),
           ],
         ),

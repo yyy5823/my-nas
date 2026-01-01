@@ -47,6 +47,16 @@ class EmbyAdapter extends MediaServerAdapter {
       _serverName = serverInfo.serverName;
       _serverVersion = serverInfo.version;
 
+      // 检查服务器版本兼容性
+      if (_serverVersion != null) {
+        final compatibility = MediaServerVersionRequirements.checkEmby(
+          _serverVersion!,
+        );
+        if (!compatibility.isCompatible) {
+          return ServiceConnectionFailure(compatibility.message!);
+        }
+      }
+
       // 认证
       if (config.apiKey != null && config.apiKey!.isNotEmpty) {
         // API Key 认证

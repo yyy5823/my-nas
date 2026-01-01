@@ -3,6 +3,166 @@ import 'package:my_nas/media_server_adapters/base/media_server_entities.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 
+/// 服务器版本信息
+class ServerVersion implements Comparable<ServerVersion> {
+  const ServerVersion(this.major, [this.minor = 0, this.patch = 0]);
+
+  /// 从版本字符串解析
+  /// 支持格式: "10.8.0", "10.8", "4.6.0.30-beta", "1.40.4.8679"
+  factory ServerVersion.parse(String version) {
+    // 移除可能的前缀 v
+    var cleaned = version.startsWith('v') ? version.substring(1) : version;
+    // 只取主版本号部分（去掉 -beta, -alpha 等后缀）
+    cleaned = cleaned.split('-').first;
+    // 分割版本号
+    final parts = cleaned.split('.');
+    return ServerVersion(
+      parts.isNotEmpty ? int.tryParse(parts[0]) ?? 0 : 0,
+      parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
+      parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0,
+    );
+  }
+
+  final int major;
+  final int minor;
+  final int patch;
+
+  @override
+  int compareTo(ServerVersion other) {
+    if (major != other.major) return major.compareTo(other.major);
+    if (minor != other.minor) return minor.compareTo(other.minor);
+    return patch.compareTo(other.patch);
+  }
+
+  bool operator <(ServerVersion other) => compareTo(other) < 0;
+  bool operator <=(ServerVersion other) => compareTo(other) <= 0;
+  bool operator >(ServerVersion other) => compareTo(other) > 0;
+  bool operator >=(ServerVersion other) => compareTo(other) >= 0;
+
+  @override
+  String toString() => '$major.$minor.$patch';
+}
+
+/// 服务器兼容性检查结果
+class ServerCompatibilityResult {
+  const ServerCompatibilityResult._({
+    required this.isCompatible,
+    this.serverVersion,
+    this.minVersion,
+    this.message,
+    this.warnings = const [],
+  });
+
+  /// 兼容
+  const ServerCompatibilityResult.compatible({
+    required String serverVersion,
+    List<String> warnings = const [],
+  }) : this._(
+          isCompatible: true,
+          serverVersion: serverVersion,
+          warnings: warnings,
+        );
+
+  /// 不兼容
+  const ServerCompatibilityResult.incompatible({
+    required String serverVersion,
+    required String minVersion,
+    required String message,
+  }) : this._(
+          isCompatible: false,
+          serverVersion: serverVersion,
+          minVersion: minVersion,
+          message: message,
+        );
+
+  final bool isCompatible;
+  final String? serverVersion;
+  final String? minVersion;
+  final String? message;
+  final List<String> warnings;
+}
+
+/// 媒体服务器版本要求
+class MediaServerVersionRequirements {
+  const MediaServerVersionRequirements._();
+
+  /// Jellyfin 最低版本要求
+  static const jellyfinMin = ServerVersion(10, 8, 0);
+
+  /// Emby 最低版本要求
+  static const embyMin = ServerVersion(4, 6, 0);
+
+  /// Plex 没有严格的版本要求，但建议使用最新版
+  /// Plex 版本格式特殊，如 1.40.4.8679
+  static const plexRecommended = ServerVersion(1, 32, 0);
+
+  /// 检查 Jellyfin 版本兼容性
+  static ServerCompatibilityResult checkJellyfin(String version) {
+    final current = ServerVersion.parse(version);
+    final warnings = <String>[];
+
+    if (current < jellyfinMin) {
+      return ServerCompatibilityResult.incompatible(
+        serverVersion: version,
+        minVersion: jellyfinMin.toString(),
+        message: '服务器版本过低，需要 ${jellyfinMin.major}.${jellyfinMin.minor}+ 版本',
+      );
+    }
+
+    // Quick Connect 需要 10.7+，但我们已经要求 10.8+
+    // WebSocket 需要特定版本
+    if (current < const ServerVersion(10, 9, 0)) {
+      warnings.add('建议升级到 10.9+ 以获得更好的 WebSocket 支持');
+    }
+
+    return ServerCompatibilityResult.compatible(
+      serverVersion: version,
+      warnings: warnings,
+    );
+  }
+
+  /// 检查 Emby 版本兼容性
+  static ServerCompatibilityResult checkEmby(String version) {
+    final current = ServerVersion.parse(version);
+    final warnings = <String>[];
+
+    if (current < embyMin) {
+      return ServerCompatibilityResult.incompatible(
+        serverVersion: version,
+        minVersion: embyMin.toString(),
+        message: '服务器版本过低，需要 ${embyMin.major}.${embyMin.minor}+ 版本',
+      );
+    }
+
+    // Emby 4.8+ 有更好的 API 支持
+    if (current < const ServerVersion(4, 8, 0)) {
+      warnings.add('建议升级到 4.8+ 以获得更好的 API 支持');
+    }
+
+    return ServerCompatibilityResult.compatible(
+      serverVersion: version,
+      warnings: warnings,
+    );
+  }
+
+  /// 检查 Plex 版本兼容性
+  /// Plex 版本格式: 1.40.4.8679
+  static ServerCompatibilityResult checkPlex(String version) {
+    final current = ServerVersion.parse(version);
+    final warnings = <String>[];
+
+    // Plex 通常向后兼容，但建议使用较新版本
+    if (current < plexRecommended) {
+      warnings.add('建议升级到 ${plexRecommended.major}.${plexRecommended.minor}+ 以获得最佳体验');
+    }
+
+    return ServerCompatibilityResult.compatible(
+      serverVersion: version,
+      warnings: warnings,
+    );
+  }
+}
+
 /// 媒体服务器适配器抽象基类
 ///
 /// 继承自 ServiceAdapter，同时提供媒体服务器特有的功能：
@@ -146,6 +306,34 @@ abstract class MediaServerAdapter implements ServiceAdapter {
   Future<MediaItemsResult> getRecentlyAdded({int limit = 100});
 }
 
+/// 媒体服务器连接模式
+enum MediaServerConnectionMode {
+  /// 直连模式：数据按需获取，不本地缓存
+  /// 优点：快速设置、实时更新、节省存储
+  /// 缺点：需要网络、每次都要加载
+  direct,
+
+  /// 库模式：预缓存元数据到本地
+  /// 优点：快速浏览、离线可用、可与本地刮削数据合并
+  /// 缺点：首次同步慢、需要同步机制
+  library,
+}
+
+/// 媒体服务器同步间隔
+enum MediaServerSyncInterval {
+  /// 手动同步
+  manual,
+
+  /// 每小时同步
+  hourly,
+
+  /// 每天同步
+  daily,
+
+  /// 每周同步
+  weekly,
+}
+
 /// 媒体服务器连接配置扩展
 extension MediaServerConnectionConfig on ServiceConnectionConfig {
   /// 获取用户 ID（从 extraConfig）
@@ -161,6 +349,34 @@ extension MediaServerConnectionConfig on ServiceConnectionConfig {
   /// 最大码率限制
   int? get maxStreamingBitrate =>
       extraConfig?['maxStreamingBitrate'] as int?;
+
+  /// 获取连接模式
+  MediaServerConnectionMode get connectionMode {
+    final mode = extraConfig?['connectionMode'] as String?;
+    return switch (mode) {
+      '库模式' || 'library' => MediaServerConnectionMode.library,
+      _ => MediaServerConnectionMode.direct,
+    };
+  }
+
+  /// 获取同步间隔
+  MediaServerSyncInterval get syncInterval {
+    final interval = extraConfig?['syncInterval'] as String?;
+    return switch (interval) {
+      '每小时' || 'hourly' => MediaServerSyncInterval.hourly,
+      '每天' || 'daily' => MediaServerSyncInterval.daily,
+      '每周' || 'weekly' => MediaServerSyncInterval.weekly,
+      _ => MediaServerSyncInterval.manual,
+    };
+  }
+
+  /// 同步间隔对应的 Duration
+  Duration? get syncIntervalDuration => switch (syncInterval) {
+        MediaServerSyncInterval.hourly => const Duration(hours: 1),
+        MediaServerSyncInterval.daily => const Duration(days: 1),
+        MediaServerSyncInterval.weekly => const Duration(days: 7),
+        MediaServerSyncInterval.manual => null,
+      };
 }
 
 /// 媒体服务器连接结果

@@ -445,3 +445,198 @@ class PlexItemsResult {
       totalSize != null && offset != null && size != null &&
       (offset! + size!) < totalSize!;
 }
+
+/// Plex PIN 认证信息
+class PlexPinInfo {
+  const PlexPinInfo({
+    required this.id,
+    required this.code,
+    this.authToken,
+    this.expiresAt,
+    this.trusted,
+    this.clientIdentifier,
+  });
+
+  factory PlexPinInfo.fromJson(Map<String, dynamic> json) {
+    return PlexPinInfo(
+      id: json['id'] as int? ?? 0,
+      code: json['code'] as String? ?? '',
+      authToken: json['authToken'] as String?,
+      expiresAt: json['expiresAt'] != null
+          ? DateTime.tryParse(json['expiresAt'] as String)
+          : null,
+      trusted: json['trusted'] as bool? ?? false,
+      clientIdentifier: json['clientIdentifier'] as String?,
+    );
+  }
+
+  final int id;
+  final String code;
+  final String? authToken;
+  final DateTime? expiresAt;
+  final bool? trusted;
+  final String? clientIdentifier;
+
+  /// PIN 是否已过期
+  bool get isExpired =>
+      expiresAt != null && DateTime.now().isAfter(expiresAt!);
+
+  /// 是否已授权
+  bool get isAuthorized => authToken != null && authToken!.isNotEmpty;
+
+  /// 获取授权 URL
+  String getAuthUrl({
+    required String clientId,
+    String? clientName,
+  }) {
+    final params = <String, String>{
+      'clientID': clientId,
+      'code': code,
+      'context[device][product]': clientName ?? 'MyNas',
+    };
+    final query = params.entries
+        .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    return 'https://app.plex.tv/auth#?$query';
+  }
+}
+
+/// Plex 用户信息
+class PlexUser {
+  const PlexUser({
+    required this.id,
+    required this.uuid,
+    this.username,
+    this.email,
+    this.thumb,
+    this.authToken,
+    this.subscription,
+  });
+
+  factory PlexUser.fromJson(Map<String, dynamic> json) {
+    return PlexUser(
+      id: json['id'] as int? ?? 0,
+      uuid: json['uuid'] as String? ?? '',
+      username: json['username'] as String?,
+      email: json['email'] as String?,
+      thumb: json['thumb'] as String?,
+      authToken: json['authToken'] as String?,
+      subscription: json['subscription'] != null
+          ? PlexSubscription.fromJson(json['subscription'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  final int id;
+  final String uuid;
+  final String? username;
+  final String? email;
+  final String? thumb;
+  final String? authToken;
+  final PlexSubscription? subscription;
+}
+
+/// Plex 订阅信息
+class PlexSubscription {
+  const PlexSubscription({
+    this.active,
+    this.status,
+    this.plan,
+    this.features,
+  });
+
+  factory PlexSubscription.fromJson(Map<String, dynamic> json) {
+    return PlexSubscription(
+      active: json['active'] as bool? ?? false,
+      status: json['status'] as String?,
+      plan: json['plan'] as String?,
+      features: (json['features'] as List?)?.cast<String>(),
+    );
+  }
+
+  final bool? active;
+  final String? status;
+  final String? plan;
+  final List<String>? features;
+}
+
+/// Plex 服务器资源（从 plex.tv 获取）
+class PlexServerResource {
+  const PlexServerResource({
+    required this.name,
+    required this.clientIdentifier,
+    this.accessToken,
+    this.owned,
+    this.connections,
+  });
+
+  factory PlexServerResource.fromJson(Map<String, dynamic> json) {
+    List<PlexConnection>? connections;
+    final connList = json['connections'] as List?;
+    if (connList != null) {
+      connections = connList
+          .map((c) => PlexConnection.fromJson(c as Map<String, dynamic>))
+          .toList();
+    }
+
+    return PlexServerResource(
+      name: json['name'] as String? ?? '',
+      clientIdentifier: json['clientIdentifier'] as String? ?? '',
+      accessToken: json['accessToken'] as String?,
+      owned: json['owned'] as bool? ?? false,
+      connections: connections,
+    );
+  }
+
+  final String name;
+  final String clientIdentifier;
+  final String? accessToken;
+  final bool? owned;
+  final List<PlexConnection>? connections;
+
+  /// 获取最佳连接 URL（优先本地）
+  String? get bestConnectionUrl {
+    if (connections == null || connections!.isEmpty) return null;
+
+    // 优先选择本地连接
+    final local = connections!.where((c) => c.local == true).firstOrNull;
+    if (local != null) return local.uri;
+
+    // 其次选择 relay 连接
+    final relay = connections!.where((c) => c.relay == true).firstOrNull;
+    if (relay != null) return relay.uri;
+
+    // 最后返回第一个
+    return connections!.first.uri;
+  }
+}
+
+/// Plex 连接信息
+class PlexConnection {
+  const PlexConnection({
+    this.protocol,
+    this.address,
+    this.port,
+    this.uri,
+    this.local,
+    this.relay,
+  });
+
+  factory PlexConnection.fromJson(Map<String, dynamic> json) {
+    return PlexConnection(
+      protocol: json['protocol'] as String?,
+      address: json['address'] as String?,
+      port: json['port'] as int?,
+      uri: json['uri'] as String?,
+      local: json['local'] as bool? ?? false,
+      relay: json['relay'] as bool? ?? false,
+    );
+  }
+
+  final String? protocol;
+  final String? address;
+  final int? port;
+  final String? uri;
+  final bool? local;
+  final bool? relay;
+}

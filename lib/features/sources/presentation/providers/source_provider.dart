@@ -16,6 +16,8 @@ import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
+import 'package:my_nas/media_server_adapters/base/media_server_event_handler.dart';
+import 'package:my_nas/media_server_adapters/base/media_server_sync_service.dart';
 
 /// 源管理服务 Provider
 final sourceManagerProvider = Provider<SourceManagerService>((ref) => SourceManagerService());
@@ -406,15 +408,100 @@ class ActiveMediaServerConnectionsNotifier
         source.id,
         connection.adapter.virtualFileSystem,
       );
+
+      // 处理连接模式
+      await _handleConnectionMode(source, connection);
     }
     return connection;
   }
+
+  /// 处理连接模式（直连模式/库模式）
+  Future<void> _handleConnectionMode(
+    SourceEntity source,
+    MediaServerConnection connection,
+  ) async {
+    // 获取连接模式配置
+    final connectionMode = source.extraConfig?['connectionMode'] as String?;
+    final isLibraryMode = connectionMode == '库模式' || connectionMode == 'library';
+
+    logger.i(
+      'MediaServerConnection: 连接模式 = ${isLibraryMode ? "库模式" : "直连模式"}',
+    );
+
+    if (isLibraryMode) {
+      // 库模式：启动自动同步
+      final syncService = _ref.read(mediaServerSyncServiceProvider);
+      final syncInterval = source.extraConfig?['syncInterval'] as String?;
+      final interval = _parseSyncInterval(syncInterval);
+
+      if (interval != null) {
+        syncService.startAutoSync(interval: interval);
+        logger.i('MediaServerConnection: 已启动自动同步，间隔 = $interval');
+      }
+
+      // 执行初始增量同步
+      await syncService.incrementalSync(source.id, connection.adapter);
+    }
+
+    // 连接 WebSocket 事件处理器
+    await _connectEventHandler(source, connection);
+  }
+
+  /// 连接 WebSocket 事件处理器
+  Future<void> _connectEventHandler(
+    SourceEntity source,
+    MediaServerConnection connection,
+  ) async {
+    // 只有 Jellyfin 和 Emby 支持 WebSocket
+    if (source.type != SourceType.jellyfin && source.type != SourceType.emby) {
+      return;
+    }
+
+    // 获取 accessToken
+    final accessToken = source.accessToken ??
+        source.extraConfig?['accessToken'] as String? ??
+        connection.adapter.connection?.extraConfig?['accessToken'] as String?;
+
+    if (accessToken == null) {
+      logger.w('MediaServerConnection: 无法获取 accessToken，跳过 WebSocket 连接');
+      return;
+    }
+
+    final factory = _ref.read(mediaServerEventHandlerFactoryProvider);
+    final handler = factory.getOrCreate(
+      sourceId: source.id,
+      sourceType: source.type,
+      serverUrl: source.baseUrl,
+      accessToken: accessToken,
+    );
+
+    await handler.connect();
+
+    // 监听库变更事件
+    handler.libraryChanges.listen((event) {
+      logger.i('MediaServerConnection: 收到库变更事件，${event.addedItems.length} 新增');
+      // 触发增量同步
+      final syncService = _ref.read(mediaServerSyncServiceProvider);
+      syncService.incrementalSync(source.id, connection.adapter);
+    });
+  }
+
+  /// 解析同步间隔配置
+  Duration? _parseSyncInterval(String? interval) => switch (interval) {
+        '每小时' || 'hourly' => const Duration(hours: 1),
+        '每天' || 'daily' => const Duration(days: 1),
+        '每周' || 'weekly' => const Duration(days: 7),
+        _ => null, // 手动同步
+      };
 
   Future<void> disconnect(String sourceId) async {
     final manager = _ref.read(sourceManagerProvider);
     await manager.disconnect(sourceId);
     // 从全局 Registry 注销
     NasFileSystemRegistry.instance.unregister(sourceId);
+    // 清理事件处理器
+    final eventFactory = _ref.read(mediaServerEventHandlerFactoryProvider);
+    eventFactory.remove(sourceId);
     state = Map.from(state)..remove(sourceId);
   }
 

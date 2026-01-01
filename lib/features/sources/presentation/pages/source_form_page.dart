@@ -7,15 +7,18 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/domain/entities/source_form_config.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/sources/presentation/widgets/plex_auth_widget.dart';
+import 'package:my_nas/features/sources/presentation/widgets/quick_connect_widget.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
 import 'package:my_nas/media_server_adapters/jellyfin/jellyfin_adapter.dart';
+import 'package:my_nas/media_server_adapters/emby/emby_adapter.dart';
+import 'package:my_nas/media_server_adapters/plex/plex_adapter.dart';
 import 'package:my_nas/service_adapters/aria2/api/aria2_api.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/moviepilot/api/moviepilot_api.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
 import 'package:my_nas/service_adapters/transmission/api/transmission_api.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 表单模式
 enum SourceFormMode {
@@ -64,6 +67,15 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   bool _isSubmitting = false;
   bool _isTesting = false;
   bool _obscurePasswords = true;
+
+  // Quick Connect 相关状态
+  bool _quickConnectAuthorized = false;
+  String? _quickConnectAccessToken;
+  String? _quickConnectUserId;
+
+  // Plex Auth 相关状态
+  bool _plexAuthAuthorized = false;
+  String? _plexAuthToken;
 
   @override
   void initState() {
@@ -205,6 +217,18 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
               // 表单字段（扁平化，不使用分组卡片）
               for (final section in _formConfig.sections)
                 _buildFormSection(section, theme),
+
+              // Quick Connect 认证区块（仅 Jellyfin 创建模式）
+              if (_shouldShowQuickConnect) ...[
+                const SizedBox(height: 16),
+                _buildQuickConnectSection(theme),
+              ],
+
+              // Plex PIN 认证区块（仅 Plex PIN 码授权模式）
+              if (_shouldShowPlexAuth) ...[
+                const SizedBox(height: 16),
+                _buildPlexAuthSection(theme),
+              ],
 
               const SizedBox(height: 24),
 
@@ -474,6 +498,14 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         if (value != null) {
           setState(() {
             _formValues[field.key] = value;
+            // 当认证类型改变时，重置相应的认证状态
+            if (field.key == 'authType') {
+              if (widget.sourceType == SourceType.jellyfin) {
+                _resetQuickConnect();
+              } else if (widget.sourceType == SourceType.plex) {
+                _resetPlexAuth();
+              }
+            }
           });
         }
       },
@@ -631,6 +663,218 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     );
   }
 
+  /// 检查是否需要显示 Quick Connect 组件
+  bool get _shouldShowQuickConnect =>
+      widget.sourceType == SourceType.jellyfin &&
+      _formValues['authType'] == 'Quick Connect' &&
+      widget.mode == SourceFormMode.create;
+
+  /// 构建 Quick Connect 认证区块
+  Widget _buildQuickConnectSection(ThemeData theme) {
+    if (!_shouldShowQuickConnect) {
+      return const SizedBox.shrink();
+    }
+
+    // 构建服务器 URL
+    final host = _formValues['host'] as String? ?? '';
+    final portStr = _formValues['port'] as String? ?? '';
+    final useSsl = _formValues['useSsl'] == 'true';
+
+    if (host.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '请先填写服务器地址和端口，然后再使用 Quick Connect',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final protocol = useSsl ? 'https' : 'http';
+    final port = int.tryParse(portStr) ?? SourceType.jellyfin.defaultPort;
+    final serverUrl = '$protocol://$host:$port';
+
+    // 如果已经授权成功，显示成功状态
+    if (_quickConnectAuthorized) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.green.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.check_circle,
+              color: Colors.green,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Quick Connect 认证成功',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '点击「添加并连接」完成配置',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: _resetQuickConnect,
+              child: const Text('重新认证'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return QuickConnectWidget(
+      serverUrl: serverUrl,
+      onResult: _handleQuickConnectResult,
+    );
+  }
+
+  /// 处理 Quick Connect 认证结果
+  void _handleQuickConnectResult(QuickConnectResult result) {
+    if (result.success) {
+      setState(() {
+        _quickConnectAuthorized = true;
+        _quickConnectAccessToken = result.accessToken;
+        _quickConnectUserId = result.userId;
+      });
+      _showSuccessSnackBar('Quick Connect 认证成功');
+    } else {
+      _showErrorSnackBar(result.errorMessage ?? 'Quick Connect 认证失败');
+    }
+  }
+
+  /// 重置 Quick Connect 状态
+  void _resetQuickConnect() {
+    setState(() {
+      _quickConnectAuthorized = false;
+      _quickConnectAccessToken = null;
+      _quickConnectUserId = null;
+    });
+  }
+
+  /// 检查是否需要显示 Plex PIN 认证组件
+  bool get _shouldShowPlexAuth =>
+      widget.sourceType == SourceType.plex &&
+      _formValues['authType'] == 'PIN 码授权' &&
+      widget.mode == SourceFormMode.create;
+
+  /// 构建 Plex PIN 认证区块
+  Widget _buildPlexAuthSection(ThemeData theme) {
+    if (!_shouldShowPlexAuth) {
+      return const SizedBox.shrink();
+    }
+
+    // 如果已经授权成功，显示成功状态
+    if (_plexAuthAuthorized) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.green.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.check_circle,
+              color: Colors.green,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Plex 账号授权成功',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '点击「添加并连接」完成配置',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: _resetPlexAuth,
+              child: const Text('重新授权'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return PlexAuthWidget(
+      onResult: _handlePlexAuthResult,
+    );
+  }
+
+  /// 处理 Plex PIN 认证结果
+  void _handlePlexAuthResult(PlexAuthResult result) {
+    if (result.success) {
+      setState(() {
+        _plexAuthAuthorized = true;
+        _plexAuthToken = result.authToken;
+      });
+      _showSuccessSnackBar('Plex 账号授权成功');
+    } else {
+      _showErrorSnackBar(result.errorMessage ?? 'Plex 授权失败');
+    }
+  }
+
+  /// 重置 Plex 认证状态
+  void _resetPlexAuth() {
+    setState(() {
+      _plexAuthAuthorized = false;
+      _plexAuthToken = null;
+    });
+  }
+
   /// 根据字段 key 获取对应的图标
   Icon? _getFieldIcon(String key) {
     final iconData = switch (key) {
@@ -668,6 +912,18 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
 
   Future<void> _testConnection() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    // 检查 Quick Connect 认证状态
+    if (_shouldShowQuickConnect && !_quickConnectAuthorized) {
+      _showErrorSnackBar('请先完成 Quick Connect 认证');
+      return;
+    }
+
+    // 检查 Plex PIN 认证状态
+    if (_shouldShowPlexAuth && !_plexAuthAuthorized) {
+      _showErrorSnackBar('请先完成 Plex 账号授权');
       return;
     }
 
@@ -857,16 +1113,31 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         final jellyfinAuthType = _formValues['authType'] as String? ?? '用户名密码';
         final jellyfinAdapter = JellyfinAdapter();
         try {
-          final config = ServiceConnectionConfig(
-            baseUrl: source.baseUrl,
-            username: jellyfinAuthType != 'API Key' ? source.username : null,
-            password: jellyfinAuthType != 'API Key'
-                ? (_formValues['password'] as String? ?? '')
-                : null,
-            apiKey: jellyfinAuthType == 'API Key'
-                ? (_formValues['apiKey'] as String? ?? '')
-                : null,
-          );
+          ServiceConnectionConfig config;
+          if (jellyfinAuthType == 'Quick Connect') {
+            // Quick Connect 认证 - 使用已获取的 access token
+            if (!_quickConnectAuthorized || _quickConnectAccessToken == null) {
+              return false;
+            }
+            config = ServiceConnectionConfig(
+              baseUrl: source.baseUrl,
+              extraConfig: {
+                'accessToken': _quickConnectAccessToken,
+                'userId': _quickConnectUserId,
+              },
+            );
+          } else if (jellyfinAuthType == 'API Key') {
+            config = ServiceConnectionConfig(
+              baseUrl: source.baseUrl,
+              apiKey: _formValues['apiKey'] as String? ?? '',
+            );
+          } else {
+            config = ServiceConnectionConfig(
+              baseUrl: source.baseUrl,
+              username: source.username,
+              password: _formValues['password'] as String? ?? '',
+            );
+          }
           final result = await jellyfinAdapter.connect(config);
           return result.when(
             success: (_) => true,
@@ -875,10 +1146,62 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         } finally {
           await jellyfinAdapter.dispose();
         }
+      case SourceType.plex:
+        final plexAuthType = _formValues['authType'] as String? ?? 'PIN 码授权';
+        final plexAdapter = PlexAdapter();
+        try {
+          String? plexToken;
+          if (plexAuthType == 'PIN 码授权') {
+            // PIN 码授权 - 使用已获取的 auth token
+            if (!_plexAuthAuthorized || _plexAuthToken == null) {
+              return false;
+            }
+            plexToken = _plexAuthToken;
+          } else {
+            // 手动输入 Token
+            plexToken = _formValues['plexToken'] as String? ?? '';
+            if (plexToken.isEmpty) return false;
+          }
+
+          final config = ServiceConnectionConfig(
+            baseUrl: source.baseUrl,
+            apiKey: plexToken,
+          );
+          final result = await plexAdapter.connect(config);
+          return result.when(
+            success: (_) => true,
+            failure: (_) => false,
+          );
+        } finally {
+          await plexAdapter.dispose();
+        }
+      case SourceType.emby:
+        final embyAuthType = _formValues['authType'] as String? ?? '用户名密码';
+        final embyAdapter = EmbyAdapter();
+        try {
+          ServiceConnectionConfig config;
+          if (embyAuthType == 'API Key') {
+            config = ServiceConnectionConfig(
+              baseUrl: source.baseUrl,
+              apiKey: _formValues['apiKey'] as String? ?? '',
+            );
+          } else {
+            config = ServiceConnectionConfig(
+              baseUrl: source.baseUrl,
+              username: source.username,
+              password: _formValues['password'] as String? ?? '',
+            );
+          }
+          final result = await embyAdapter.connect(config);
+          return result.when(
+            success: (_) => true,
+            failure: (_) => false,
+          );
+        } finally {
+          await embyAdapter.dispose();
+        }
       // TODO: 添加其他服务类源的验证逻辑
       case SourceType.trakt:
-      case SourceType.emby:
-      case SourceType.plex:
         // 暂时返回 false，待各服务 API 实现后添加验证逻辑
         // ignore: only_throw_errors
         throw '${source.type.displayName} 连接验证尚未实现';
@@ -946,6 +1269,18 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    // 检查 Quick Connect 认证状态
+    if (_shouldShowQuickConnect && !_quickConnectAuthorized) {
+      _showErrorSnackBar('请先完成 Quick Connect 认证');
+      return;
+    }
+
+    // 检查 Plex PIN 认证状态
+    if (_shouldShowPlexAuth && !_plexAuthAuthorized) {
+      _showErrorSnackBar('请先完成 Plex 账号授权');
       return;
     }
 
@@ -1249,6 +1584,26 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       }
     }
 
+    // 处理 Quick Connect 认证（Jellyfin）
+    String? accessToken = widget.existingSource?.accessToken;
+    if (_quickConnectAuthorized && _quickConnectAccessToken != null) {
+      accessToken = _quickConnectAccessToken;
+      // 将 userId 存入 extraConfig
+      if (_quickConnectUserId != null) {
+        extraConfig['userId'] = _quickConnectUserId;
+      }
+    }
+
+    // 处理 Plex PIN 认证
+    // Plex 使用 apiKey 字段存储 auth token
+    String? plexApiKey = apiKey;
+    if (_plexAuthAuthorized && _plexAuthToken != null) {
+      plexApiKey = _plexAuthToken;
+    } else if (widget.sourceType == SourceType.plex) {
+      // 如果是手动输入 Token 模式
+      plexApiKey = _formValues['plexToken'] as String?;
+    }
+
     return SourceEntity(
       id: widget.existingSource?.id,
       name: name,
@@ -1259,11 +1614,13 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       useSsl: useSsl,
       autoConnect: autoConnect,
       rememberDevice: rememberDevice,
-      apiKey: apiKey?.isNotEmpty ?? false ? apiKey : null,
+      apiKey: widget.sourceType == SourceType.plex
+          ? (plexApiKey?.isNotEmpty ?? false ? plexApiKey : null)
+          : (apiKey?.isNotEmpty ?? false ? apiKey : null),
       extraConfig: extraConfig.isNotEmpty ? extraConfig : null,
       lastConnected: widget.existingSource?.lastConnected,
       quickConnectId: widget.existingSource?.quickConnectId,
-      accessToken: widget.existingSource?.accessToken,
+      accessToken: accessToken,
       refreshToken: widget.existingSource?.refreshToken,
       tokenExpiresAt: widget.existingSource?.tokenExpiresAt,
     );

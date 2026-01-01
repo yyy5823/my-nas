@@ -56,8 +56,37 @@ class JellyfinAdapter extends MediaServerAdapter {
       logger.i('JellyfinAdapter: 服务器名称 => ${_api.serverName}');
       logger.i('JellyfinAdapter: 服务器版本 => ${_api.serverVersion}');
 
+      // 检查服务器版本兼容性
+      if (_api.serverVersion != null) {
+        final compatibility = MediaServerVersionRequirements.checkJellyfin(
+          _api.serverVersion!,
+        );
+        if (!compatibility.isCompatible) {
+          logger.w('JellyfinAdapter: 服务器版本不兼容 - ${compatibility.message}');
+          return ServiceConnectionFailure(compatibility.message!);
+        }
+        if (compatibility.warnings.isNotEmpty) {
+          for (final warning in compatibility.warnings) {
+            logger.w('JellyfinAdapter: 版本警告 - $warning');
+          }
+        }
+      }
+
       // 根据配置选择认证方式
-      if (config.apiKey != null && config.apiKey!.isNotEmpty) {
+      final accessToken = config.extraConfig?['accessToken'] as String?;
+      final userId = config.extraConfig?['userId'] as String?;
+
+      if (accessToken != null && accessToken.isNotEmpty) {
+        // 使用已有的 Access Token 认证（Quick Connect）
+        logger.i('JellyfinAdapter: 使用 Access Token 认证 (Quick Connect)');
+        _api.setAccessToken(accessToken, userId);
+        // 验证 token 是否有效
+        try {
+          await _api.getLibraries();
+        } on Exception {
+          return const ServiceConnectionFailure('Access Token 无效或已过期');
+        }
+      } else if (config.apiKey != null && config.apiKey!.isNotEmpty) {
         // 使用 API Key 认证
         logger.i('JellyfinAdapter: 使用 API Key 认证');
         final success = await _api.authenticateWithApiKey(config.apiKey!);

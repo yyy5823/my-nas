@@ -59,6 +59,15 @@ class JellyfinApi {
     logger.i('JellyfinApi: 认证信息已清除');
   }
 
+  /// 直接设置 Access Token（用于 Quick Connect 等外部认证）
+  void setAccessToken(String accessToken, [String? userId]) {
+    _accessToken = accessToken;
+    if (userId != null) {
+      _userId = userId;
+    }
+    logger.i('JellyfinApi: Access Token 已设置');
+  }
+
   /// 构建请求头
   Map<String, String> _buildHeaders({bool requireAuth = true}) {
     final headers = <String, String>{

@@ -50,6 +50,9 @@ class PlexAdapter extends MediaServerAdapter {
       _serverVersion = serverInfo.version;
       _machineIdentifier = serverInfo.machineIdentifier;
 
+      // 检查服务器版本兼容性（Plex 版本检查为建议性质）
+      // Plex 不强制版本要求，连接都能成功，但可能功能受限
+
       _isConnected = true;
       _config = config;
 

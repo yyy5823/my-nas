@@ -51,6 +51,95 @@ class PlexApi {
     return headers;
   }
 
+  // === Plex.tv API (PIN 认证) ===
+
+  static const String _plexTvUrl = 'https://plex.tv';
+
+  /// 发起 PIN 认证
+  /// 返回 PlexPinInfo，包含 PIN 码和授权 URL
+  Future<PlexPinInfo> initiatePin() async {
+    final response = await _postPlexTv('/api/v2/pins', {
+      'strong': 'true',
+    });
+    return PlexPinInfo.fromJson(response as Map<String, dynamic>);
+  }
+
+  /// 检查 PIN 认证状态
+  /// 返回更新后的 PlexPinInfo，如果已授权则包含 authToken
+  Future<PlexPinInfo> checkPin(int pinId) async {
+    final response = await _getPlexTv('/api/v2/pins/$pinId');
+    return PlexPinInfo.fromJson(response as Map<String, dynamic>);
+  }
+
+  /// 轮询等待 PIN 认证完成
+  /// [pinId] - PIN ID
+  /// [timeout] - 超时时间（默认 5 分钟）
+  /// [interval] - 轮询间隔（默认 2 秒）
+  /// 返回授权后的 authToken，超时则返回 null
+  Future<String?> waitForPinAuth(
+    int pinId, {
+    Duration timeout = const Duration(minutes: 5),
+    Duration interval = const Duration(seconds: 2),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+
+    while (DateTime.now().isBefore(deadline)) {
+      final pin = await checkPin(pinId);
+
+      if (pin.isAuthorized) {
+        authToken = pin.authToken;
+        return pin.authToken;
+      }
+
+      if (pin.isExpired) {
+        return null;
+      }
+
+      await Future<void>.delayed(interval);
+    }
+
+    return null;
+  }
+
+  /// 获取用户信息
+  Future<PlexUser> getUser() async {
+    final response = await _getPlexTv('/api/v2/user');
+    return PlexUser.fromJson(response as Map<String, dynamic>);
+  }
+
+  /// 获取用户的服务器列表
+  Future<List<PlexServerResource>> getServers() async {
+    final response = await _getPlexTv('/api/v2/resources', {
+      'includeHttps': '1',
+      'includeRelay': '1',
+    });
+
+    if (response is List) {
+      return response
+          .where((r) => r['provides'] == 'server')
+          .map((r) => PlexServerResource.fromJson(r as Map<String, dynamic>))
+          .toList();
+    }
+
+    return [];
+  }
+
+  /// 使用 PIN 登录（便捷方法）
+  /// 返回 (authUrl, Future<authToken?>)
+  /// 调用方需要在浏览器中打开 authUrl，然后等待 Future 完成
+  Future<({String authUrl, Future<String?> authTokenFuture})> loginWithPin() async {
+    final pin = await initiatePin();
+    final authUrl = pin.getAuthUrl(
+      clientId: clientIdentifier ?? 'mynas-client',
+      clientName: clientName,
+    );
+
+    return (
+      authUrl: authUrl,
+      authTokenFuture: waitForPinAuth(pin.id),
+    );
+  }
+
   // === 服务器信息 ===
 
   /// 获取服务器信息
@@ -326,6 +415,53 @@ class PlexApi {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
     }
+  }
+
+  // === Plex.tv API 方法 ===
+
+  /// GET 请求到 plex.tv
+  Future<dynamic> _getPlexTv(String path, [Map<String, String>? params]) async {
+    var url = '$_plexTvUrl$path';
+    if (params != null && params.isNotEmpty) {
+      url += '?${params.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&')}';
+    }
+
+    logger.d('PlexApi GET (plex.tv): $url');
+
+    final response = await _client.get(
+      Uri.parse(url),
+      headers: _headers,
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.body.isEmpty) return null;
+      return jsonDecode(response.body);
+    }
+
+    throw Exception('HTTP ${response.statusCode}: ${response.body}');
+  }
+
+  /// POST 请求到 plex.tv
+  Future<dynamic> _postPlexTv(String path, Map<String, String> body) async {
+    final url = '$_plexTvUrl$path';
+
+    logger.d('PlexApi POST (plex.tv): $url');
+
+    final response = await _client.post(
+      Uri.parse(url),
+      headers: {
+        ..._headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body,
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.body.isEmpty) return null;
+      return jsonDecode(response.body);
+    }
+
+    throw Exception('HTTP ${response.statusCode}: ${response.body}');
   }
 
   void dispose() {

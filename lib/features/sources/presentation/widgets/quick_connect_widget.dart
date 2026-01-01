@@ -1,0 +1,476 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/media_server_adapters/jellyfin/api/jellyfin_api.dart';
+
+/// Quick Connect 认证状态
+enum QuickConnectStatus {
+  /// 初始状态
+  initial,
+
+  /// 检查中
+  checking,
+
+  /// 不可用
+  unavailable,
+
+  /// 等待输入
+  waitingForCode,
+
+  /// 轮询中
+  polling,
+
+  /// 已授权
+  authorized,
+
+  /// 已过期
+  expired,
+
+  /// 错误
+  error,
+}
+
+/// Quick Connect 认证结果
+class QuickConnectResult {
+  const QuickConnectResult({
+    required this.success,
+    this.accessToken,
+    this.userId,
+    this.errorMessage,
+  });
+
+  final bool success;
+  final String? accessToken;
+  final String? userId;
+  final String? errorMessage;
+}
+
+/// Quick Connect 认证 Widget
+///
+/// 用于 Jellyfin 服务器的 Quick Connect 认证流程
+class QuickConnectWidget extends StatefulWidget {
+  const QuickConnectWidget({
+    required this.serverUrl,
+    required this.onResult,
+    super.key,
+  });
+
+  /// 服务器 URL
+  final String serverUrl;
+
+  /// 认证结果回调
+  final void Function(QuickConnectResult result) onResult;
+
+  @override
+  State<QuickConnectWidget> createState() => _QuickConnectWidgetState();
+}
+
+class _QuickConnectWidgetState extends State<QuickConnectWidget> {
+  QuickConnectStatus _status = QuickConnectStatus.initial;
+  String? _code;
+  String? _secret;
+  String? _errorMessage;
+  Timer? _pollingTimer;
+  int _remainingSeconds = 180; // 3 分钟超时
+  JellyfinApi? _api;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkQuickConnectAvailability();
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  /// 检查 Quick Connect 是否可用
+  Future<void> _checkQuickConnectAvailability() async {
+    setState(() {
+      _status = QuickConnectStatus.checking;
+    });
+
+    try {
+      _api = JellyfinApi();
+      _api!.setBaseUrl(widget.serverUrl);
+
+      final isEnabled = await _api!.isQuickConnectEnabled();
+
+      if (!mounted) return;
+
+      if (isEnabled) {
+        await _initiateQuickConnect();
+      } else {
+        setState(() {
+          _status = QuickConnectStatus.unavailable;
+          _errorMessage = '服务器未启用 Quick Connect 功能';
+        });
+      }
+    } on Exception catch (e) {
+      logger.e('QuickConnect: 检查可用性失败', e);
+      if (mounted) {
+        setState(() {
+          _status = QuickConnectStatus.error;
+          _errorMessage = '无法连接到服务器';
+        });
+      }
+    }
+  }
+
+  /// 发起 Quick Connect 认证
+  Future<void> _initiateQuickConnect() async {
+    try {
+      final result = await _api!.initiateQuickConnect();
+
+      if (!mounted) return;
+
+      if (result != null) {
+        setState(() {
+          _status = QuickConnectStatus.waitingForCode;
+          _code = result.code;
+          _secret = result.secret;
+          _remainingSeconds = 180;
+        });
+
+        // 开始轮询
+        _startPolling();
+      } else {
+        setState(() {
+          _status = QuickConnectStatus.error;
+          _errorMessage = '无法获取 Quick Connect 代码';
+        });
+      }
+    } on Exception catch (e) {
+      logger.e('QuickConnect: 初始化失败', e);
+      if (mounted) {
+        setState(() {
+          _status = QuickConnectStatus.error;
+          _errorMessage = '初始化 Quick Connect 失败';
+        });
+      }
+    }
+  }
+
+  /// 开始轮询检查授权状态
+  void _startPolling() {
+    setState(() {
+      _status = QuickConnectStatus.polling;
+    });
+
+    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      if (_secret == null) {
+        timer.cancel();
+        return;
+      }
+
+      // 更新剩余时间
+      _remainingSeconds -= 2;
+      if (_remainingSeconds <= 0) {
+        timer.cancel();
+        if (mounted) {
+          setState(() {
+            _status = QuickConnectStatus.expired;
+            _errorMessage = 'Quick Connect 代码已过期';
+          });
+        }
+        return;
+      }
+
+      try {
+        final result = await _api!.checkQuickConnect(_secret!);
+
+        if (!mounted) return;
+
+        if (result?.isAuthenticated == true) {
+          timer.cancel();
+
+          // 使用 secret 完成认证
+          final authResult =
+              await _api!.authenticateWithQuickConnect(_secret!);
+
+          if (authResult != null) {
+            setState(() {
+              _status = QuickConnectStatus.authorized;
+            });
+
+            widget.onResult(QuickConnectResult(
+              success: true,
+              accessToken: authResult.accessToken,
+              userId: authResult.userId,
+            ));
+          } else {
+            setState(() {
+              _status = QuickConnectStatus.error;
+              _errorMessage = '认证失败';
+            });
+          }
+        } else {
+          // 继续轮询，更新 UI
+          if (mounted) {
+            setState(() {});
+          }
+        }
+      } on Exception catch (e) {
+        logger.w('QuickConnect: 轮询失败', e);
+        // 轮询失败不立即停止，继续尝试
+      }
+    });
+  }
+
+  /// 复制代码到剪贴板
+  Future<void> _copyCode() async {
+    if (_code == null) return;
+
+    await Clipboard.setData(ClipboardData(text: _code!));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('代码已复制到剪贴板'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 重新开始
+  Future<void> _restart() async {
+    _pollingTimer?.cancel();
+    setState(() {
+      _status = QuickConnectStatus.initial;
+      _code = null;
+      _secret = null;
+      _errorMessage = null;
+      _remainingSeconds = 180;
+    });
+    await _checkQuickConnectAvailability();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.qr_code_scanner,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Quick Connect',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildContent(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(ThemeData theme) {
+    switch (_status) {
+      case QuickConnectStatus.initial:
+      case QuickConnectStatus.checking:
+        return _buildLoadingState(theme, '正在检查 Quick Connect 可用性...');
+
+      case QuickConnectStatus.unavailable:
+        return _buildErrorState(theme, _errorMessage ?? '不可用', canRetry: false);
+
+      case QuickConnectStatus.waitingForCode:
+      case QuickConnectStatus.polling:
+        return _buildCodeState(theme);
+
+      case QuickConnectStatus.authorized:
+        return _buildSuccessState(theme);
+
+      case QuickConnectStatus.expired:
+        return _buildErrorState(theme, _errorMessage ?? '已过期', canRetry: true);
+
+      case QuickConnectStatus.error:
+        return _buildErrorState(theme, _errorMessage ?? '发生错误', canRetry: true);
+    }
+  }
+
+  Widget _buildLoadingState(ThemeData theme, String message) {
+    return Row(
+      children: [
+        const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          message,
+          style: theme.textTheme.bodyMedium,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCodeState(ThemeData theme) {
+    final minutes = _remainingSeconds ~/ 60;
+    final seconds = _remainingSeconds % 60;
+    final timeString = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '请在 Jellyfin 服务器上输入以下代码：',
+          style: theme.textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 12),
+        // 代码显示
+        InkWell(
+          onTap: _copyCode,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _code ?? '',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 4,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Icon(
+                  Icons.copy,
+                  size: 20,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 状态和倒计时
+        Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '等待授权...',
+              style: theme.textTheme.bodySmall,
+            ),
+            const Spacer(),
+            Icon(
+              Icons.timer,
+              size: 16,
+              color: _remainingSeconds < 30
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.outline,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              timeString,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: _remainingSeconds < 30
+                    ? theme.colorScheme.error
+                    : null,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // 说明
+        Text(
+          '打开 Jellyfin 控制面板 → 仪表盘 → Quick Connect，输入上述代码',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.outline,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuccessState(ThemeData theme) {
+    return Row(
+      children: [
+        Icon(
+          Icons.check_circle,
+          color: Colors.green,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            '认证成功！',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: Colors.green,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorState(ThemeData theme, String message, {required bool canRetry}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.error_outline,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (canRetry) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _restart,
+            icon: const Icon(Icons.refresh),
+            label: const Text('重试'),
+          ),
+        ],
+      ],
+    );
+  }
+}
