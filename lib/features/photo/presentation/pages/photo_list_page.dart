@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
@@ -1367,37 +1369,39 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     PhotoListState state,
   ) {
     final isSelectMode = state is PhotoListLoaded && state.isSelectMode;
+    final uiStyle = ref.watch(uiStyleProvider);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDark
-              ? [const Color(0xFF1A2E1A), AppColors.darkBackground]
-              : [AppColors.success.withValues(alpha: 0.08), Colors.grey[50]!],
+    // 玻璃模式下的染色
+    final tintColor = uiStyle.isGlass
+        ? (isDark
+            ? AppColors.success.withValues(alpha: 0.15)
+            : AppColors.success.withValues(alpha: 0.08))
+        : null;
+
+    return AdaptiveGlassHeader(
+      height: 72,
+      backgroundColor: uiStyle.isGlass
+          ? tintColor
+          : (isDark
+              ? const Color(0xFF1A2E1A) // 深绿色调
+              : AppColors.success.withValues(alpha: 0.08)),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.appBarHorizontalPadding,
+          AppSpacing.appBarVerticalPadding,
+          AppSpacing.appBarHorizontalPadding,
+          AppSpacing.lg,
         ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.appBarHorizontalPadding,
-            AppSpacing.appBarVerticalPadding,
-            AppSpacing.appBarHorizontalPadding,
-            AppSpacing.lg,
-          ),
-          child: switch ((
-            _showSearch,
-            isSelectMode,
-            state,
-          )) {
-            (true, _, _) => _buildSearchBar(context, ref, isDark),
-            (_, true, PhotoListLoaded loadedState) =>
-              _buildSelectModeHeader(context, ref, isDark, loadedState),
-            _ => _buildGreetingHeader(context, ref, isDark, state),
-          },
-        ),
+        child: switch ((
+          _showSearch,
+          isSelectMode,
+          state,
+        )) {
+          (true, _, _) => _buildSearchBar(context, ref, isDark),
+          (_, true, PhotoListLoaded loadedState) =>
+            _buildSelectModeHeader(context, ref, isDark, loadedState),
+          _ => _buildGreetingHeader(context, ref, isDark, state),
+        },
       ),
     );
   }

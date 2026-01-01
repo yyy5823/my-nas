@@ -5,6 +5,8 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/note/presentation/pages/note_list_page.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
 /// 当前选中的阅读 Tab
 final readingTabProvider = StateProvider<int>((ref) => 0);
@@ -87,64 +89,70 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     );
   }
 
-  Widget _buildAppBar(BuildContext context, bool isDark, int currentTab) =>
-      DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isDark
-                ? [const Color(0xFF2E2A1A), AppColors.darkBackground] // 深琥珀棕色调
-                : [Colors.amber.withValues(alpha: 0.08), Colors.grey[50]!],
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 16, 16),
-            child: Row(
-              children: [
-                // 问候语和当前类型标题
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+  Widget _buildAppBar(BuildContext context, bool isDark, int currentTab) {
+    final uiStyle = ref.watch(uiStyleProvider);
+
+    // 玻璃模式下的染色
+    final tintColor = uiStyle.isGlass
+        ? (isDark
+            ? Colors.amber.withValues(alpha: 0.15)
+            : Colors.amber.withValues(alpha: 0.08))
+        : null;
+
+    return AdaptiveGlassHeader(
+      height: 72,
+      backgroundColor: uiStyle.isGlass
+          ? tintColor
+          : (isDark
+              ? const Color(0xFF2E2A1A) // 深琥珀棕色调
+              : Colors.amber.withValues(alpha: 0.08)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 16, 16),
+        child: Row(
+          children: [
+            // 问候语和当前类型标题
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _getGreeting(),
+                    style: context.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
                     children: [
-                      Text(
-                        _getGreeting(),
-                        style: context.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : Colors.black87,
-                        ),
+                      Icon(
+                        ReadingContentType.values[currentTab].icon,
+                        size: 14,
+                        color: Colors.amber[700],
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            ReadingContentType.values[currentTab].icon,
-                            size: 14,
-                            color: Colors.amber[700],
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            ReadingContentType.values[currentTab].label,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 4),
+                      Text(
+                        ReadingContentType.values[currentTab].label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : AppColors.lightOnSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
-                ),
-                // 类型切换按钮
-                _buildTypeSwitcher(context, isDark, currentTab),
-              ],
+                ],
+              ),
             ),
-          ),
+            // 类型切换按钮
+            _buildTypeSwitcher(context, isDark, currentTab),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
   String _getGreeting() {
     final hour = DateTime.now().hour;

@@ -8,6 +8,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/grid_helper.dart';
@@ -1833,18 +1835,23 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     WidgetRef ref,
     bool isDark,
     VideoListState state,
-  ) => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: isDark
-            ? [const Color(0xFF1A1A2E), const Color(0xFF0D0D0D)]
-            : [AppColors.primary.withValues(alpha: 0.08), Colors.grey[50]!],
-      ),
-    ),
-    child: SafeArea(
-      bottom: false,
+  ) {
+    final uiStyle = ref.watch(uiStyleProvider);
+
+    // 玻璃模式下的染色
+    final tintColor = uiStyle.isGlass
+        ? (isDark
+            ? AppColors.primary.withValues(alpha: 0.15)
+            : AppColors.primary.withValues(alpha: 0.08))
+        : null;
+
+    return AdaptiveGlassHeader(
+      height: 72,
+      backgroundColor: uiStyle.isGlass
+          ? tintColor
+          : (isDark
+              ? const Color(0xFF1A1A2E) // 深蓝紫色调
+              : AppColors.primary.withValues(alpha: 0.08)),
       child: Padding(
         padding: EdgeInsets.fromLTRB(
           AppSpacing.appBarHorizontalPadding,
@@ -1856,8 +1863,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ? _buildSearchBar(context, ref, isDark)
             : _buildGreetingHeader(context, ref, isDark, state),
       ),
-    ),
-  );
+    );
+  }
 
   /// 问候语头部
   Widget _buildGreetingHeader(

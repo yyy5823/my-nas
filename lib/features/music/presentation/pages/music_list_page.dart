@@ -8,6 +8,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/grid_helper.dart';
@@ -1733,31 +1735,36 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   }
 
   /// 构建首页头部
-  Widget _buildHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) => DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDark
-              ? [const Color(0xFF2E1A1A), AppColors.darkBackground] // 深红棕色调
-              : [Colors.deepOrange.withValues(alpha: 0.08), Colors.grey[50]!],
+  Widget _buildHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) {
+    final uiStyle = ref.watch(uiStyleProvider);
+
+    // 玻璃模式下的染色
+    final tintColor = uiStyle.isGlass
+        ? (isDark
+            ? Colors.deepOrange.withValues(alpha: 0.15)
+            : Colors.deepOrange.withValues(alpha: 0.08))
+        : null;
+
+    return AdaptiveGlassHeader(
+      height: 72,
+      backgroundColor: uiStyle.isGlass
+          ? tintColor
+          : (isDark
+              ? const Color(0xFF2E1A1A) // 深红棕色调
+              : Colors.deepOrange.withValues(alpha: 0.08)),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.appBarHorizontalPadding,
+          AppSpacing.appBarVerticalPadding,
+          AppSpacing.appBarHorizontalPadding,
+          AppSpacing.lg, // 底部保持较大间距用于 header 效果
         ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.appBarHorizontalPadding,
-            AppSpacing.appBarVerticalPadding,
-            AppSpacing.appBarHorizontalPadding,
-            AppSpacing.lg, // 底部保持较大间距用于 header 效果
-          ),
-          child: _showSearch
-              ? _buildSearchBar(context, ref, isDark)
-              : _buildGreetingHeader(context, ref, isDark, state),
-        ),
+        child: _showSearch
+            ? _buildSearchBar(context, ref, isDark)
+            : _buildGreetingHeader(context, ref, isDark, state),
       ),
     );
+  }
 
   /// 问候语头部
   Widget _buildGreetingHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) {
@@ -2706,83 +2713,80 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
             ),
     );
 
-  Widget _buildAppBar(BuildContext context, bool isDark, MusicSortState sortState, int trackCount) => DecoratedBox(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            4,
-            AppSpacing.appBarVerticalPadding,
-            AppSpacing.appBarHorizontalPadding,
-            12,
-          ),
-          child: Row(
-            children: [
-              // 返回按钮
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: Icon(
-                  Icons.arrow_back_rounded,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
+  Widget _buildAppBar(BuildContext context, bool isDark, MusicSortState sortState, int trackCount) {
+    final uiStyle = ref.watch(uiStyleProvider);
+
+    return AdaptiveGlassHeader(
+      height: 56,
+      backgroundColor: uiStyle.isGlass
+          ? (isDark
+              ? Colors.deepOrange.withValues(alpha: 0.1)
+              : Colors.deepOrange.withValues(alpha: 0.05))
+          : (isDark ? AppColors.darkSurface : Colors.white),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          4,
+          AppSpacing.appBarVerticalPadding,
+          AppSpacing.appBarHorizontalPadding,
+          12,
+        ),
+        child: Row(
+          children: [
+            // 返回按钮
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: Icon(
+                Icons.arrow_back_rounded,
+                color: isDark ? Colors.white : Colors.black87,
               ),
-              // 标题和歌曲数量
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '所有歌曲',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
+            ),
+            // 标题和歌曲数量
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '所有歌曲',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
-                    Text(
-                      '共 $trackCount 首',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // 视图切换按钮（仅桌面端显示）
-              if (PlatformCapabilities.isDesktop) ...[
-                IconButton(
-                  onPressed: () => setState(() => _isTableView = !_isTableView),
-                  icon: Icon(
-                    _isTableView ? Icons.grid_view_rounded : Icons.table_rows_rounded,
-                    color: isDark ? Colors.white70 : Colors.black54,
-                    size: 20,
                   ),
-                  tooltip: _isTableView ? '网格视图' : '表格视图',
+                  Text(
+                    '共 $trackCount 首',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // 视图切换按钮（仅桌面端显示）
+            if (PlatformCapabilities.isDesktop) ...[
+              IconButton(
+                onPressed: () => setState(() => _isTableView = !_isTableView),
+                icon: Icon(
+                  _isTableView ? Icons.grid_view_rounded : Icons.table_rows_rounded,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                  size: 20,
                 ),
-              ],
-              // 排序按钮
-              _SortButton(
-                sortState: sortState,
-                isDark: isDark,
-                onTap: () => _showSortOptions(context, sortState, isDark),
+                tooltip: _isTableView ? '网格视图' : '表格视图',
               ),
             ],
-          ),
+            // 排序按钮
+            _SortButton(
+              sortState: sortState,
+              isDark: isDark,
+              onTap: () => _showSortOptions(context, sortState, isDark),
+            ),
+          ],
         ),
       ),
     );
+  }
 
   Widget _buildPlayControls(BuildContext context, bool isDark, List<MusicFileWithSource> sortedTracks) {
     if (sortedTracks.isEmpty) return const SizedBox.shrink();
