@@ -22,6 +22,7 @@
 		65IOSDSPC01E5F6A7B8C9D0E1 /* DisplayCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65IOSDSPC02E5F6A7B8C9D0E2 /* DisplayCapabilityChannel.swift */; };
 		65LQGLC01E5F6A7B8C9D0E22 /* LiquidGlassChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */; };
 		65LQGLS01E5F6A7B8C9D0E20 /* LiquidGlassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */; };
+		65GLSBG01E5F6A7B8C9D0E40 /* GlassButtonGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSBG02E5F6A7B8C9D0E41 /* GlassButtonGroup.swift */; };
 		65NBLUR02E5F6A7B8C9D0E11 /* NativeBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */; };
 		65NTBC01E5F6A7B8C9D0E30 /* NativeTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NTBC02E5F6A7B8C9D0E31 /* NativeTabBarController.swift */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
@@ -108,6 +109,7 @@
 		65IOSDSPC02E5F6A7B8C9D0E2 /* DisplayCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayCapabilityChannel.swift; sourceTree = "<group>"; };
 		65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassChannel.swift; sourceTree = "<group>"; };
 		65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassView.swift; sourceTree = "<group>"; };
+		65GLSBG02E5F6A7B8C9D0E41 /* GlassButtonGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButtonGroup.swift; sourceTree = "<group>"; };
 		65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBlurView.swift; sourceTree = "<group>"; };
 		65NTBC02E5F6A7B8C9D0E31 /* NativeTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTabBarController.swift; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -291,6 +293,7 @@
 				65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */,
 				65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */,
 				65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */,
+				65GLSBG02E5F6A7B8C9D0E41 /* GlassButtonGroup.swift */,
 				65NTBC02E5F6A7B8C9D0E31 /* NativeTabBarController.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				688AE76255D7B475DC0D67DE /* NativeAVPlayer */,
@@ -664,6 +667,7 @@
 				65NBLUR02E5F6A7B8C9D0E11 /* NativeBlurView.swift in Sources */,
 				65LQGLS01E5F6A7B8C9D0E20 /* LiquidGlassView.swift in Sources */,
 				65LQGLC01E5F6A7B8C9D0E22 /* LiquidGlassChannel.swift in Sources */,
+				65GLSBG01E5F6A7B8C9D0E40 /* GlassButtonGroup.swift in Sources */,
 				65NTBC01E5F6A7B8C9D0E30 /* NativeTabBarController.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				F7E997A344550D9C5EB228A9 /* NativeAVPlayerChannel.swift in Sources */,
