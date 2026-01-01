@@ -748,35 +748,164 @@ class GlassIconButton extends ConsumerWidget {
 
 /// 玻璃效果按钮组 - 将多个按钮组合在一起
 ///
-/// iOS 26 风格中，多个相邻的按钮会合并在同一个玻璃背景中
-class GlassButtonGroup extends ConsumerWidget {
+/// iOS 26+: 使用原生 UIGlassEffect 实现真正的 Liquid Glass 效果
+/// iOS 13-25: 使用原生 UIBlurEffect 回退
+/// 其他平台: 使用 Flutter BackdropFilter
+///
+/// 多个相邻的按钮会合并在同一个胶囊形玻璃背景中
+class GlassButtonGroup extends ConsumerStatefulWidget {
   const GlassButtonGroup({
     required this.children,
     this.spacing = 0,
     super.key,
   });
 
-  /// 按钮列表（通常是 GlassIconButton）
+  /// 按钮列表（GlassGroupIconButton）
   final List<Widget> children;
 
   /// 按钮间距
   final double spacing;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GlassButtonGroup> createState() => _GlassButtonGroupState();
+}
+
+class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
+  MethodChannel? _channel;
+
+  /// 从 children 中提取按钮配置
+  List<Map<String, dynamic>> _extractButtonConfigs() {
+    final configs = <Map<String, dynamic>>[];
+    for (final child in widget.children) {
+      if (child is GlassGroupIconButton) {
+        // 将 IconData 转换为 SF Symbol 名称
+        final sfSymbol = _iconDataToSFSymbol(child.icon);
+        configs.add({
+          'icon': sfSymbol,
+          'tooltip': child.tooltip,
+        });
+      }
+    }
+    return configs;
+  }
+
+  /// 将 Flutter IconData 转换为 iOS SF Symbol 名称
+  String _iconDataToSFSymbol(IconData icon) {
+    // 常用图标映射
+    final mapping = <int, String>{
+      Icons.search_rounded.codePoint: 'magnifyingglass',
+      Icons.tune_rounded.codePoint: 'slider.horizontal.3',
+      Icons.more_vert_rounded.codePoint: 'ellipsis',
+      Icons.queue_music_rounded.codePoint: 'list.bullet',
+      Icons.check_circle_outline_rounded.codePoint: 'checkmark.circle',
+      Icons.view_timeline_rounded.codePoint: 'list.bullet.rectangle',
+      Icons.grid_view_rounded.codePoint: 'square.grid.2x2',
+      Icons.arrow_drop_down_rounded.codePoint: 'chevron.down',
+      Icons.settings_rounded.codePoint: 'gearshape',
+      Icons.refresh_rounded.codePoint: 'arrow.clockwise',
+      Icons.filter_alt_rounded.codePoint: 'line.3.horizontal.decrease.circle',
+      Icons.sort_rounded.codePoint: 'arrow.up.arrow.down',
+      Icons.add_rounded.codePoint: 'plus',
+      Icons.close_rounded.codePoint: 'xmark',
+    };
+    return mapping[icon.codePoint] ?? 'circle';
+  }
+
+  void _handleButtonTap(int index) {
+    // 找到对应的按钮并调用其 onPressed
+    var buttonIndex = 0;
+    for (final child in widget.children) {
+      if (child is GlassGroupIconButton) {
+        if (buttonIndex == index) {
+          child.onPressed?.call();
+          return;
+        }
+        buttonIndex++;
+      }
+    }
+  }
+
+  void _setupChannel(int viewId) {
+    _channel = MethodChannel('com.kkape.mynas/glass_button_group_$viewId');
+    _channel?.setMethodCallHandler((call) async {
+      if (call.method == 'onButtonTap') {
+        final index = call.arguments as int;
+        _handleButtonTap(index);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final uiStyle = ref.watch(uiStyleProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // 经典模式 - 直接排列
+    // 经典模式 - 直接排列普通按钮
     if (!uiStyle.isGlass) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: children,
-      );
+      return _buildClassicButtonGroup(isDark);
     }
 
-    // 玻璃模式 - 使用胶囊形玻璃背景包裹所有按钮
-    final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
+    // 玻璃模式
+    // iOS: 使用原生 UIGlassEffect
+    if (!kIsWeb && Platform.isIOS) {
+      return _buildNativeGlassButtonGroup(isDark);
+    }
+
+    // 其他平台: 使用 Flutter BackdropFilter
+    return _buildFlutterGlassButtonGroup(isDark);
+  }
+
+  Widget _buildClassicButtonGroup(bool isDark) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: widget.children.map((child) {
+        if (child is GlassGroupIconButton) {
+          return IconButton(
+            onPressed: child.onPressed,
+            icon: Icon(
+              child.icon,
+              size: child.size,
+              color: child.color ?? (isDark ? Colors.white : Colors.black87),
+            ),
+            tooltip: child.tooltip,
+          );
+        }
+        return child;
+      }).toList(),
+    );
+  }
+
+  Widget _buildNativeGlassButtonGroup(bool isDark) {
+    final buttonConfigs = _extractButtonConfigs();
+    final buttonCount = buttonConfigs.length;
+
+    // 计算宽度：每个按钮 36px + 分隔线 0.5px + 左右内边距 12px
+    final width = buttonCount * 36.0 + (buttonCount - 1) * 0.5 + 12;
+    const height = 40.0;
+
+    final creationParams = <String, dynamic>{
+      'isDark': isDark,
+      'items': buttonConfigs,
+      'buttonSize': 36.0,
+      'spacing': widget.spacing,
+      'cornerRadius': 20.0,
+    };
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: UiKitView(
+        viewType: 'com.kkape.mynas/glass_button_group',
+        creationParams: creationParams,
+        creationParamsCodec: const StandardMessageCodec(),
+        onPlatformViewCreated: _setupChannel,
+        hitTestBehavior: PlatformViewHitTestBehavior.opaque,
+      ),
+    );
+  }
+
+  Widget _buildFlutterGlassButtonGroup(bool isDark) {
+    final glassStyle = GlassTheme.getStyle(ref.watch(uiStyleProvider), isDark: isDark);
     final bgColor = isDark
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.black.withValues(alpha: 0.06);
@@ -784,15 +913,13 @@ class GlassButtonGroup extends ConsumerWidget {
         ? Colors.white.withValues(alpha: glassStyle.borderOpacity * 0.8)
         : Colors.black.withValues(alpha: glassStyle.borderOpacity * 0.4);
 
-    // 包装每个按钮，移除其玻璃背景（因为整体会有一个）
     final wrappedChildren = <Widget>[];
-    for (var i = 0; i < children.length; i++) {
-      if (i > 0 && spacing > 0) {
-        wrappedChildren.add(SizedBox(width: spacing));
+    for (var i = 0; i < widget.children.length; i++) {
+      if (i > 0 && widget.spacing > 0) {
+        wrappedChildren.add(SizedBox(width: widget.spacing));
       }
-      // 给每个按钮加一个简单的分隔线（除了最后一个）
-      if (i < children.length - 1) {
-        wrappedChildren.add(children[i]);
+      if (i < widget.children.length - 1) {
+        wrappedChildren.add(widget.children[i]);
         wrappedChildren.add(
           Container(
             width: 0.5,
@@ -801,7 +928,7 @@ class GlassButtonGroup extends ConsumerWidget {
           ),
         );
       } else {
-        wrappedChildren.add(children[i]);
+        wrappedChildren.add(widget.children[i]);
       }
     }
 

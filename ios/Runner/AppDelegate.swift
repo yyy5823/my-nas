@@ -101,6 +101,12 @@ import UIKit
             NativeAVPlayerChannel.register(with: registrar)
         }
 
+        // 注册玻璃按钮组 Platform View
+        // 用于实现 iOS 26 Liquid Glass 风格的顶栏按钮
+        if let registrar = flutterEngine.registrar(forPlugin: "GlassButtonGroupPlugin") {
+            GlassButtonGroupPlugin.register(with: registrar)
+        }
+
         NSLog("🔮 AppDelegate: Custom plugins registered")
     }
 
