@@ -1,3 +1,5 @@
+import 'package:my_nas/core/utils/hive_utils.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/media_server_adapters/base/media_server_adapter.dart';
 import 'package:my_nas/media_server_adapters/base/media_server_entities.dart';
@@ -9,10 +11,16 @@ import 'package:uuid/uuid.dart';
 
 /// Emby 媒体服务器适配器
 class EmbyAdapter extends MediaServerAdapter {
-  EmbyAdapter() : _deviceId = const Uuid().v4();
+  EmbyAdapter();
+
+  // 持久化 deviceId 的键名
+  static const String _deviceIdKey = 'emby_device_id';
+
+  // 缓存的 deviceId（内存级别）
+  static String? _cachedDeviceId;
 
   late EmbyApi _api;
-  final String _deviceId;
+  late String _deviceId;
   bool _isConnected = false;
   ServiceConnectionConfig? _config;
   String? _userId;
@@ -33,9 +41,39 @@ class EmbyAdapter extends MediaServerAdapter {
   @override
   ServiceConnectionConfig? get connection => _config;
 
+  /// 加载或生成持久化的 deviceId
+  Future<void> _loadOrGenerateDeviceId() async {
+    if (_cachedDeviceId != null) {
+      _deviceId = _cachedDeviceId!;
+      return;
+    }
+
+    try {
+      final box = await HiveUtils.getSettingsBox();
+      final storedId = box.get(_deviceIdKey) as String?;
+      if (storedId != null && storedId.isNotEmpty) {
+        _cachedDeviceId = storedId;
+        _deviceId = storedId;
+        logger.d('EmbyAdapter: 使用已存储的 deviceId');
+      } else {
+        _cachedDeviceId = 'mynas-emby-${const Uuid().v4()}';
+        await box.put(_deviceIdKey, _cachedDeviceId);
+        _deviceId = _cachedDeviceId!;
+        logger.d('EmbyAdapter: 生成并存储新的 deviceId');
+      }
+    } on Exception catch (e) {
+      // 存储失败时使用临时 ID
+      logger.w('EmbyAdapter: 无法持久化 deviceId', e);
+      _deviceId = 'mynas-emby-${const Uuid().v4()}';
+    }
+  }
+
   @override
   Future<ServiceConnectionResult> connect(ServiceConnectionConfig config) async {
     try {
+      // 加载或生成持久化的 deviceId
+      await _loadOrGenerateDeviceId();
+
       _api = EmbyApi(
         serverUrl: config.baseUrl,
         deviceId: _deviceId,

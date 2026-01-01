@@ -1,3 +1,5 @@
+import 'package:my_nas/core/utils/hive_utils.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/media_server_adapters/base/media_server_adapter.dart';
 import 'package:my_nas/media_server_adapters/base/media_server_entities.dart';
@@ -10,10 +12,16 @@ import 'package:uuid/uuid.dart';
 
 /// Plex 媒体服务器适配器
 class PlexAdapter extends MediaServerAdapter {
-  PlexAdapter() : _clientId = const Uuid().v4();
+  PlexAdapter();
+
+  // 与 PlexAuthWidget 共用同一个 key，确保 PIN 授权和连接使用相同的 clientId
+  static const String _clientIdKey = 'plex_client_identifier';
+
+  // 缓存的 clientId（内存级别，与 PlexAuthWidget 共享）
+  static String? _cachedClientId;
 
   late PlexApi _api;
-  final String _clientId;
+  late String _clientId;
   bool _isConnected = false;
   ServiceConnectionConfig? _config;
   String? _serverName;
@@ -34,9 +42,40 @@ class PlexAdapter extends MediaServerAdapter {
   @override
   ServiceConnectionConfig? get connection => _config;
 
+  /// 加载或生成持久化的 clientId
+  /// 与 PlexAuthWidget 共享同一个存储 key，确保一致性
+  Future<void> _loadOrGenerateClientId() async {
+    if (_cachedClientId != null) {
+      _clientId = _cachedClientId!;
+      return;
+    }
+
+    try {
+      final box = await HiveUtils.getSettingsBox();
+      final storedId = box.get(_clientIdKey) as String?;
+      if (storedId != null && storedId.isNotEmpty) {
+        _cachedClientId = storedId;
+        _clientId = storedId;
+        logger.d('PlexAdapter: 使用已存储的 clientId');
+      } else {
+        _cachedClientId = 'mynas-${const Uuid().v4()}';
+        await box.put(_clientIdKey, _cachedClientId);
+        _clientId = _cachedClientId!;
+        logger.d('PlexAdapter: 生成并存储新的 clientId');
+      }
+    } on Exception catch (e) {
+      // 存储失败时使用临时 ID
+      logger.w('PlexAdapter: 无法持久化 clientId', e);
+      _clientId = 'mynas-${const Uuid().v4()}';
+    }
+  }
+
   @override
   Future<ServiceConnectionResult> connect(ServiceConnectionConfig config) async {
     try {
+      // 加载或生成持久化的 clientId
+      await _loadOrGenerateClientId();
+
       _api = PlexApi(
         serverUrl: config.baseUrl,
         authToken: config.apiKey,
