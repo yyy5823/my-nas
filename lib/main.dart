@@ -37,10 +37,10 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 late IMusicAudioHandler audioHandler;
 
 Future<void> main(List<String> args) async {
-  // 检查是否是桌面歌词子窗口
-  // desktop_multi_window 会在子窗口启动时传入参数
+  // 检查是否是桌面歌词子窗口（仅 macOS 使用 desktop_multi_window）
+  // Windows 使用 Win32 原生窗口，不需要子进程
   if (args.isNotEmpty && args.first == 'multi_window') {
-    // 子窗口入口：args[1] = windowId, args[2] = arguments
+    // macOS 子窗口入口：args[1] = windowId, args[2] = arguments
     await desktopLyricMain(args.sublist(1));
     return;
   }

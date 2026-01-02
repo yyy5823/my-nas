@@ -10,7 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/music/data/services/desktop_lyric_service.dart';
 import 'package:my_nas/features/music/data/services/desktop_lyric_service_macos.dart';
-import 'package:my_nas/features/music/data/services/desktop_lyric_service_windows.dart';
+import 'package:my_nas/features/music/data/services/desktop_lyric_service_windows_native.dart';
 import 'package:my_nas/features/music/domain/entities/desktop_lyric_settings.dart';
 import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
@@ -75,7 +75,7 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
 
         // 获取平台服务
         if (Platform.isWindows) {
-          _service = DesktopLyricServiceWindowsImpl.instance;
+          _service = DesktopLyricServiceWindowsNativeImpl.instance;
         } else if (Platform.isMacOS) {
           _service = DesktopLyricServiceMacOSImpl.instance;
         }
@@ -87,8 +87,8 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
           if (_service is DesktopLyricServiceMacOSImpl) {
             (_service as DesktopLyricServiceMacOSImpl).onPositionChanged =
                 _onPositionChanged;
-          } else if (_service is DesktopLyricServiceWindowsImpl) {
-            (_service as DesktopLyricServiceWindowsImpl).onPositionChanged =
+          } else if (_service is DesktopLyricServiceWindowsNativeImpl) {
+            (_service as DesktopLyricServiceWindowsNativeImpl).onPositionChanged =
                 _onPositionChanged;
           }
 

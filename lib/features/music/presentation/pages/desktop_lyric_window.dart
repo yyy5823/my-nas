@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_acrylic/flutter_acrylic.dart';
 
 import 'package:my_nas/features/music/domain/entities/desktop_lyric_settings.dart';
 import 'package:my_nas/features/music/presentation/widgets/desktop_lyric_content.dart';
@@ -23,19 +21,9 @@ Future<void> desktopLyricMain(List<String> args) async {
       ? DesktopLyricSettings.fromJson(settingsJson)
       : const DesktopLyricSettings();
 
-  // 初始化透明效果（仅 Windows）
-  // 注意：子窗口不能使用 window_manager，需要用 flutter_acrylic 和 WindowController
-  if (Platform.isWindows) {
-    try {
-      await Window.initialize();
-      await Window.setEffect(
-        effect: WindowEffect.transparent,
-        color: Colors.transparent,
-      );
-    } catch (_) {
-      // flutter_acrylic 可能在子窗口中不可用，忽略错误
-    }
-  }
+  // 注意：子窗口不能使用 window_manager 或 flutter_acrylic 进行初始化
+  // 它们会检测到主窗口已存在并报错导致崩溃
+  // 透明效果需要在创建窗口时通过 desktop_multi_window 原生代码设置
 
   runApp(DesktopLyricApp(
     windowId: windowId,

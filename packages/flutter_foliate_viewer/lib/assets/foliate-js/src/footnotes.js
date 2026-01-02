@@ -26,23 +26,36 @@ const isSmallImage = el => {
 
 // 检查链接是否可能是脚注（包含小图片或上标文本）
 const looksLikeFootnote = a => {
-    // 检查是否包含小图片
-    const img = a.querySelector('img')
-    if (img && isSmallImage(img)) return true
-
-    // 检查文本内容是否像脚注标记（纯数字或 [数字]）
-    const text = a.textContent?.trim()
-    if (text && /^[\[\(]?\d{1,3}[\]\)]?$/.test(text)) return true
-
-    // 检查是否是 kindle:pos: 链接（Kindle 格式的内部链接）
     const href = a.getAttribute('href') || ''
+    const img = a.querySelector('img')
+    const text = a.textContent?.trim()
+
+    console.log('[looksLikeFootnote] checking:', {
+        href: href.substring(0, 60),
+        hasImg: !!img,
+        text: text?.substring(0, 20),
+        textLength: text?.length
+    })
+
+    // kindle:pos: 链接 - 直接视为脚注（Kindle 格式）
     if (href.startsWith('kindle:pos:')) {
-        // kindle:pos: 链接如果包含小图片或短文本，很可能是脚注
-        if (img) return true
-        // 文本很短（1-5个字符）也可能是脚注标记
-        if (text && text.length <= 5) return true
+        console.log('[looksLikeFootnote] -> true (kindle:pos link)')
+        return true
     }
 
+    // 检查是否包含小图片
+    if (img && isSmallImage(img)) {
+        console.log('[looksLikeFootnote] -> true (small image)')
+        return true
+    }
+
+    // 检查文本内容是否像脚注标记（纯数字或 [数字]）
+    if (text && /^[\[\(]?\d{1,3}[\]\)]?$/.test(text)) {
+        console.log('[looksLikeFootnote] -> true (numeric text)')
+        return true
+    }
+
+    console.log('[looksLikeFootnote] -> false')
     return false
 }
 
@@ -51,12 +64,23 @@ const refRoles = ['doc-biblioref', 'doc-glossref', 'doc-noteref']
 const isFootnoteReference = a => {
     const types = getTypes(a)
     const roles = getRoles(a)
-    return {
-        yes: refRoles.some(r => roles.has(r)) || refTypes.some(t => types.has(t)),
-        maybe: () => !types.has('backlink') && !roles.has('doc-backlink')
-            && (isSuper(a) || a.children.length === 1 && isSuper(a.children[0])
-                || isSuper(a.parentElement) || looksLikeFootnote(a)),
+    const yes = refRoles.some(r => roles.has(r)) || refTypes.some(t => types.has(t))
+
+    const maybe = () => {
+        const hasBacklink = types.has('backlink') || roles.has('doc-backlink')
+        if (hasBacklink) return false
+
+        const isSuperA = isSuper(a)
+        const hasOneChildSuper = a.children.length === 1 && isSuper(a.children[0])
+        const parentIsSuper = isSuper(a.parentElement)
+        const looksLike = looksLikeFootnote(a)
+
+        const result = isSuperA || hasOneChildSuper || parentIsSuper || looksLike
+        console.log('[isFootnoteReference] maybe:', result, '(super:', isSuperA, 'childSuper:', hasOneChildSuper, 'parentSuper:', parentIsSuper, 'looksLike:', looksLike, ')')
+        return result
     }
+
+    return { yes, maybe }
 }
 
 const getReferencedType = el => {

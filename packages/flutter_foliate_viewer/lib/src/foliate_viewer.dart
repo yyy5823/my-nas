@@ -201,18 +201,23 @@ class _FoliateViewerState extends State<FoliateViewer> {
       overflow: hidden;
       user-select: none;
     }
+    /* 脚注弹框 - 移动端底部弹出样式 */
     #footnote-dialog {
       display: none;
+      flex-direction: column;
       position: fixed;
-      left: 5%;
-      right: 5%;
-      bottom: 10%;
-      max-height: 50%;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      max-height: 50vh;
+      min-height: 80px;
       margin: 0;
-      padding: 0;
+      padding: 16px 0 0 0;
+      padding-bottom: env(safe-area-inset-bottom, 0);
       border: none;
-      border-radius: 16px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
+      border-radius: 16px 16px 0 0;
+      border-top: 1px solid rgba(128, 128, 128, 0.2);
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
       background: var(--footnote-bg, #ffffff);
       z-index: 9999;
       overflow: hidden;
@@ -220,59 +225,35 @@ class _FoliateViewerState extends State<FoliateViewer> {
     }
     #footnote-dialog.dark {
       background: var(--footnote-bg, #2d2d2d);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+    }
+    /* 顶部拖拽指示条 */
+    #footnote-dialog::after {
+      content: '';
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 36px;
+      height: 4px;
+      background: rgba(128, 128, 128, 0.4);
+      border-radius: 2px;
     }
     @keyframes footnote-slide-up {
       from {
         opacity: 0;
-        transform: translateY(20px);
+        transform: translateY(100%);
       }
       to {
         opacity: 1;
         transform: translateY(0);
       }
     }
-    #footnote-dialog .footnote-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      border-bottom: 1px solid rgba(128, 128, 128, 0.2);
-      background: inherit;
-    }
-    #footnote-dialog .footnote-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--footnote-text, #333);
-      margin: 0;
-    }
-    #footnote-dialog.dark .footnote-title {
-      color: var(--footnote-text, #e0e0e0);
-    }
-    #footnote-dialog .footnote-close {
-      width: 28px;
-      height: 28px;
-      border: none;
-      border-radius: 50%;
-      background: rgba(128, 128, 128, 0.15);
-      color: var(--footnote-text, #666);
-      font-size: 18px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.2s;
-    }
-    #footnote-dialog .footnote-close:hover {
-      background: rgba(128, 128, 128, 0.25);
-    }
-    #footnote-dialog.dark .footnote-close {
-      color: var(--footnote-text, #aaa);
-    }
     #footnote-dialog main {
-      padding: 16px;
+      padding: 12px 16px;
       overflow-y: auto;
-      max-height: calc(50vh - 60px);
+      flex: 1;
+      -webkit-overflow-scrolling: touch;
     }
     #footnote-backdrop {
       display: none;
@@ -281,7 +262,7 @@ class _FoliateViewerState extends State<FoliateViewer> {
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.3);
+      background: rgba(0, 0, 0, 0.4);
       z-index: 9998;
       animation: footnote-fade-in 0.2s ease-out;
     }
@@ -305,10 +286,6 @@ class _FoliateViewerState extends State<FoliateViewer> {
 <body>
   <div id="footnote-backdrop"></div>
   <div id="footnote-dialog">
-    <div class="footnote-header">
-      <span class="footnote-title">注释</span>
-      <button class="footnote-close" aria-label="关闭">×</button>
-    </div>
     <main></main>
   </div>
   <div id="loading"></div>

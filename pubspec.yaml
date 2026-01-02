@@ -148,9 +148,10 @@ dependencies:
   window_manager: ^0.4.3  # Desktop window control
 
   # Desktop Lyrics & Menu Bar
-  desktop_multi_window: ^0.2.0  # Multi-window support for desktop lyrics
+  desktop_multi_window: ^0.2.0  # Multi-window support for desktop lyrics (macOS only)
   flutter_acrylic: ^1.1.4  # Transparent/acrylic window effects
   hotkey_manager: ^0.2.3  # Global hotkey support for desktop
+  win32: ^5.10.0  # Windows API for native desktop lyrics window
   bonsoir: ^6.0.1  # Native mDNS/Bonjour discovery (iOS/Android/macOS/Windows/Linux)
   ffi: ^2.1.4
   screen_brightness: ^2.1.7
