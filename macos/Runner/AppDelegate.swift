@@ -43,5 +43,17 @@ class AppDelegate: FlutterAppDelegate {
     NativeAVPlayerChannel.register(
       with: controller.engine.registrar(forPlugin: "NativeAVPlayerChannel")
     )
+
+    // 注册桌面歌词通道
+    // 用于在独立窗口显示歌词
+    DesktopLyricChannel.register(
+      with: controller.engine.registrar(forPlugin: "DesktopLyricChannel")
+    )
+
+    // 注册状态栏播放器通道
+    // 用于在菜单栏显示迷你播放器
+    StatusBarChannel.register(
+      with: controller.engine.registrar(forPlugin: "StatusBarChannel")
+    )
   }
 }

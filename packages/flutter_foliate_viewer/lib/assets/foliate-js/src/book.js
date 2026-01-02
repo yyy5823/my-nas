@@ -748,13 +748,18 @@ if (footnoteBackdrop) {
 }
 
 const replaceFootnote = (view) => {
-  if (!footnoteDialog) return
+  console.log('[replaceFootnote] called with view:', view)
+  if (!footnoteDialog) {
+    console.warn('[replaceFootnote] footnoteDialog not found!')
+    return
+  }
 
   if (typeof clearSelection === 'function') {
     try { clearSelection() } catch(e) { /* ignore */ }
   }
 
   const mainEl = footnoteDialog.querySelector('main')
+  console.log('[replaceFootnote] mainEl:', mainEl)
   if (mainEl) mainEl.replaceChildren(view)
 
   // 判断是否暗色模式
@@ -762,13 +767,17 @@ const replaceFootnote = (view) => {
   footnoteDialog.classList.toggle('dark', isDark)
 
   view.addEventListener('load', (e) => {
+    console.log('[replaceFootnote] view load event fired')
     const { doc, index } = e.detail
+    console.log('[replaceFootnote] doc.body.innerHTML length:', doc?.body?.innerHTML?.length)
+    console.log('[replaceFootnote] doc.body.innerHTML (first 300):', doc?.body?.innerHTML?.substring(0, 300))
     globalThis.footnoteSelection = () => handleSelection(view, doc, index)
     setSelectionHandler(view, doc, index)
     readingFeaturesDocHandler(doc)
     doc.__isFootNote = true
 
     setTimeout(() => {
+      console.log('[replaceFootnote] showing dialog')
       // 显示背景遮罩和弹框
       if (footnoteBackdrop) footnoteBackdrop.style.display = 'block'
       if (footnoteDialog) footnoteDialog.style.display = 'block'
@@ -893,11 +902,17 @@ class Reader {
       onExternalLink(e.detail)
     })
 
-    view.addEventListener('link', e =>
-      this.#footnoteHandler.handle(this.view.book, e)?.catch(err => {
-        console.warn(err)
-        this.view.goTo(e.detail.href)
-      }))
+    view.addEventListener('link', e => {
+      console.log('[Reader] link event:', e.detail.href, 'element:', e.detail.a?.tagName, e.detail.a?.outerHTML?.substring(0, 100))
+      const result = this.#footnoteHandler.handle(this.view.book, e)
+      console.log('[Reader] footnoteHandler.handle result:', result)
+      if (result) {
+        result.catch(err => {
+          console.warn('[Reader] footnote error:', err)
+          this.view.goTo(e.detail.href)
+        })
+      }
+    })
 
     view.history.addEventListener('pushstate', e => {
       callFlutter('onPushState', {

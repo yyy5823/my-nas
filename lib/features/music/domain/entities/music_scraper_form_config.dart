@@ -89,6 +89,8 @@ class MusicScraperFormConfig {
         MusicScraperType.neteaseMusic => _getNeteaseConfig(),
         MusicScraperType.qqMusic => _getQQMusicConfig(),
         MusicScraperType.kugouMusic => _getKugouConfig(),
+        MusicScraperType.kuwoMusic => _getKuwoConfig(),
+        MusicScraperType.miguMusic => _getMiguConfig(),
         MusicScraperType.musicTagWeb => _getMusicTagWebConfig(),
       };
 
@@ -242,6 +244,58 @@ class MusicScraperFormConfig {
           MusicScraperFormSection(
             title: '说明',
             description: '酷狗音乐歌词库丰富，特别是翻唱和小众歌曲\n'
+                '无需认证即可使用',
+            fields: [],
+          ),
+        ],
+      );
+
+  // === 酷我音乐配置 ===
+  static MusicScraperFormConfig _getKuwoConfig() =>
+      const MusicScraperFormConfig(
+        type: MusicScraperType.kuwoMusic,
+        sections: [
+          MusicScraperFormSection(
+            title: '基本信息',
+            fields: [
+              MusicScraperFormField(
+                key: 'name',
+                label: '名称',
+                placeholder: '酷我音乐',
+                required: false,
+                helpText: '自定义名称，留空使用默认名称',
+              ),
+            ],
+          ),
+          MusicScraperFormSection(
+            title: '说明',
+            description: '酷我音乐支持歌词和封面查询\n'
+                '无需认证即可使用',
+            fields: [],
+          ),
+        ],
+      );
+
+  // === 咪咕音乐配置 ===
+  static MusicScraperFormConfig _getMiguConfig() =>
+      const MusicScraperFormConfig(
+        type: MusicScraperType.miguMusic,
+        sections: [
+          MusicScraperFormSection(
+            title: '基本信息',
+            fields: [
+              MusicScraperFormField(
+                key: 'name',
+                label: '名称',
+                placeholder: '咪咕音乐',
+                required: false,
+                helpText: '自定义名称，留空使用默认名称',
+              ),
+            ],
+          ),
+          MusicScraperFormSection(
+            title: '说明',
+            description: '咪咕音乐是中国移动旗下音乐平台，无损音源丰富\n'
                 '无需认证即可使用',
             fields: [],
           ),

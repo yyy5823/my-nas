@@ -1181,19 +1181,31 @@ class KF8 {
         }
     }
     async resolveHref(href) {
+        console.log('[KF8] resolveHref called with:', href)
         const { fid, off } = parsePosURI(href)
+        console.log('[KF8] parsed pos:', { fid, off })
         const index = this.getIndexByFID(fid)
-        if (index < 0) return
+        console.log('[KF8] index:', index)
+        if (index < 0) {
+            console.warn('[KF8] index < 0, returning undefined')
+            return
+        }
 
         const saved = this.#fragmentSelectors.get(fid)?.get(off)
-        if (saved) return { index, anchor: doc => doc.querySelector(saved) }
+        if (saved) {
+            console.log('[KF8] using saved selector:', saved)
+            return { index, anchor: doc => doc.querySelector(saved) }
+        }
 
         const { skel, frags } = this.#sections[index]
         const frag = frags.find(frag => frag.index === fid)
+        console.log('[KF8] frag:', frag)
         const offset = skel.offset + skel.length + frag.offset
         const fragRaw = await this.loadRaw(offset, offset + frag.length)
         const str = this.mobi.decode(fragRaw.slice(off))
+        console.log('[KF8] decoded str (first 200 chars):', str?.substring(0, 200))
         const selector = getFragmentSelector(str)
+        console.log('[KF8] generated selector:', selector)
         this.#setFragmentSelector(fid, off, selector)
         const anchor = doc => doc.querySelector(selector)
         return { index, anchor }

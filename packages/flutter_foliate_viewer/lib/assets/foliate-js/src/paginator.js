@@ -1113,6 +1113,11 @@ export class Paginator extends HTMLElement {
       console.log('[Paginator] Snap already in progress, ignoring')
       return
     }
+    // Skip if footnote is being processed
+    if (globalThis.__footnoteProcessing) {
+      console.log('[Paginator] snap: footnote processing, skipping')
+      return
+    }
     this.#snapping = true
 
     try {
@@ -1381,6 +1386,12 @@ export class Paginator extends HTMLElement {
     // at this point I'm basically throwing `requestAnimationFrame` at
     // anything that doesn't work
     requestAnimationFrame(() => {
+      // Skip if footnote is being processed
+      if (globalThis.__footnoteProcessing) {
+        console.log('[Paginator] onTouchEnd: footnote processing, skipping snap')
+        this.#touchState = null
+        return
+      }
       if (globalThis.visualViewport.scale === 1 && state)
         Promise.resolve(this.snap(state.vx, state.vy, state))
           .finally(() => { this.#touchState = null })
@@ -1804,6 +1815,11 @@ export class Paginator extends HTMLElement {
     }
     if (this.#snapping) {
       console.log('[Paginator] turnPage: snapping, skipping')
+      return
+    }
+    // Skip if footnote is being processed
+    if (globalThis.__footnoteProcessing) {
+      console.log('[Paginator] turnPage: footnote processing, skipping')
       return
     }
 

@@ -20,6 +20,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/data/services/music_media_kit_handler.dart';
+import 'package:my_nas/features/music/presentation/pages/desktop_lyric_window.dart';
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -35,7 +36,16 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// - [MusicMediaKitAudioHandler] - 基于 media_kit（FFmpeg 解码器，支持 AC3/DTS 等）
 late IMusicAudioHandler audioHandler;
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
+  // 检查是否是桌面歌词子窗口
+  // desktop_multi_window 会在子窗口启动时传入参数
+  if (args.isNotEmpty && args.first == 'multi_window') {
+    // 子窗口入口：args[1] = windowId, args[2] = arguments
+    await desktopLyricMain(args.sublist(1));
+    return;
+  }
+
+  // 主窗口入口
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
 
   // 初始化前台服务通信端口（必须在 runApp 之前调用）

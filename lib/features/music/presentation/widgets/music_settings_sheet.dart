@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
+import 'package:my_nas/features/music/presentation/providers/desktop_lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
 
@@ -98,6 +100,11 @@ class MusicSettingsSheet extends ConsumerWidget {
                       // 开关选项
                       _buildSwitchOptions(settings, notifier, isDark),
                       const SizedBox(height: 24),
+                      // 桌面歌词设置（仅桌面端）
+                      if (Platform.isWindows || Platform.isMacOS)
+                        _buildDesktopLyricSection(context, ref, isDark),
+                      if (Platform.isWindows || Platform.isMacOS)
+                        const SizedBox(height: 24),
                       // 播放引擎选择
                       _buildEngineSection(context, settings, notifier, isDark),
                       SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
@@ -348,6 +355,124 @@ class MusicSettingsSheet extends ConsumerWidget {
         ),
       ],
     );
+
+  Widget _buildDesktopLyricSection(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    final desktopLyricState = ref.watch(desktopLyricProvider);
+    final desktopLyricNotifier = ref.read(desktopLyricProvider.notifier);
+    final menuBarState = ref.watch(menuBarProvider);
+    final menuBarNotifier = ref.read(menuBarProvider.notifier);
+
+    return _SettingsSection(
+      title: '桌面增强',
+      subtitle: Platform.isMacOS ? '桌面歌词和状态栏播放器' : '桌面歌词',
+      icon: Icons.desktop_windows_rounded,
+      isDark: isDark,
+      child: Column(
+        children: [
+          // 桌面歌词开关
+          _DesktopSettingsTile(
+            icon: Icons.subtitles_rounded,
+            title: '桌面歌词',
+            subtitle: '在桌面显示悬浮歌词窗口',
+            trailing: Platform.isWindows
+                ? 'Ctrl+Shift+L'
+                : Platform.isMacOS
+                    ? '⌘+⇧+L'
+                    : null,
+            value: desktopLyricState.isVisible,
+            isDark: isDark,
+            onChanged: (value) {
+              if (value) {
+                desktopLyricNotifier.show();
+              } else {
+                desktopLyricNotifier.hide();
+              }
+            },
+          ),
+          // macOS 状态栏开关
+          if (Platform.isMacOS) ...[
+            const SizedBox(height: 12),
+            _DesktopSettingsTile(
+              icon: Icons.menu_rounded,
+              title: '状态栏播放器',
+              subtitle: '在菜单栏显示迷你播放器',
+              value: menuBarState.isVisible,
+              isDark: isDark,
+              onChanged: (value) => menuBarNotifier.setVisible(value),
+            ),
+          ],
+          // 最小化时显示桌面歌词
+          const SizedBox(height: 12),
+          _DesktopSettingsTile(
+            icon: Icons.minimize_rounded,
+            title: '最小化时显示歌词',
+            subtitle: '主窗口最小化时自动显示桌面歌词',
+            value: desktopLyricState.settings.showOnMinimize,
+            isDark: isDark,
+            onChanged: (value) {
+              desktopLyricNotifier.updateSettings(
+                desktopLyricState.settings.copyWith(showOnMinimize: value),
+              );
+            },
+          ),
+          // 恢复时隐藏桌面歌词
+          if (desktopLyricState.settings.showOnMinimize) ...[
+            const SizedBox(height: 12),
+            _DesktopSettingsTile(
+              icon: Icons.open_in_full_rounded,
+              title: '恢复时隐藏歌词',
+              subtitle: '主窗口恢复时自动隐藏桌面歌词',
+              value: desktopLyricState.settings.hideOnRestore,
+              isDark: isDark,
+              onChanged: (value) {
+                desktopLyricNotifier.updateSettings(
+                  desktopLyricState.settings.copyWith(hideOnRestore: value),
+                );
+              },
+            ),
+          ],
+          // 桌面歌词设置提示
+          if (desktopLyricState.isVisible) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: AppColors.primary,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '拖动歌词窗口可调整位置，将鼠标悬停在窗口上显示控制按钮',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? AppColors.primary.withValues(alpha: 0.9)
+                            : AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _buildEngineSection(
     BuildContext context,
@@ -837,6 +962,119 @@ class _EngineButton extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+}
+
+/// 桌面设置项组件
+class _DesktopSettingsTile extends StatelessWidget {
+  const _DesktopSettingsTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.isDark,
+    required this.onChanged,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? trailing;
+  final bool value;
+  final bool isDark;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: value
+                  ? AppColors.primary.withValues(alpha: 0.15)
+                  : (isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.05)),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: value
+                  ? AppColors.primary
+                  : (isDark ? Colors.white54 : Colors.black45),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    if (trailing != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.black.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          trailing!,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white54 : Colors.black45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch.adaptive(
+            value: value,
+            onChanged: onChanged,
+            activeTrackColor: AppColors.primary,
+            activeThumbColor: Colors.white,
+          ),
+        ],
       ),
     );
 }

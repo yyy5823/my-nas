@@ -238,19 +238,33 @@ export class View extends HTMLElement {
   #handleLinks(doc, index) {
     const { book } = this
     const section = book.sections[index]
-    for (const a of doc.querySelectorAll('a[href]'))
+    const links = doc.querySelectorAll('a[href]')
+    console.log('[View] #handleLinks - found', links.length, 'links in section', index)
+    for (const a of links)
       a.addEventListener('click', e => {
         e.preventDefault()
         e.stopPropagation()
         const href_ = a.getAttribute('href')
         const href = section?.resolveHref?.(href_) ?? href_
+        console.log('[View] link clicked:', href_, '->', href, 'a.outerHTML:', a.outerHTML?.substring(0, 100))
         if (book?.isExternal?.(href))
           Promise.resolve(this.#emit('external-link', { a, href }, true))
             .then(x => x ? globalThis.open(href, '_blank') : null)
             .catch(e => console.error(e))
-        else Promise.resolve(this.#emit('link', { a, href }, true))
-          .then(x => x ? this.goTo(href) : null)
-          .catch(e => console.error(e))
+        else {
+          // 创建一个可取消的事件
+          const linkEvent = new CustomEvent('link', { detail: { a, href }, cancelable: true })
+          console.log('[View] dispatching link event, cancelable:', linkEvent.cancelable)
+          this.dispatchEvent(linkEvent)
+          console.log('[View] after dispatch, defaultPrevented:', linkEvent.defaultPrevented)
+          // 只有在事件没有被取消时才导航
+          if (!linkEvent.defaultPrevented) {
+            console.log('[View] link not prevented, navigating to:', href)
+            this.goTo(href)
+          } else {
+            console.log('[View] link prevented, NOT navigating')
+          }
+        }
       })
   }
 
