@@ -12,7 +12,6 @@ import 'package:my_nas/features/music/data/services/music_database_service.dart'
 import 'package:my_nas/features/music/data/services/music_tag_writer_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
-import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
@@ -42,6 +41,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
   // 搜索控制器
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _artistController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   // 状态
   bool _isSearching = false;
@@ -49,10 +49,12 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
   bool _isScraping = false;
   String? _errorMessage;
 
-  // 搜索结果（按来源分组）
-  Map<MusicScraperType, List<MusicScraperItem>> _searchResults = {};
+  // 搜索结果（统一列表，按时长匹配度排序）
+  List<MusicScraperItem> _searchResults = [];
+  int _totalResultCount = 0;
 
-  // 选中的详情
+  // 选中的项
+  MusicScraperItem? _selectedItem;
   MusicScraperDetail? _selectedDetail;
   LyricScraperResult? _selectedLyrics;
   CoverScraperResult? _selectedCover;
@@ -65,6 +67,9 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
   // 标签写入服务
   final _tagWriter = MusicTagWriterService();
   SupportedAudioFormat? _audioFormat;
+
+  /// 当前音乐的时长（毫秒）
+  int get _musicDurationMs => widget.music.duration?.inMilliseconds ?? 0;
 
   /// 检查是否已有封面
   bool get _hasCover =>
@@ -94,11 +99,11 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
   void dispose() {
     _titleController.dispose();
     _artistController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _initFromMusic() {
-    // 使用现有元数据或从文件名解析
     _titleController.text = widget.music.displayTitle;
     _artistController.text = widget.music.displayArtist;
 
@@ -114,9 +119,8 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       _isSearching = true;
       _errorMessage = null;
       _searchResults.clear();
-      _selectedDetail = null;
-      _selectedLyrics = null;
-      _selectedCover = null;
+      _totalResultCount = 0;
+      _clearSelection();
     });
 
     try {
@@ -128,18 +132,21 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         artist: _artistController.text.trim().isNotEmpty
             ? _artistController.text.trim()
             : null,
+        limit: 30, // 每个源最多30个结果
       );
 
-      // 按来源分组
-      final grouped = <MusicScraperType, List<MusicScraperItem>>{};
+      // 合并所有结果到统一列表
+      final allItems = <MusicScraperItem>[];
       for (final result in results) {
-        for (final item in result.items) {
-          grouped.putIfAbsent(item.source, () => []).add(item);
-        }
+        allItems.addAll(result.items);
       }
 
+      // 按时长匹配度排序
+      _sortByDurationMatch(allItems);
+
       setState(() {
-        _searchResults = grouped;
+        _searchResults = allItems;
+        _totalResultCount = allItems.length;
         _isSearching = false;
       });
     } on Exception catch (e, st) {
@@ -151,8 +158,66 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     }
   }
 
+  /// 按时长匹配度排序（混合所有来源）
+  void _sortByDurationMatch(List<MusicScraperItem> items) {
+    items.sort((a, b) {
+      // 1. 如果有播放歌曲时长，按时长差值排序
+      if (_musicDurationMs > 0) {
+        final diffA = _getDurationDiff(a);
+        final diffB = _getDurationDiff(b);
+        if (diffA != diffB) {
+          return diffA.compareTo(diffB);
+        }
+      }
+
+      // 2. 时长差值相同或无法比较时，有时长的优先
+      final hasA = a.durationMs != null && a.durationMs! > 0;
+      final hasB = b.durationMs != null && b.durationMs! > 0;
+      if (hasA != hasB) {
+        return hasA ? -1 : 1;
+      }
+
+      // 3. 都有或都无时长时，按标题相似度（简单比较）
+      return 0;
+    });
+  }
+
+  /// 获取时长差值（毫秒）
+  int _getDurationDiff(MusicScraperItem item) {
+    if (item.durationMs == null || item.durationMs == 0) {
+      return 999999999; // 无时长的排在最后
+    }
+    return (item.durationMs! - _musicDurationMs).abs();
+  }
+
+  /// 计算匹配度百分比
+  double _getMatchPercent(MusicScraperItem item) {
+    if (_musicDurationMs <= 0 || item.durationMs == null || item.durationMs == 0) {
+      return 0;
+    }
+    final diff = _getDurationDiff(item);
+    // 差值在5秒以内视为100%匹配，超过60秒视为0%匹配
+    if (diff <= 5000) return 100;
+    if (diff >= 60000) return 0;
+    return ((60000 - diff) / 550).clamp(0, 100);
+  }
+
+  void _clearSelection() {
+    _selectedItem = null;
+    _selectedDetail = null;
+    _selectedLyrics = null;
+    _selectedCover = null;
+  }
+
   Future<void> _selectItem(MusicScraperItem item) async {
+    // 如果点击已选中的项，取消选中
+    if (_selectedItem?.externalId == item.externalId) {
+      setState(_clearSelection);
+      return;
+    }
+
     setState(() {
+      _selectedItem = item;
       _isLoadingDetail = true;
       _errorMessage = null;
     });
@@ -226,7 +291,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       final musicDir = p.dirname(widget.music.path);
       final baseName = p.basenameWithoutExtension(widget.music.path);
 
-      // 下载封面数据（用于写入标签和保存文件）
       Uint8List? coverData;
       String? coverMimeType;
 
@@ -236,20 +300,17 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         coverData = result.$1;
         coverMimeType = result.$2;
 
-        // 保存封面文件到目录（这是小文件，可以快速完成）
         await _saveCoverFile(fileSystem, musicDir, baseName, coverData);
 
-        // 立即同步封面到本地缓存，确保 UI 立即显示
         if (coverData != null) {
           await _syncCoverToLocalCache(coverData);
         }
       }
 
-      // 下载歌词（同样是小文件）
+      // 下载歌词
       if (_downloadLyrics && (_selectedLyrics?.hasLyrics ?? false)) {
         await _downloadLyricsToFile(fileSystem, musicDir, baseName);
 
-        // 如果当前正在播放这首歌，通知歌词 provider 重新加载
         final currentMusic = ref.read(currentMusicProvider);
         if (currentMusic?.id == widget.music.id) {
           AppError.fireAndForget(
@@ -259,24 +320,19 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         }
       }
 
-      // 立即更新当前播放音乐的元数据（如果正在播放此歌曲）
       _updateCurrentMusicMetadata(coverData);
 
-      // 无论是否下载封面，都保存元数据到数据库
-      // 这确保年代、艺术家、专辑、流派等信息被正确保存
       if (_selectedDetail != null) {
         await _syncMetadataToDatabase();
       }
 
-      // 将文件标签写入加入后台队列（如果需要）
       if (_writeToFile && _audioFormat != null && _selectedDetail != null) {
         _queueTagWrite(coverData, coverMimeType);
       }
 
       if (!mounted) return;
 
-      context.showSuccessToast('刮削完成，标签后台写入中...');
-
+      context.showSuccessToast('刮削完成');
       Navigator.pop(context, true);
     } on Exception catch (e, st) {
       AppError.handle(e, st, 'ManualMusicScraperPage._confirmAndScrape');
@@ -290,14 +346,11 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     }
   }
 
-  /// 同步封面到本地磁盘缓存和数据库
-  /// 确保刮削后的封面能够被正确显示，无需重新提取
   Future<void> _syncCoverToLocalCache(Uint8List coverData) async {
     final sourceId = widget.music.sourceId;
     if (sourceId == null) return;
 
     try {
-      // 1. 保存封面到本地磁盘缓存
       final coverCache = MusicCoverCacheService();
       await coverCache.init();
 
@@ -306,14 +359,11 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
 
       if (localCoverPath == null) return;
 
-      // 2. 更新数据库中的封面路径和元数据
       final db = MusicDatabaseService();
       await db.init();
 
-      // 获取现有的曲目数据并更新封面路径
       final existing = await db.get(sourceId, widget.music.path);
       if (existing != null) {
-        // 补充缺失的元数据字段（不覆盖已有数据）
         await db.upsert(existing.copyWith(
           coverPath: localCoverPath,
           title: (existing.title == null || existing.title!.isEmpty)
@@ -333,7 +383,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
           lastUpdated: DateTime.now(),
         ));
       } else {
-        // 如果数据库中没有这首歌，创建一个基本条目
         await db.upsert(MusicTrackEntity(
           sourceId: sourceId,
           filePath: widget.music.path,
@@ -350,17 +399,14 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         ));
       }
     } on Exception catch (e, st) {
-      // 非关键功能，静默失败
       AppError.ignore(e, st, '同步封面到本地缓存失败');
     }
   }
 
-  /// 立即更新当前播放音乐的元数据（如果正在播放此歌曲）
   void _updateCurrentMusicMetadata(Uint8List? coverData) {
     final currentMusic = ref.read(currentMusicProvider);
     if (currentMusic?.id != widget.music.id) return;
 
-    // 更新 currentMusicProvider 状态（只补充缺失的字段）
     ref.read(currentMusicProvider.notifier).state = currentMusic!.copyWith(
       title: (currentMusic.title == null || currentMusic.title!.isEmpty)
           ? _selectedDetail?.title
@@ -380,7 +426,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       coverData: coverData?.toList() ?? currentMusic.coverData,
     );
 
-    // 更新播放队列中该歌曲的元数据
     ref.read(playQueueProvider.notifier).updateTrackMetadata(
       widget.music.id,
       title: _selectedDetail?.title,
@@ -392,8 +437,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     );
   }
 
-  /// 同步元数据到数据库（不包含封面）
-  /// 当用户没有下载封面但需要保存元数据时调用
   Future<void> _syncMetadataToDatabase() async {
     final sourceId = widget.music.sourceId;
     if (sourceId == null || _selectedDetail == null) return;
@@ -402,10 +445,8 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       final db = MusicDatabaseService();
       await db.init();
 
-      // 获取现有的曲目数据并更新
       final existing = await db.get(sourceId, widget.music.path);
       if (existing != null) {
-        // 补充缺失的元数据字段（不覆盖已有数据）
         final updated = existing.copyWith(
           title: (existing.title == null || existing.title!.isEmpty)
               ? _selectedDetail?.title
@@ -425,7 +466,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         );
         await db.upsert(updated);
       } else {
-        // 如果数据库中没有这首歌，创建一个基本条目
         await db.upsert(MusicTrackEntity(
           sourceId: sourceId,
           filePath: widget.music.path,
@@ -441,16 +481,13 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         ));
       }
     } on Exception catch (e, st) {
-      // 非关键功能，静默失败
       AppError.ignore(e, st, '同步元数据到数据库失败');
     }
   }
 
-  /// 将标签写入任务加入后台队列
   void _queueTagWrite(Uint8List? coverData, String? coverMimeType) {
     final writeQueue = ref.read(musicTagWriteQueueProvider);
 
-    // 构建标签数据
     final tagData = MusicTagData(
       title: _selectedDetail?.title,
       artist: _selectedDetail?.artist,
@@ -463,7 +500,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       lyrics: _selectedLyrics?.lrcContent ?? _selectedLyrics?.plainText,
     );
 
-    // 加入后台写入队列
     writeQueue.addTask(
       musicPath: widget.music.path,
       sourceId: widget.music.sourceId,
@@ -473,7 +509,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     );
   }
 
-  /// 下载封面数据
   Future<(Uint8List?, String?)> _downloadCoverData() async {
     if (_selectedCover == null) return (null, null);
 
@@ -496,7 +531,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     }
   }
 
-  /// 保存封面文件到目录
   Future<void> _saveCoverFile(
     NasFileSystem fileSystem,
     String musicDir,
@@ -508,7 +542,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     try {
       final ext = _selectedCover!.coverUrl.contains('.png') ? 'png' : 'jpg';
 
-      // 尝试保存为 folder.jpg，如果已存在则保存为 {filename}-cover.jpg
       final folderCoverPath = p.join(musicDir, 'folder.$ext');
       var exists = false;
       try {
@@ -528,7 +561,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     }
   }
 
-
   Future<void> _downloadLyricsToFile(
     NasFileSystem fileSystem,
     String musicDir,
@@ -541,12 +573,22 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       if (lrcContent.isEmpty) return;
 
       final lrcPath = p.join(musicDir, '$baseName.lrc');
-      // 使用 UTF-8 编码保存歌词文件
       final utf8Bytes = const Utf8Encoder().convert(lrcContent);
       await fileSystem.writeFile(lrcPath, Uint8List.fromList(utf8Bytes));
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '下载歌词失败');
     }
+  }
+
+  /// 格式化时长差值
+  String _formatDurationDiff(MusicScraperItem item) {
+    if (_musicDurationMs <= 0 || item.durationMs == null || item.durationMs == 0) {
+      return '';
+    }
+    final diffMs = item.durationMs! - _musicDurationMs;
+    final diffSec = diffMs ~/ 1000;
+    if (diffSec.abs() < 1) return '±0s';
+    return diffSec > 0 ? '+${diffSec}s' : '${diffSec}s';
   }
 
   @override
@@ -557,142 +599,194 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('手动刮削'),
+        actions: [
+          if (_totalResultCount > 0)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Text(
+                  '$_totalResultCount 个结果',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
       body: Column(
         children: [
-          // 文件信息
-          _buildFileInfo(theme, isDark),
+          // 文件信息（紧凑展示）
+          _buildCompactFileInfo(theme, isDark),
 
           // 搜索栏
           _buildSearchBar(theme, isDark),
 
           // 内容区域
-          Expanded(
-            child: _selectedDetail != null || _selectedCover != null || _selectedLyrics != null
-                ? _buildDetailView(theme, isDark)
-                : _buildSearchResults(theme, isDark),
-          ),
+          Expanded(child: _buildSearchResults(theme, isDark)),
+
+          // 选中项预览和操作
+          if (_selectedItem != null) _buildSelectionPanel(theme, isDark),
         ],
       ),
-      bottomNavigationBar: _selectedDetail != null || _selectedCover != null || _selectedLyrics != null
-          ? _buildBottomBar(theme, isDark)
-          : null,
     );
   }
 
-  Widget _buildFileInfo(ThemeData theme, bool isDark) => Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurface
-            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: Border(
-          bottom: BorderSide(
-            color: isDark ? AppColors.darkOutline : theme.dividerColor,
-            width: 0.5,
-          ),
+  Widget _buildCompactFileInfo(ThemeData theme, bool isDark) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    decoration: BoxDecoration(
+      color: isDark
+          ? AppColors.darkSurface
+          : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      border: Border(
+        bottom: BorderSide(
+          color: isDark ? AppColors.darkOutline : theme.dividerColor,
+          width: 0.5,
         ),
       ),
-      child: Row(
-        children: [
-          // 封面
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: AppColors.fileAudio.withValues(alpha: 0.1),
-            ),
-            child: widget.music.coverUrl != null || widget.music.coverData != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: widget.music.coverData != null
-                        ? Image.memory(
-                            Uint8List.fromList(widget.music.coverData!),
-                            fit: BoxFit.cover,
-                          )
-                        : AdaptiveImage(
-                            imageUrl: widget.music.coverUrl!,
-                            fit: BoxFit.cover,
-                          ),
-                  )
-                : Icon(
-                    Icons.music_note_rounded,
-                    color: AppColors.fileAudio,
-                    size: 28,
-                  ),
+    ),
+    child: Row(
+      children: [
+        // 封面
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            color: AppColors.fileAudio.withValues(alpha: 0.1),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.music.displayTitle,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          child: widget.music.coverUrl != null || widget.music.coverData != null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: widget.music.coverData != null
+                      ? Image.memory(
+                          Uint8List.fromList(widget.music.coverData!),
+                          fit: BoxFit.cover,
+                        )
+                      : AdaptiveImage(
+                          imageUrl: widget.music.coverUrl!,
+                          fit: BoxFit.cover,
+                        ),
+                )
+              : Icon(
+                  Icons.music_note_rounded,
+                  color: AppColors.fileAudio,
+                  size: 22,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  widget.music.path,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.music.displayTitle,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
-              ],
-            ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  if (widget.music.displayArtist.isNotEmpty) ...[
+                    Flexible(
+                      child: Text(
+                        widget.music.displayArtist,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  if (_musicDurationMs > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        _formatDuration(_musicDurationMs),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
 
   Widget _buildSearchBar(ThemeData theme, bool isDark) => Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // 标题搜索框
-          TextField(
+    padding: const EdgeInsets.all(12),
+    child: Row(
+      children: [
+        // 标题搜索框
+        Expanded(
+          flex: 3,
+          child: TextField(
             controller: _titleController,
             decoration: InputDecoration(
-              labelText: '歌曲名称',
-              hintText: '输入歌曲名称',
-              prefixIcon: const Icon(Icons.music_note_outlined),
+              hintText: '歌曲名称',
+              prefixIcon: const Icon(Icons.music_note_outlined, size: 20),
               border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: _isSearching
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.search),
-                onPressed: _isSearching ? null : _search,
-              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              isDense: true,
             ),
             onSubmitted: (_) => _search(),
           ),
-          const SizedBox(height: 12),
-          // 艺术家过滤
-          TextField(
+        ),
+        const SizedBox(width: 8),
+        // 艺术家过滤
+        Expanded(
+          flex: 2,
+          child: TextField(
             controller: _artistController,
             decoration: const InputDecoration(
-              labelText: '艺术家（可选）',
-              hintText: '输入艺术家名称以缩小搜索范围',
-              prefixIcon: Icon(Icons.person_outline),
+              hintText: '艺术家',
+              prefixIcon: Icon(Icons.person_outline, size: 20),
               border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              isDense: true,
             ),
             onSubmitted: (_) => _search(),
           ),
-        ],
-      ),
-    );
+        ),
+        const SizedBox(width: 8),
+        // 搜索按钮
+        SizedBox(
+          height: 42,
+          child: FilledButton(
+            onPressed: _isSearching ? null : _search,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: _isSearching
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.search, size: 20),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _buildSearchResults(ThemeData theme, bool isDark) {
     if (_isSearching) {
@@ -708,10 +802,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
             const SizedBox(height: 16),
             Text(_errorMessage!, textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _search,
-              child: const Text('重试'),
-            ),
+            FilledButton(onPressed: _search, child: const Text('重试')),
           ],
         ),
       );
@@ -746,472 +837,508 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      itemCount: _searchResults.length,
-      itemBuilder: (context, index) {
-        final entry = _searchResults.entries.elementAt(index);
-        return _buildSourceSection(entry.key, entry.value, theme, isDark);
-      },
-    );
-  }
-
-  Widget _buildSourceSection(
-    MusicScraperType source,
-    List<MusicScraperItem> items,
-    ThemeData theme,
-    bool isDark,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 来源标签
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            children: [
-              Icon(source.icon, size: 16, color: source.themeColor),
-              const SizedBox(width: 8),
-              Text(
-                source.displayName,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: source.themeColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: source.themeColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${items.length} 个结果',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: source.themeColor,
-                  ),
-                ),
-              ),
-              // 歌词支持指示器（仅表示来源支持词，不保证每首歌都有）
-              if (source.supportsLyrics) ...[
-                const SizedBox(width: 6),
-                Tooltip(
-                  message: '此来源支持获取歌词',
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: (isDark ? Colors.cyan[300] : Colors.cyan[700])!
-                          .withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.lyrics_rounded,
-                          size: 12,
-                          color: isDark ? Colors.cyan[300] : Colors.cyan[700],
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '词',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: isDark ? Colors.cyan[300] : Colors.cyan[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        // 结果列表（显示全部）
-        ...items.map((item) => _buildSearchResultItem(item, theme, isDark)),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-
-  Widget _buildSearchResultItem(MusicScraperItem item, ThemeData theme, bool isDark) => Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            color: item.source.themeColor.withValues(alpha: 0.1),
-          ),
-          child: item.coverUrl != null
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: AdaptiveImage(
-                    imageUrl: item.coverUrl!,
-                    fit: BoxFit.cover,
-                  ),
-                )
-              : Icon(Icons.music_note, color: item.source.themeColor),
-        ),
-        title: Text(
-          item.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          [
-            if (item.artist != null) item.artist,
-            if (item.album != null) item.album,
-            if (item.durationText.isNotEmpty) item.durationText,
-          ].join(' · '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall,
-        ),
-        trailing: item.score != null
-            ? Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  item.scoreText,
-                  style: TextStyle(
-                    color: AppColors.success,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              )
-            : const Icon(Icons.chevron_right),
-        onTap: () => _selectItem(item),
+    return Scrollbar(
+      controller: _scrollController,
+      thumbVisibility: true,
+      child: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: _searchResults.length,
+        itemBuilder: (context, index) {
+          final item = _searchResults[index];
+          final isSelected = _selectedItem?.externalId == item.externalId;
+          return _buildResultCard(item, isSelected, theme, isDark);
+        },
       ),
     );
+  }
 
-  Widget _buildDetailView(ThemeData theme, bool isDark) {
-    if (_isLoadingDetail) {
-      return const Center(child: CircularProgressIndicator());
-    }
+  Widget _buildResultCard(MusicScraperItem item, bool isSelected, ThemeData theme, bool isDark) {
+    final matchPercent = _getMatchPercent(item);
+    final durationDiff = _formatDurationDiff(item);
+    final hasHighMatch = matchPercent >= 90;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 返回搜索按钮
-          TextButton.icon(
-            onPressed: () {
-              setState(() {
-                _selectedDetail = null;
-                _selectedCover = null;
-                _selectedLyrics = null;
-              });
-            },
-            icon: const Icon(Icons.arrow_back),
-            label: const Text('返回搜索结果'),
-          ),
-          const SizedBox(height: 16),
-
-          // 详情卡片
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 封面和基本信息
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 封面
-                      Container(
-                        width: 100,
-                        height: 100,
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      elevation: isSelected ? 4 : 1,
+      color: isSelected
+          ? (isDark ? AppColors.primary.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.08))
+          : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: isSelected
+            ? BorderSide(color: AppColors.primary, width: 1.5)
+            : BorderSide.none,
+      ),
+      child: InkWell(
+        onTap: () => _selectItem(item),
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              // 封面
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  color: item.source.themeColor.withValues(alpha: 0.1),
+                ),
+                child: Stack(
+                  children: [
+                    if (item.coverUrl != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: AdaptiveImage(
+                          imageUrl: item.coverUrl!,
+                          fit: BoxFit.cover,
+                          width: 52,
+                          height: 52,
+                        ),
+                      )
+                    else
+                      Center(
+                        child: Icon(Icons.music_note, color: item.source.themeColor, size: 24),
+                      ),
+                    // 来源角标
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          color: _selectedDetail?.source.themeColor.withValues(alpha: 0.1) ??
-                              AppColors.fileAudio.withValues(alpha: 0.1),
+                          color: item.source.themeColor,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(6),
+                            bottomRight: Radius.circular(6),
+                          ),
                         ),
-                        child: _selectedCover?.coverUrl != null || _selectedDetail?.coverUrl != null
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: AdaptiveImage(
-                                  imageUrl: _selectedCover?.coverUrl ?? _selectedDetail!.coverUrl!,
-                                  fit: BoxFit.cover,
-                                ),
-                              )
-                            : Icon(
-                                Icons.album,
-                                size: 48,
-                                color: _selectedDetail?.source.themeColor ?? AppColors.fileAudio,
-                              ),
+                        child: Icon(item.source.icon, size: 10, color: Colors.white),
                       ),
-                      const SizedBox(width: 16),
-                      // 基本信息
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _selectedDetail?.title ?? '未知标题',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            if (_selectedDetail?.artist != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                _selectedDetail!.artist!,
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                            ],
-                            if (_selectedDetail?.album != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                _selectedDetail!.album!,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 8),
-                            // 来源标签
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _selectedDetail?.source.themeColor.withValues(alpha: 0.1) ??
-                                    Colors.grey.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                _selectedDetail?.source.displayName ?? '未知来源',
-                                style: TextStyle(
-                                  color: _selectedDetail?.source.themeColor,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // 其他元数据
-                  if (_selectedDetail != null) ...[
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    _buildMetadataRow('年份', _selectedDetail!.year?.toString()),
-                    _buildMetadataRow('时长', _selectedDetail!.durationText),
-                    _buildMetadataRow('音轨', _selectedDetail!.trackInfo),
-                    _buildMetadataRow('流派', _selectedDetail!.genresText),
-                    _buildMetadataRow('ISRC', _selectedDetail!.isrc),
+                    ),
                   ],
+                ),
+              ),
+              const SizedBox(width: 10),
 
-                  // 歌词预览
-                  if (_selectedLyrics?.hasLyrics ?? false) ...[
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 8),
+              // 信息
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 标题
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    // 艺术家 / 专辑
+                    Text(
+                      [
+                        if (item.artist != null) item.artist,
+                        if (item.album != null) item.album,
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: isDark ? AppColors.darkOnSurfaceVariant : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // 底部标签行
                     Row(
                       children: [
-                        Icon(Icons.lyrics, size: 16, color: theme.colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          '歌词预览',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: theme.colorScheme.primary,
+                        // 来源
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: item.source.themeColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(3),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 150),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: SingleChildScrollView(
-                        child: Text(
-                          _selectedLyrics!.lrcContent ?? _selectedLyrics!.plainText ?? '',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
-          // 刮削选项
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '刮削选项',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    title: Text('下载封面${_hasCover ? " (已有)" : ""}'),
-                    subtitle: Text(
-                      _selectedCover != null
-                          ? (_hasCover && _downloadCover
-                              ? '覆盖现有封面'
-                              : '保存到音乐文件所在目录')
-                          : '封面不可用',
-                    ),
-                    value: _downloadCover && _selectedCover != null,
-                    onChanged: _selectedCover != null
-                        ? (value) => setState(() => _downloadCover = value)
-                        : null,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SwitchListTile(
-                    title: Text('下载歌词${_hasLyrics ? " (已有)" : ""}'),
-                    subtitle: Text(
-                      _selectedLyrics?.hasLyrics ?? false
-                          ? (_hasLyrics && _downloadLyrics
-                              ? '覆盖现有歌词'
-                              : '保存为同名 .lrc 文件')
-                          : '歌词不可用',
-                    ),
-                    value: _downloadLyrics && (_selectedLyrics?.hasLyrics ?? false),
-                    onChanged: _selectedLyrics?.hasLyrics ?? false
-                        ? (value) => setState(() => _downloadLyrics = value)
-                        : null,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  const Divider(height: 16),
-                  // 写入到文件标签选项
-                  if (_audioFormat != null)
-                    SwitchListTile(
-                      title: const Text('写入文件标签'),
-                      subtitle: Text('${_audioFormat!.displayName} (${_audioFormat!.tagType})'),
-                      value: _writeToFile,
-                      onChanged: (value) => setState(() => _writeToFile = value),
-                      contentPadding: EdgeInsets.zero,
-                    )
-                  else
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 16,
-                            color: theme.colorScheme.outline,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '该格式不支持写入标签，仅保存外部文件',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.outline,
-                              ),
+                          child: Text(
+                            item.source.displayName,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: item.source.themeColor,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
+                        ),
+                        const SizedBox(width: 6),
+                        // 时长
+                        if (item.durationText.isNotEmpty)
+                          Text(
+                            item.durationText,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isDark ? Colors.grey[500] : Colors.grey[600],
+                            ),
+                          ),
+                        // 歌词支持
+                        if (item.source.supportsLyrics) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.lyrics_rounded,
+                            size: 12,
+                            color: isDark ? Colors.cyan[300] : Colors.cyan[700],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // 右侧：匹配度指示器
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (matchPercent > 0) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: hasHighMatch
+                            ? AppColors.success.withValues(alpha: 0.15)
+                            : (matchPercent >= 50
+                                ? Colors.orange.withValues(alpha: 0.15)
+                                : Colors.grey.withValues(alpha: 0.15)),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            '${matchPercent.toInt()}%',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: hasHighMatch
+                                  ? AppColors.success
+                                  : (matchPercent >= 50 ? Colors.orange : Colors.grey),
+                            ),
+                          ),
+                          if (durationDiff.isNotEmpty)
+                            Text(
+                              durationDiff,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: hasHighMatch
+                                    ? AppColors.success
+                                    : (matchPercent >= 50 ? Colors.orange : Colors.grey),
+                              ),
+                            ),
                         ],
                       ),
                     ),
+                  ] else
+                    Icon(
+                      Icons.chevron_right,
+                      color: isDark ? Colors.grey[600] : Colors.grey[400],
+                    ),
+                  if (isSelected)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Icon(
+                        Icons.check_circle,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
+                    ),
                 ],
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildMetadataRow(String label, String? value) {
-    if (value == null || value.isEmpty) return const SizedBox.shrink();
+  Widget _buildSelectionPanel(ThemeData theme, bool isDark) {
+    final hasContent = _selectedDetail != null || _selectedCover != null || _selectedLyrics != null;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 60,
-            child: Text(
-              label,
-              style: context.textTheme.bodySmall?.copyWith(
-                color: context.theme.colorScheme.onSurfaceVariant,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : theme.colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? AppColors.darkOutline : theme.dividerColor,
+          ),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 加载中
+            if (_isLoadingDetail)
+              const LinearProgressIndicator()
+            else if (hasContent)
+              // 选项和按钮
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Column(
+                  children: [
+                    // 选中项信息
+                    Row(
+                      children: [
+                        // 封面预览
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: _selectedItem?.source.themeColor.withValues(alpha: 0.1),
+                          ),
+                          child: _selectedCover?.coverUrl != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: AdaptiveImage(
+                                    imageUrl: _selectedCover!.coverUrl,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.album,
+                                  color: _selectedItem?.source.themeColor,
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        // 信息
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedDetail?.title ?? _selectedItem?.title ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: _selectedItem?.source.themeColor.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      _selectedItem?.source.displayName ?? '',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: _selectedItem?.source.themeColor,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // 可用内容指示
+                                  if (_selectedCover != null)
+                                    _buildFeatureChip(Icons.image_rounded, '封面', isDark),
+                                  if (_selectedLyrics?.hasLyrics ?? false) ...[
+                                    const SizedBox(width: 4),
+                                    _buildFeatureChip(Icons.lyrics_rounded, '歌词', isDark),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 刮削选项（紧凑）
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildCompactOption(
+                            '封面${_hasCover ? "(覆盖)" : ""}',
+                            _downloadCover && _selectedCover != null,
+                            _selectedCover != null
+                                ? (v) => setState(() => _downloadCover = v)
+                                : null,
+                            theme,
+                            isDark,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildCompactOption(
+                            '歌词${_hasLyrics ? "(覆盖)" : ""}',
+                            _downloadLyrics && (_selectedLyrics?.hasLyrics ?? false),
+                            (_selectedLyrics?.hasLyrics ?? false)
+                                ? (v) => setState(() => _downloadLyrics = v)
+                                : null,
+                            theme,
+                            isDark,
+                          ),
+                        ),
+                        if (_audioFormat != null) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildCompactOption(
+                              '写入标签',
+                              _writeToFile,
+                              (v) => setState(() => _writeToFile = v),
+                              theme,
+                              isDark,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 按钮
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isScraping ? null : () => setState(_clearSelection),
+                            child: const Text('取消选择'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: FilledButton.icon(
+                            onPressed: _isScraping ? null : _confirmAndScrape,
+                            icon: _isScraping
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.check, size: 18),
+                            label: const Text('确认刮削'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              )
+            else
+              // 正在加载详情
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '正在获取详情...',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: context.textTheme.bodySmall,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildBottomBar(ThemeData theme, bool isDark) => SafeArea(
+  Widget _buildFeatureChip(IconData icon, String label, bool isDark) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+    decoration: BoxDecoration(
+      color: (isDark ? Colors.green[700] : Colors.green[100])!.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 10, color: isDark ? Colors.green[300] : Colors.green[700]),
+        const SizedBox(width: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            color: isDark ? Colors.green[300] : Colors.green[700],
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildCompactOption(
+    String label,
+    bool value,
+    void Function(bool)? onChanged,
+    ThemeData theme,
+    bool isDark,
+  ) {
+    final isEnabled = onChanged != null;
+
+    return GestureDetector(
+      onTap: isEnabled ? () => onChanged(!value) : null,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: isDark ? AppColors.darkSurface : theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(
-              color: isDark ? AppColors.darkOutline : theme.dividerColor,
-              width: 0.5,
-            ),
+          color: value
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : (isDark ? Colors.grey[800] : Colors.grey[100]),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: value ? AppColors.primary : Colors.transparent,
           ),
         ),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: _isScraping
-                    ? null
-                    : () {
-                        setState(() {
-                          _selectedDetail = null;
-                          _selectedCover = null;
-                          _selectedLyrics = null;
-                        });
-                      },
-                child: const Text('取消'),
-              ),
+            Icon(
+              value ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 16,
+              color: isEnabled
+                  ? (value ? AppColors.primary : (isDark ? Colors.grey[500] : Colors.grey[600]))
+                  : Colors.grey[400],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 2,
-              child: FilledButton.icon(
-                onPressed: _isScraping ? null : _confirmAndScrape,
-                icon: _isScraping
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.download),
-                label: const Text('确认刮削'),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isEnabled
+                      ? (isDark ? Colors.white : Colors.black87)
+                      : Colors.grey[400],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _formatDuration(int ms) {
+    final seconds = ms ~/ 1000;
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
 }

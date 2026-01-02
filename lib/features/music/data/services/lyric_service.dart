@@ -88,9 +88,9 @@ class LyricService {
     required NasFileSystem fileSystem,
   }) async {
     try {
-      // 获取音乐文件所在目录
-      final dir = p.dirname(musicPath);
-      final baseName = p.basenameWithoutExtension(musicName);
+      // 获取音乐文件所在目录（NAS 路径使用 / 分隔符）
+      final dir = p.posix.dirname(musicPath);
+      final baseName = p.posix.basenameWithoutExtension(musicName);
 
       // 尝试不同的歌词文件名格式
       final possibleNames = [
@@ -107,7 +107,8 @@ class LyricService {
         final fileName = file.name;
         for (final possibleName in possibleNames) {
           if (fileName.toLowerCase() == possibleName.toLowerCase()) {
-            final lrcPath = p.join(dir, fileName);
+            // NAS 路径始终使用 / 分隔符，不使用平台特定分隔符
+            final lrcPath = p.posix.join(dir, fileName);
             logger.i('LyricService: 找到歌词文件 $lrcPath');
 
             // 直接通过文件系统读取歌词文件

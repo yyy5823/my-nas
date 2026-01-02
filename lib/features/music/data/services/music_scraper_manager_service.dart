@@ -47,6 +47,9 @@ class MusicScraperManagerService {
     // 检查是否需要初始化默认源
     if (_box!.isEmpty) {
       await _initDefaultSources();
+    } else {
+      // 为已有用户添加新的刮削源类型
+      await _addMissingDefaultSources();
     }
 
     final sources = <MusicScraperSourceEntity>[];
@@ -100,6 +103,61 @@ class MusicScraperManagerService {
         priority: i,
       );
       // 直接保存，不通过 addSource 避免重复计算优先级
+      await _box!.put(source.id, source.toJson());
+    }
+  }
+
+  /// 为已有用户添加缺失的默认刮削源
+  Future<void> _addMissingDefaultSources() async {
+    // 默认应该启用的无需配置的源
+    final defaultTypes = [
+      MusicScraperType.kugouMusic,
+      MusicScraperType.kuwoMusic,
+      MusicScraperType.miguMusic,
+      MusicScraperType.qqMusic,
+      MusicScraperType.neteaseMusic,
+      MusicScraperType.musicBrainz,
+    ];
+
+    // 获取当前已有的源类型
+    final existingTypes = <MusicScraperType>{};
+    for (final key in _box!.keys) {
+      final data = _box!.get(key);
+      if (data != null && data is Map) {
+        try {
+          final source = MusicScraperSourceEntity.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+          existingTypes.add(source.type);
+        } on Exception {
+          // 忽略解析错误
+        }
+      }
+    }
+
+    // 找出缺失的源类型
+    final missingTypes = defaultTypes.where((t) => !existingTypes.contains(t)).toList();
+    if (missingTypes.isEmpty) return;
+
+    // 获取当前最大优先级
+    var maxPriority = 0;
+    for (final key in _box!.keys) {
+      final data = _box!.get(key);
+      if (data != null && data is Map) {
+        final priority = data['priority'] as int? ?? 0;
+        if (priority > maxPriority) maxPriority = priority;
+      }
+    }
+
+    // 添加缺失的源（追加到末尾，默认启用）
+    for (var i = 0; i < missingTypes.length; i++) {
+      final type = missingTypes[i];
+      final source = MusicScraperSourceEntity(
+        name: '',
+        type: type,
+        isEnabled: true,
+        priority: maxPriority + 1 + i,
+      );
       await _box!.put(source.id, source.toJson());
     }
   }
