@@ -428,7 +428,71 @@ class MusicFavoritesService {
     await _lastPlayedBox!.delete('state');
   }
 
-  // ==================== 封面更新相关 ====================
+  // ==================== 元数据更新相关 ====================
+
+  /// 更新指定音乐的元数据
+  ///
+  /// 当刮削完成后调用此方法，更新收藏和播放历史中的元数据
+  Future<void> updateMetadata(
+    String musicPath, {
+    String? title,
+    String? artist,
+    String? album,
+    String? coverUrl,
+  }) async {
+    await init();
+
+    // 更新收藏中的元数据
+    if (_favoritesBox != null) {
+      final favData = _favoritesBox!.get(musicPath);
+      if (favData != null) {
+        try {
+          final fav = MusicFavoriteItem.fromMap(favData);
+          final updated = MusicFavoriteItem(
+            musicPath: fav.musicPath,
+            musicName: title ?? fav.musicName,
+            musicUrl: fav.musicUrl,
+            sourceId: fav.sourceId,
+            artist: artist ?? fav.artist,
+            album: album ?? fav.album,
+            coverUrl: coverUrl ?? fav.coverUrl,
+            duration: fav.duration,
+            addedAt: fav.addedAt,
+          );
+          await _favoritesBox!.put(musicPath, updated.toMap());
+          logger.d('MusicFavoritesService: 更新收藏元数据 ${updated.musicName}');
+        } on Exception catch (_) {
+          // 跳过无效数据
+        }
+      }
+    }
+
+    // 更新播放历史中的元数据
+    if (_historyBox != null) {
+      final histData = _historyBox!.get(musicPath);
+      if (histData != null) {
+        try {
+          final hist = MusicHistoryItem.fromMap(histData);
+          final updated = MusicHistoryItem(
+            musicPath: hist.musicPath,
+            musicName: title ?? hist.musicName,
+            musicUrl: hist.musicUrl,
+            sourceId: hist.sourceId,
+            artist: artist ?? hist.artist,
+            album: album ?? hist.album,
+            coverUrl: coverUrl ?? hist.coverUrl,
+            duration: hist.duration,
+            playedAt: hist.playedAt,
+            lastPosition: hist.lastPosition,
+          );
+          await _historyBox!.put(musicPath, updated.toMap());
+          logger.d('MusicFavoritesService: 更新播放历史元数据 ${updated.musicName}');
+        } on Exception catch (_) {
+          // 跳过无效数据
+        }
+      }
+    }
+  }
 
   /// 更新指定音乐的封面 URL
   ///

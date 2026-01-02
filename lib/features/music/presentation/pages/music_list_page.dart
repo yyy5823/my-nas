@@ -1574,6 +1574,54 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     }
   }
 
+  /// 更新单个曲目的元数据（刮削后调用）
+  Future<void> refreshTrackMetadata(String sourceId, String filePath) async {
+    final current = state;
+    if (current is! MusicListLoaded) return;
+
+    try {
+      // 从数据库获取最新数据
+      final dbTrack = await _db.get(sourceId, filePath);
+      if (dbTrack == null) return;
+
+      // 构建更新后的曲目
+      MusicTrackEntity? updatedTrack;
+
+      // 在当前状态中找到对应的曲目并更新
+      final updatedTracks = current.allTracks.map((track) {
+        if (track.sourceId == sourceId && track.filePath == filePath) {
+          updatedTrack = track.copyWith(
+            title: dbTrack.title ?? track.title,
+            artist: dbTrack.artist ?? track.artist,
+            album: dbTrack.album ?? track.album,
+            coverPath: dbTrack.coverPath ?? track.coverPath,
+            year: dbTrack.year ?? track.year,
+            trackNumber: dbTrack.trackNumber ?? track.trackNumber,
+            genre: dbTrack.genre ?? track.genre,
+            lastUpdated: DateTime.now(),
+          );
+          return updatedTrack!;
+        }
+        return track;
+      }).toList();
+
+      // 同时更新 trackByFilePath 映射
+      final updatedTrackByFilePath = Map<String, MusicTrackEntity>.from(current.trackByFilePath);
+      if (updatedTrack != null) {
+        updatedTrackByFilePath[filePath] = updatedTrack!;
+      }
+
+      // 更新状态
+      state = current.copyWith(
+        allTracks: updatedTracks,
+        trackByFilePath: updatedTrackByFilePath,
+      );
+      logger.d('MusicListNotifier: 已更新曲目元数据 $filePath');
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '更新曲目元数据失败');
+    }
+  }
+
   /// 设置来源筛选
   void setSourceFilter(MusicSourceFilter filter) {
     final current = state;

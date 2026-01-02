@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -9,11 +10,14 @@ import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
+import 'package:my_nas/features/music/data/services/music_favorites_service.dart';
 import 'package:my_nas/features/music/data/services/music_tag_writer_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
+import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_tag_write_queue_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -341,6 +345,9 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         _queueTagWrite(coverData, coverMimeType);
       }
 
+      // 更新收藏和播放历史中的元数据
+      await _syncToFavoritesAndHistory(coverData);
+
       if (!mounted) return;
 
       context.showSuccessToast('刮削完成');
@@ -493,6 +500,50 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       }
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '同步元数据到数据库失败');
+    }
+  }
+
+  /// 同步更新到收藏和播放历史
+  Future<void> _syncToFavoritesAndHistory(Uint8List? coverData) async {
+    try {
+      // 构建封面 URL
+      String? coverUrl;
+      if (coverData != null) {
+        final sourceId = widget.music.sourceId;
+        if (sourceId != null) {
+          final coverCache = MusicCoverCacheService();
+          await coverCache.init();
+          final uniqueKey = '${sourceId}_${widget.music.path}';
+          final localPath = await coverCache.getCoverPath(uniqueKey);
+          if (localPath != null) {
+            coverUrl = 'file://$localPath';
+          }
+        }
+      }
+
+      // 更新收藏和播放历史中的元数据
+      await MusicFavoritesService().updateMetadata(
+        widget.music.path,
+        title: _selectedDetail?.title,
+        artist: _selectedDetail?.artist,
+        album: _selectedDetail?.album,
+        coverUrl: coverUrl,
+      );
+
+      // 刷新 provider 使 UI 更新
+      unawaited(ref.read(musicFavoritesProvider.notifier).refresh());
+      unawaited(ref.read(musicHistoryProvider.notifier).refresh());
+
+      // 刷新音乐列表中该曲目的元数据
+      final sourceId = widget.music.sourceId;
+      if (sourceId != null) {
+        unawaited(ref.read(musicListProvider.notifier).refreshTrackMetadata(
+          sourceId,
+          widget.music.path,
+        ));
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '同步到收藏和播放历史失败');
     }
   }
 
