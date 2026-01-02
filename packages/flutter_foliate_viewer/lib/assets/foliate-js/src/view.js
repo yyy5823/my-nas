@@ -3,7 +3,16 @@ import { TOCProgress, SectionProgress } from './progress.js'
 import { Overlayer } from './overlayer.js'
 import { textWalker } from './text-walker.js'
 import { Translator, TranslationMode } from './translator.js'
-const { TTS } = await import('./tts.js')
+
+// TTS 类延迟加载，避免顶层 await 导致兼容性问题
+let TTS = null
+const loadTTS = async () => {
+  if (!TTS) {
+    const module = await import('./tts.js')
+    TTS = module.TTS
+  }
+  return TTS
+}
 
 const SEARCH_PREFIX = 'foliate-search:'
 
@@ -153,21 +162,37 @@ export class View extends HTMLElement {
     this.#translator?.destroy()
   }
   goToTextStart() {
-    return this.goTo(this.book.landmarks
-      ?.find(m => m.type.includes('bodymatter') || m.type.includes('text'))
-      ?.href ?? this.book.sections.findIndex(s => s.linear !== 'no'))
+    const landmark = this.book.landmarks?.find(m => m.type.includes('bodymatter') || m.type.includes('text'))
+    const target = landmark?.href ?? this.book.sections.findIndex(s => s.linear !== 'no')
+    console.log('[View] goToTextStart - landmark:', landmark, 'target:', target)
+    return this.goTo(target)
   }
   async init({ lastLocation, showTextStart }) {
+    console.log('[View] init called - lastLocation:', lastLocation, 'showTextStart:', showTextStart)
     const resolved = lastLocation ? this.resolveNavigation(lastLocation) : null
+    console.log('[View] resolved:', resolved)
     if (resolved) {
+      console.log('[View] going to resolved location')
       await this.renderer.goTo(resolved)
       this.history.pushState(lastLocation)
+      console.log('[View] resolved location done')
     }
-    else if (showTextStart) await this.goToTextStart()
+    else if (showTextStart) {
+      console.log('[View] calling goToTextStart')
+      await this.goToTextStart()
+      console.log('[View] goToTextStart done')
+    }
     else {
-      this.history.pushState(0)
-      await this.next()
+      // 加载第一个章节而不是调用 next()，因为此时 paginator 的 view 还未初始化
+      const firstIndex = this.book.sections.findIndex(s => s.linear !== 'no')
+      console.log('[View] loading first section, index:', firstIndex)
+      if (firstIndex >= 0) {
+        await this.renderer.goTo({ index: firstIndex })
+        this.history.pushState(firstIndex)
+      }
+      console.log('[View] first section loaded')
     }
+    console.log('[View] init completed')
   }
   #emit(name, detail, cancelable) {
     return this.dispatchEvent(new CustomEvent(name, { detail, cancelable }))
@@ -427,13 +452,17 @@ export class View extends HTMLElement {
     }
   }
   async goTo(target) {
+    console.log('[View] goTo called with target:', target)
     const resolved = this.resolveNavigation(target)
+    console.log('[View] goTo resolved:', resolved)
     try {
+      console.log('[View] calling renderer.goTo...')
       await this.renderer.goTo(resolved)
+      console.log('[View] renderer.goTo completed')
       this.history.pushState(target)
       return resolved
     } catch (e) {
-      console.error(e)
+      console.error('[View] goTo error:', e)
       console.error(`Could not go to ${target}`)
     }
   }
@@ -556,13 +585,16 @@ export class View extends HTMLElement {
     this.#searchResults.clear()
   }
   oldValue = null
-  initTTS(stop) {
+  async initTTS(stop) {
     if (stop)
       return this.#getOverlayer(this.#index)?.overlayer.remove(this.oldValue)
 
     const doc = this.renderer.getContents()[0].doc;
     if (this.tts && this.tts.doc === doc) return;
-    this.tts = new TTS(
+
+    // 延迟加载 TTS 类
+    const TTSClass = await loadTTS()
+    this.tts = new TTSClass(
       doc,
       textWalker,
       (range) => {

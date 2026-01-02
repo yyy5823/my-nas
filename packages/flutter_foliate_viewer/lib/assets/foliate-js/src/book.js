@@ -5,9 +5,15 @@ import './view.js'
 import { FootnoteHandler } from './footnotes.js'
 import { Overlayer } from './overlayer.js'
 import { collapse, compare, fromRange, toRange } from './epubcfi.js'
-const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } =
-  await import('./vendor/zip.js')
-const { EPUB } = await import('./epub.js')
+
+// zip.js 和 EPUB 延迟加载，避免顶层 await 导致兼容性问题
+let zipModule = null
+const loadZipModule = async () => {
+  if (!zipModule) {
+    zipModule = await import('./vendor/zip.js')
+  }
+  return zipModule
+}
 
 var isPdf = false;
 
@@ -367,6 +373,7 @@ const isPDF = async file => {
 }
 
 const makeZipLoader = async file => {
+  const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } = await loadZipModule()
   configure({ useWebWorkers: false })
   const reader = new ZipReader(new BlobReader(file))
   const entries = await reader.getEntries()
@@ -432,6 +439,7 @@ const getView = async file => {
       const blob = await loader.loadBlob((entry ?? entries[0]).filename)
       book = await makeFB2(blob)
     } else {
+      const { EPUB } = await import('./epub.js')
       book = await new EPUB(loader).init()
     }
   }
@@ -840,13 +848,21 @@ class Reader {
     this.view.addEventListener('doctouchend', this.#onTouchEnd.bind(this))
 
     setStyle()
-    if (!cfi)
-      this.view.renderer.next()
+    console.log('[Reader] setStyle done, calling setView...')
     this.setView(this.view)
-    await this.view.init({ lastLocation: cfi })
+    console.log('[Reader] setView done, calling view.init with showTextStart:', !cfi)
+    try {
+      await this.view.init({ lastLocation: cfi, showTextStart: !cfi })
+      console.log('[Reader] view.init completed successfully')
+    } catch (e) {
+      console.error('[Reader] view.init failed:', e)
+      throw e
+    }
 
-    // set html bg color to grey 
+    console.log('[Reader] setting background color...')
+    // set html bg color to grey
     document.documentElement.style.backgroundColor = 'grey'
+    console.log('[Reader] open() completed, setting up done')
   }
 
   setView(view) {
@@ -1020,6 +1036,7 @@ class Reader {
   }
 
   #onLoad({ detail: { doc, index } }) {
+    console.log('[Reader] #onLoad fired, index:', index)
     this.#doc = doc
     this.#index = index
     setSelectionHandler(this.view, doc, index)
@@ -1031,26 +1048,36 @@ class Reader {
     // }
 
     this.#saveOriginalContent()
+    console.log('[Reader] #onLoad - calling readingFeatures')
 
     this.readingFeatures(readingRules)
+    console.log('[Reader] #onLoad completed')
   }
 
   #onRelocate({ detail }) {
-    const { cfi, fraction, location, tocItem, pageItem, chapterLocation } = detail
-    const loc = pageItem
-      ? `Page ${pageItem.label}`
-      : `Loc ${location.current}`
-    this.#checkCurrentPageBookmark()
-    onRelocated({
-      cfi,
-      fraction,
-      loc,
-      tocItem,
-      pageItem,
-      location,
-      chapterLocation,
-      bookmark: this.#bookmarkInfo,
-    })
+    console.log('[Reader] #onRelocate fired')
+    try {
+      const { cfi, fraction, location, tocItem, pageItem, chapterLocation } = detail
+      const loc = pageItem
+        ? `Page ${pageItem.label}`
+        : `Loc ${location.current}`
+      console.log('[Reader] #onRelocate - checking bookmark')
+      this.#checkCurrentPageBookmark()
+      console.log('[Reader] #onRelocate - calling onRelocated')
+      onRelocated({
+        cfi,
+        fraction,
+        loc,
+        tocItem,
+        pageItem,
+        location,
+        chapterLocation,
+        bookmark: this.#bookmarkInfo,
+      })
+      console.log('[Reader] #onRelocate completed')
+    } catch (e) {
+      console.error('[Reader] #onRelocate error:', e)
+    }
   }
 
   #onClickView({ detail: { x, y } }) {

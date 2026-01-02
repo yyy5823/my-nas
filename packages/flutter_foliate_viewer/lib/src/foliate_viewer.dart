@@ -589,7 +589,18 @@ $bundleJs
 
     try {
       final data = await widget.bookSource.bookData;
+      final fileSizeMB = data.length / (1024 * 1024);
+      debugPrint('Foliate: Loading book, size: ${fileSizeMB.toStringAsFixed(2)} MB');
+
+      // 检查文件大小限制（Windows WebView2 对大文件处理可能有问题）
+      if (data.length > 100 * 1024 * 1024) { // 100MB 限制
+        debugPrint('Foliate: File too large (> 100MB), may cause issues');
+        widget.onError?.call('文件过大，可能无法正常加载');
+      }
+
       final base64Data = base64Encode(data);
+      debugPrint('Foliate: Base64 encoded, length: ${base64Data.length}');
+
       final bookType = widget.bookSource.bookType.name;
       final initialCfi = widget.initialCfi ?? '';
 
@@ -633,11 +644,23 @@ $bundleJs
       }
 
       // 调用初始化函数
+      debugPrint('Foliate: Calling initFoliateBook...');
       final jsCode = '''
-        window.initFoliateBook('$base64Data', '$bookType', '$initialCfi', '$styleJson');
+        try {
+          window.initFoliateBook('$base64Data', '$bookType', '$initialCfi', '$styleJson');
+        } catch(e) {
+          console.error('initFoliateBook error:', e);
+          window.flutter_inappwebview.callHandler('onError', e.message || e.toString());
+        }
       ''';
 
-      await _webViewController?.evaluateJavascript(source: jsCode);
+      try {
+        await _webViewController?.evaluateJavascript(source: jsCode);
+        debugPrint('Foliate: initFoliateBook called successfully');
+      } on Exception catch (e) {
+        debugPrint('Foliate: evaluateJavascript failed: $e');
+        widget.onError?.call('JavaScript 执行失败: $e');
+      }
 
       // 如果禁用原生手势，阻止 WebView JavaScript 处理触摸导航
       if (widget.disableNativeGestures) {
@@ -646,6 +669,7 @@ $bundleJs
         );
       }
     } on Exception catch (e) {
+      debugPrint('Foliate: _loadBook failed: $e');
       widget.onError?.call('加载书籍失败: $e');
       setState(() {
         _isLoading = false;

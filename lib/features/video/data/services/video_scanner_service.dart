@@ -290,11 +290,20 @@ class VideoScannerService {
         sourceIds.add(path.sourceId);
         final fileSystem = conn.adapter.fileSystem;
 
-        // 清理该路径的旧数据（避免旧路径格式的数据残留）
-        final deletedDbCount = await _dbService.deleteByPath(path.sourceId, path.path);
-        final deletedCacheCount = await _cacheService.deleteByPath(path.sourceId, path.path);
-        if (deletedDbCount > 0 || deletedCacheCount > 0) {
-          logger.i('VideoScannerService: 已清理 ${path.sourceId}:${path.path} 的旧数据 (db: $deletedDbCount, cache: $deletedCacheCount)');
+        // 检查是否有未完成的扫描
+        // 关键修复：只有在全新扫描时才删除旧数据
+        // 如果是断点续扫，必须保留已扫描目录的数据，否则会丢失视频
+        final hasUnfinished = await _dbService.hasUnfinishedScan(path.sourceId, path.path);
+
+        if (!hasUnfinished) {
+          // 全新扫描：清理该路径的旧数据
+          final deletedDbCount = await _dbService.deleteByPath(path.sourceId, path.path);
+          final deletedCacheCount = await _cacheService.deleteByPath(path.sourceId, path.path);
+          if (deletedDbCount > 0 || deletedCacheCount > 0) {
+            logger.i('VideoScannerService: 全新扫描，已清理 ${path.sourceId}:${path.path} 的旧数据 (db: $deletedDbCount, cache: $deletedCacheCount)');
+          }
+        } else {
+          logger.i('VideoScannerService: 发现未完成扫描，保留已有数据继续扫描 ${path.sourceId}:${path.path}');
         }
 
         // 为每个目录单独发送扫描开始事件（包含目录标识）
@@ -1660,6 +1669,8 @@ VideoScannerService: 增量同步完成
 
     // 处理每个目录的结果
     final completedDirs = <({String sourceId, String path, int videoCount, DateTime? dirModifiedTime})>[];
+    final batchVideos = <_ScannedVideo>[];
+    final batchSubtitles = <_ScannedSubtitle>[];
 
     for (final dir in directories) {
       final items = results[dir.path];
@@ -1674,14 +1685,21 @@ VideoScannerService: 增量同步完成
         continue;
       }
 
+      // 收集该目录的视频和字幕
+      final dirVideos = <_ScannedVideo>[];
+      final dirSubtitles = <_ScannedSubtitle>[];
+
       // 处理目录内容
       final videoCount = await _processDirectoryItems(
         sourceId: sourceId,
         dirPath: dir.path,
         items: items,
-        videos: videos,
-        subtitles: subtitles,
+        videos: dirVideos,
+        subtitles: dirSubtitles,
       );
+
+      batchVideos.addAll(dirVideos);
+      batchSubtitles.addAll(dirSubtitles);
 
       completedDirs.add((
         sourceId: sourceId,
@@ -1691,7 +1709,19 @@ VideoScannerService: 增量同步完成
       ));
     }
 
-    // 批量标记完成
+    // 先保存视频和字幕到数据库（确保目录状态和数据一致）
+    if (batchVideos.isNotEmpty) {
+      await _saveBasicMetadataToDb(batchVideos);
+    }
+    if (batchSubtitles.isNotEmpty) {
+      await _saveSubtitlesToDb(batchSubtitles);
+    }
+
+    // 将视频和字幕添加到总列表（用于缓存和进度统计）
+    videos.addAll(batchVideos);
+    subtitles.addAll(batchSubtitles);
+
+    // 批量标记完成（在数据保存之后）
     await _dbService.markDirectoriesCompletedBatch(completedDirs);
 
     // 更新进度
@@ -1730,13 +1760,30 @@ VideoScannerService: 增量同步完成
         // 忽略获取目录信息失败，不影响扫描流程
       }
 
+      // 收集该目录的视频和字幕
+      final dirVideos = <_ScannedVideo>[];
+      final dirSubtitles = <_ScannedSubtitle>[];
+
       final videoCount = await _processDirectoryItems(
         sourceId: sourceId,
         dirPath: dirPath,
         items: items,
-        videos: videos,
-        subtitles: subtitles,
+        videos: dirVideos,
+        subtitles: dirSubtitles,
       );
+
+      // 立即保存该目录的视频到数据库（确保目录状态和数据一致）
+      // 这样即使扫描中断，已完成目录的数据也不会丢失
+      if (dirVideos.isNotEmpty) {
+        await _saveBasicMetadataToDb(dirVideos);
+      }
+      if (dirSubtitles.isNotEmpty) {
+        await _saveSubtitlesToDb(dirSubtitles);
+      }
+
+      // 将视频和字幕添加到总列表（用于缓存和进度统计）
+      videos.addAll(dirVideos);
+      subtitles.addAll(dirSubtitles);
 
       // 标记完成（包含目录修改时间）
       await _dbService.markDirectoryCompleted(

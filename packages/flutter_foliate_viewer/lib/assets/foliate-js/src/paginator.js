@@ -154,7 +154,13 @@ const setStylesImportant = (el, styles) => {
 }
 
 class View {
-  #observer = new ResizeObserver(() => this.expand())
+  #observer = new ResizeObserver(() => {
+    try {
+      this.expand()
+    } catch (e) {
+      console.error('[View] ResizeObserver expand error:', e)
+    }
+  })
   #element = document.createElement('div')
   #iframe = document.createElement('iframe')
   #contentRange = document.createRange()
@@ -201,35 +207,112 @@ class View {
     return this.#iframe.contentDocument
   }
   async load(src, afterLoad, beforeRender) {
+    console.log('[View] load() called, src length:', src?.length, 'src:', src?.substring?.(0, 50))
     if (typeof src !== 'string') throw new Error(`${src} is not string`)
+
+    const handleLoad = (doc) => {
+      console.log('[View] handleLoad called, doc:', !!doc)
+      afterLoad?.(doc)
+      console.log('[View] afterLoad done')
+
+      // it needs to be visible for Firefox to get computed style
+      this.#iframe.style.display = 'block'
+      console.log('[View] calling getDirection...')
+      const { vertical, rtl, writingMode } = getDirection(doc)
+      console.log('[View] getDirection result:', { vertical, rtl, writingMode })
+      this.#iframe.style.display = 'none'
+
+      this.#vertical = vertical
+      this.#rtl = rtl
+      this.#writingMode = writingMode
+
+      console.log('[View] selecting content range...')
+      this.#contentRange.selectNodeContents(doc.body)
+      console.log('[View] calling beforeRender...')
+      const layout = beforeRender?.({ vertical, rtl })
+      console.log('[View] beforeRender result:', layout)
+      this.#iframe.style.display = 'block'
+      console.log('[View] calling render...')
+      this.render(layout)
+      console.log('[View] render done')
+      this.#observer.observe(doc.body)
+      console.log('[View] observer setup done')
+
+      // the resize observer above doesn't work in Firefox
+      // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
+      // until the bug is fixed we can at least account for font load
+      doc.fonts?.ready?.then(() => {
+        try {
+          this.expand()
+        } catch (e) {
+          console.error('[View] fonts.ready expand error:', e)
+        }
+      }).catch(e => console.warn('[View] fonts.ready failed:', e))
+    }
+
+    // Check if we're on Windows WebView2 - it has cross-origin issues with blob URLs in iframes
+    const isWindowsWebView = navigator.userAgent.includes('Windows') && navigator.userAgent.includes('Edg/')
+
+    // On Windows WebView2, use srcdoc for blob URLs to avoid cross-origin issues
+    // srcdoc creates an about:srcdoc origin which is same-origin to the parent
+    if (isWindowsWebView && src.startsWith('blob:')) {
+      console.log('[View] Windows WebView2 detected, using srcdoc for blob URL')
+      try {
+        const response = await fetch(src)
+        const html = await response.text()
+        console.log('[View] Fetched blob content, length:', html.length)
+
+        return new Promise(resolve => {
+          this.#iframe.addEventListener('load', () => {
+            console.log('[View] srcdoc iframe loaded')
+            try {
+              const doc = this.document
+              console.log('[View] got document from srcdoc:', !!doc)
+              if (!doc) {
+                console.error('[View] document is null after srcdoc load!')
+                return
+              }
+              handleLoad(doc)
+              console.log('[View] srcdoc handleLoad completed, resolving')
+              resolve()
+            } catch (e) {
+              console.error('[View] srcdoc handleLoad error:', e)
+              throw e
+            }
+          }, { once: true })
+          // Use srcdoc - creates about:srcdoc origin
+          console.log('[View] setting srcdoc...')
+          this.#iframe.srcdoc = html
+        })
+      } catch (e) {
+        console.error('[View] Failed to fetch blob URL:', e)
+        throw e
+      }
+    }
+
+    // Other platforms or non-blob URL - use regular src
     return new Promise(resolve => {
+      console.log('[View] load() - setting up iframe load listener')
       this.#iframe.addEventListener('load', () => {
-        const doc = this.document
-        afterLoad?.(doc)
-
-        // it needs to be visible for Firefox to get computed style
-        this.#iframe.style.display = 'block'
-        const { vertical, rtl, writingMode } = getDirection(doc)
-        this.#iframe.style.display = 'none'
-
-        this.#vertical = vertical
-        this.#rtl = rtl
-        this.#writingMode = writingMode
-
-        this.#contentRange.selectNodeContents(doc.body)
-        const layout = beforeRender?.({ vertical, rtl })
-        this.#iframe.style.display = 'block'
-        this.render(layout)
-        this.#observer.observe(doc.body)
-
-        // the resize observer above doesn't work in Firefox
-        // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
-        // until the bug is fixed we can at least account for font load
-        doc.fonts.ready.then(() => this.expand())
-
-        resolve()
+        console.log('[View] iframe load event fired')
+        try {
+          const doc = this.document
+          console.log('[View] got document:', !!doc)
+          if (!doc) {
+            console.error('[View] document is null!')
+            return
+          }
+          handleLoad(doc)
+          console.log('[View] resolving promise')
+          resolve()
+        } catch (e) {
+          console.error('[View] iframe load error:', e)
+          throw e
+        }
       }, { once: true })
+      console.log('[View] setting iframe.src...')
       this.#iframe.src = src
+      console.log('[View] iframe.src set')
     })
   }
   render(layout) {
@@ -1570,16 +1653,22 @@ export class Paginator extends HTMLElement {
     }
   }
   async #display(promise) {
+    console.log('[Paginator] #display started')
     const { index, src, anchor, onLoad, select } = await promise
+    console.log('[Paginator] #display - promise resolved, index:', index, 'src type:', typeof src)
     // Guard against corrupted state from failed section loads
     if (index === undefined || index === null) {
       console.warn('[Paginator] #display: invalid index, skipping')
       return
     }
     this.#index = index
+    console.log('[Paginator] #display - set index:', index)
     if (src) {
+      console.log('[Paginator] #display - creating view...')
       const view = this.#createView()
+      console.log('[Paginator] #display - view created:', view)
       const afterLoad = doc => {
+        console.log('[Paginator] #display - afterLoad callback, doc:', !!doc)
         if (doc.head) {
           const $styleBefore = doc.createElement('style')
           doc.head.prepend($styleBefore)
@@ -1587,46 +1676,87 @@ export class Paginator extends HTMLElement {
           doc.head.append($style)
           this.#styleMap.set(doc, [$styleBefore, $style])
         }
+        console.log('[Paginator] #display - afterLoad calling onLoad')
         onLoad?.({ doc, index })
+        console.log('[Paginator] #display - afterLoad done')
       }
       const beforeRender = this.#beforeRender.bind(this)
-      await view.load(src, afterLoad, beforeRender)
+      console.log('[Paginator] #display - calling view.load()...')
+      try {
+        await view.load(src, afterLoad, beforeRender)
+        console.log('[Paginator] #display - view.load() completed')
+      } catch (e) {
+        console.error('[Paginator] #display - view.load() error:', e)
+        throw e
+      }
+      console.log('[Paginator] #display - dispatching create-overlayer event')
       this.dispatchEvent(new CustomEvent('create-overlayer', {
         detail: {
           doc: view.document, index,
           attach: overlayer => view.overlayer = overlayer,
         },
       }))
+      console.log('[Paginator] #display - setting this.#view')
       this.#view = view
     }
+    console.log('[Paginator] #display - calling scrollToAnchor...')
     await this.scrollToAnchor((typeof anchor === 'function'
       ? anchor(this.#view.document) : anchor) ?? 0, select)
+    console.log('[Paginator] #display completed')
   }
   #canGoToIndex(index) {
     return index >= 0 && index <= this.sections.length - 1
   }
   async #goTo({ index, anchor, select }) {
-    if (index === this.#index) await this.#display({ index, anchor, select })
-    else {
+    console.log('[Paginator] #goTo called, index:', index, 'current index:', this.#index)
+    if (index === this.#index) {
+      console.log('[Paginator] #goTo - same index, calling #display directly')
+      await this.#display({ index, anchor, select })
+    } else {
+      console.log('[Paginator] #goTo - different index, loading section...')
       const oldIndex = this.#index
       const onLoad = detail => {
+        console.log('[Paginator] onLoad callback fired')
         this.sections[oldIndex]?.unload?.()
         this.setStyles(this.#styles)
         this.dispatchEvent(new CustomEvent('load', { detail }))
       }
-      await this.#display(Promise.resolve(this.sections[index].load())
-        .then(src => ({ index, src, anchor, onLoad, select }))
-        .catch(e => {
-          console.warn(e)
-          console.warn(new Error(`Failed to load section ${index}`))
-          return {}
-        }))
+      console.log('[Paginator] #goTo - calling section.load() for index:', index)
+      try {
+        await this.#display(Promise.resolve(this.sections[index].load())
+          .then(src => {
+            console.log('[Paginator] section.load() succeeded, src type:', typeof src)
+            return { index, src, anchor, onLoad, select }
+          })
+          .catch(e => {
+            console.warn('[Paginator] section.load() failed:', e)
+            console.warn(new Error(`Failed to load section ${index}`))
+            return {}
+          }))
+        console.log('[Paginator] #goTo - #display completed')
+      } catch (e) {
+        console.error('[Paginator] #goTo - #display error:', e)
+      }
     }
   }
   async goTo(target) {
-    if (this.#locked) return
+    console.log('[Paginator] goTo called, locked:', this.#locked, 'target:', target)
+    if (this.#locked) {
+      console.log('[Paginator] goTo - locked, returning early')
+      return
+    }
     const resolved = await target
-    if (this.#canGoToIndex(resolved.index)) return this.#goTo(resolved)
+    console.log('[Paginator] goTo resolved:', resolved, 'index:', resolved?.index)
+    const canGo = this.#canGoToIndex(resolved?.index)
+    console.log('[Paginator] canGoToIndex:', canGo, 'sections.length:', this.sections?.length)
+    if (canGo) {
+      console.log('[Paginator] calling #goTo...')
+      const result = await this.#goTo(resolved)
+      console.log('[Paginator] #goTo completed')
+      return result
+    } else {
+      console.log('[Paginator] cannot go to index:', resolved?.index)
+    }
   }
   #scrollPrev(distance) {
     if (!this.#view) return true
@@ -1814,7 +1944,13 @@ export class Paginator extends HTMLElement {
     this.#background.style.background = getBackground(this.getAttribute('bgimg-url'))
 
     // needed because the resize observer doesn't work in Firefox
-    this.#view?.document?.fonts?.ready?.then(() => this.#view.expand())
+    this.#view?.document?.fonts?.ready?.then(() => {
+      try {
+        this.#view?.expand()
+      } catch (e) {
+        console.error('[Paginator] fonts.ready expand error:', e)
+      }
+    }).catch(e => console.warn('[Paginator] fonts.ready failed:', e))
   }
   get writingMode() {
     return this.#view?.writingMode
