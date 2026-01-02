@@ -11,41 +11,145 @@
   body {
     user-select: none;
     margin: 0 !important;
-    height: 100vh;  
+    height: 100vh;
   }
 
-
+  /* ===== 脚注弹框基础样式 ===== */
   #footnote-dialog {
-    /*
-    padding: var(safe-area-inset-top) var(safe-area-inset-right) var(safe-area-inset-bottom) var(safe-area-inset-left);
-    */
     position: fixed;
-    width: 80vw;
-    height: 80vh;
-    max-width: 400px;
-    max-height: 200px;
-    min-width: 300px;
-    min-height: 200px;
-    border-radius: 15px;
-    border: 1px solid grey;
-    user-select: none;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    user-select: text;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     outline: none;
     z-index: 1000;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    display: flex;
+    display: none;
     flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    background: var(--footnote-bg, #fff);
+    color: var(--footnote-text, #333);
   }
 
+  #footnote-dialog.dark {
+    background: var(--footnote-bg, #1a1a1a);
+    color: var(--footnote-text, #e0e0e0);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  }
+
+  /* ===== 移动端样式：底部弹出 ===== */
+  @media (max-width: 767px) {
+    #footnote-dialog {
+      left: 0;
+      right: 0;
+      bottom: 0;
+      top: auto;
+      width: 100%;
+      max-width: 100%;
+      max-height: 50vh;
+      min-height: 80px;
+      border-radius: 16px 16px 0 0;
+      border: none;
+      border-top: 1px solid rgba(128, 128, 128, 0.2);
+      transform: none;
+      padding-top: 16px;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    /* 移动端顶部拖拽指示条 */
+    #footnote-dialog::after {
+      content: '';
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 36px;
+      height: 4px;
+      background: rgba(128, 128, 128, 0.4);
+      border-radius: 2px;
+    }
+
+    #footnote-backdrop {
+      background: rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  /* ===== 桌面端样式：气泡弹出 ===== */
+  @media (min-width: 768px) {
+    #footnote-dialog {
+      width: auto;
+      min-width: 280px;
+      max-width: 400px;
+      max-height: 300px;
+      border-radius: 8px;
+      border: 1px solid rgba(128, 128, 128, 0.3);
+      /* 默认位置，会被 JS 覆盖 */
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* 气泡箭头 */
+    #footnote-dialog::before {
+      content: '';
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: inherit;
+      border: inherit;
+      border-right: none;
+      border-bottom: none;
+      z-index: -1;
+    }
+
+    /* 箭头朝下（弹框在上方） */
+    #footnote-dialog.arrow-down::before {
+      bottom: -7px;
+      left: var(--arrow-left, 50%);
+      transform: translateX(-50%) rotate(-135deg);
+      border: 1px solid rgba(128, 128, 128, 0.3);
+      border-right: none;
+      border-top: none;
+    }
+
+    /* 箭头朝上（弹框在下方） */
+    #footnote-dialog.arrow-up::before {
+      top: -7px;
+      left: var(--arrow-left, 50%);
+      transform: translateX(-50%) rotate(45deg);
+      border: 1px solid rgba(128, 128, 128, 0.3);
+      border-bottom: none;
+      border-right: none;
+    }
+
+    #footnote-backdrop {
+      background: transparent;
+    }
+  }
+
+  /* ===== 公共内部样式 ===== */
   #footnote-dialog main {
     overflow: auto;
     width: 100%;
-    height: 100%;
+    flex: 1;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #footnote-dialog foliate-view {
+    display: block;
+    width: 100%;
+    min-height: 100px;
+  }
+
+  #footnote-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999;
+    display: none;
   }
 </style>
+<div id="footnote-backdrop"></div>
 <div id="footnote-dialog">
   <main></main>
 </div>

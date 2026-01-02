@@ -34,6 +34,15 @@ const looksLikeFootnote = a => {
     const text = a.textContent?.trim()
     if (text && /^[\[\(]?\d{1,3}[\]\)]?$/.test(text)) return true
 
+    // 检查是否是 kindle:pos: 链接（Kindle 格式的内部链接）
+    const href = a.getAttribute('href') || ''
+    if (href.startsWith('kindle:pos:')) {
+        // kindle:pos: 链接如果包含小图片或短文本，很可能是脚注
+        if (img) return true
+        // 文本很短（1-5个字符）也可能是脚注标记
+        if (text && text.length <= 5) return true
+    }
+
     return false
 }
 
@@ -94,6 +103,50 @@ export class FootnoteHandler extends EventTarget {
     // 标记是否正在处理脚注，用于阻止翻页（同时设置到 window 以便 paginator 检查）
     static get processing() { return globalThis.__footnoteProcessing ?? false }
     static set processing(value) { globalThis.__footnoteProcessing = value }
+
+    // 直接加载脚注内容（快速版本，不使用 foliate-view）
+    async #showFragmentDirect(book, { index, anchor }, href, anchorRect) {
+        console.log('[FootnoteHandler] #showFragmentDirect called:', { index, href, anchorRect })
+        try {
+            const section = book.sections[index]
+            if (!section) {
+                throw new Error(`Section ${index} not found`)
+            }
+
+            // 直接创建文档
+            const doc = await section.createDocument()
+            console.log('[FootnoteHandler] document created, body length:', doc?.body?.innerHTML?.length)
+
+            // 提取脚注元素
+            const el = anchor(doc)
+            console.log('[FootnoteHandler] anchor element:', el?.tagName, 'innerHTML:', el?.innerHTML?.substring(0, 200))
+
+            if (!el) {
+                throw new Error('Footnote element not found')
+            }
+
+            // 获取脚注 HTML 内容
+            let htmlContent = ''
+            if (el.matches('li, aside')) {
+                htmlContent = el.innerHTML
+            } else {
+                htmlContent = el.outerHTML
+            }
+
+            console.log('[FootnoteHandler] extracted HTML content length:', htmlContent.length)
+
+            // 触发事件，传递 HTML 内容和锚点位置
+            const type = getReferencedType(el)
+            const detail = { htmlContent, href, type, target: el, anchorRect }
+            this.dispatchEvent(new CustomEvent('footnote-content', { detail }))
+
+        } catch (e) {
+            console.error('[FootnoteHandler] error in #showFragmentDirect:', e)
+            throw e
+        }
+    }
+
+    // 使用 foliate-view 显示脚注（原版本，作为备用）
     #showFragment(book, { index, anchor }, href) {
         console.log('[FootnoteHandler] #showFragment called:', { index, href })
         const view = document.createElement('foliate-view')
@@ -145,17 +198,59 @@ export class FootnoteHandler extends EventTarget {
                 })
         })
     }
+    // 获取锚点元素的位置（考虑 iframe 和 transform）
+    #getAnchorRect(a) {
+        try {
+            const rect = a.getBoundingClientRect()
+            const rootNode = a.getRootNode?.()
+            const frameElement = rootNode?.defaultView?.frameElement
+
+            let offsetX = 0, offsetY = 0
+            let scaleX = 1, scaleY = 1
+
+            if (frameElement) {
+                const frameRect = frameElement.getBoundingClientRect()
+                offsetX = frameRect.left
+                offsetY = frameRect.top
+
+                // 检查 transform scale
+                const transform = getComputedStyle(frameElement).transform
+                const matches = transform.match(/matrix\((.+)\)/)
+                if (matches) {
+                    [scaleX, , , scaleY] = matches[1].split(/\s*,\s*/).map(Number)
+                }
+            }
+
+            return {
+                left: offsetX + rect.left * scaleX,
+                top: offsetY + rect.top * scaleY,
+                right: offsetX + rect.right * scaleX,
+                bottom: offsetY + rect.bottom * scaleY,
+                width: rect.width * scaleX,
+                height: rect.height * scaleY
+            }
+        } catch (e) {
+            console.warn('[FootnoteHandler] failed to get anchor rect:', e)
+            return null
+        }
+    }
+
     handle(book, e) {
         const { a, href } = e.detail
         const { yes, maybe } = isFootnoteReference(a)
         console.log('[FootnoteHandler] checking:', href, 'yes:', yes, 'maybe:', maybe(), 'detectFootnotes:', this.detectFootnotes)
+
+        // 获取锚点位置
+        const anchorRect = this.#getAnchorRect(a)
+        console.log('[FootnoteHandler] anchorRect:', anchorRect)
+
         if (yes) {
             console.log('[FootnoteHandler] is footnote reference, preventing default')
             e.preventDefault()
             // 设置标志阻止翻页
             FootnoteHandler.processing = true
             return Promise.resolve(book.resolveHref(href)).then(target =>
-                this.#showFragment(book, target, href))
+                this.#showFragmentDirect(book, target, href, anchorRect))
                 .finally(() => {
                     // 延迟一点再重置标志，确保脚注弹框已显示
                     setTimeout(() => { FootnoteHandler.processing = false }, 100)
@@ -168,7 +263,7 @@ export class FootnoteHandler extends EventTarget {
             FootnoteHandler.processing = true
             return Promise.resolve(book.resolveHref(href)).then(({ index, anchor }) => {
                 const target = { index, anchor: doc => extractFootnote(doc, anchor) }
-                return this.#showFragment(book, target, href)
+                return this.#showFragmentDirect(book, target, href, anchorRect)
             }).finally(() => {
                 // 延迟一点再重置标志，确保脚注弹框已显示
                 setTimeout(() => { FootnoteHandler.processing = false }, 100)

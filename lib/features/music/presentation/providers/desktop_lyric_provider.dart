@@ -177,18 +177,65 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
     // 监听播放状态变化
     _ref.listen<MusicPlayerState>(musicPlayerControllerProvider,
         (previous, next) {
+      // 播放状态变化时处理自动显示/隐藏
       if (previous?.isPlaying != next.isPlaying) {
         _syncPlayingState(next.isPlaying);
+        _handlePlayingStateChange(next.isPlaying);
       }
-      // 定期同步歌词（每秒）
+      // 定期同步歌词
       _syncLyric();
     });
 
-    // 启动同步定时器（200ms 间隔以平衡性能和流畅度）
+    // 启动同步定时器（50ms 间隔以获得流畅的卡拉OK效果）
     _syncTimer?.cancel();
-    _syncTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+    _syncTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       _syncLyric();
     });
+  }
+
+  /// 处理播放状态变化，自动显示/隐藏桌面歌词
+  void _handlePlayingStateChange(bool isPlaying) {
+    if (!state.settings.showWhenPlaying) return;
+    if (_service == null) return;
+
+    if (isPlaying && !state.isVisible) {
+      // 开始播放时自动显示桌面歌词
+      _showByPlaying();
+    } else if (!isPlaying && state.isVisible && _shownByMinimize) {
+      // 停止播放时，如果是因为播放而显示的，则隐藏
+      // 注意：如果用户手动开启了桌面歌词 (enabled=true)，则不隐藏
+      if (!state.settings.enabled) {
+        _hideByPlaying();
+      }
+    }
+  }
+
+  /// 因播放而显示桌面歌词
+  Future<void> _showByPlaying() async {
+    if (_service == null) return;
+
+    await AppError.guard(
+      () async {
+        await _service!.show();
+        state = state.copyWith(isVisible: true);
+        _shownByMinimize = true; // 复用此标记表示自动显示
+      },
+      action: 'showDesktopLyricByPlaying',
+    );
+  }
+
+  /// 因停止播放而隐藏桌面歌词
+  Future<void> _hideByPlaying() async {
+    if (_service == null) return;
+
+    await AppError.guard(
+      () async {
+        await _service!.hide();
+        state = state.copyWith(isVisible: false);
+        _shownByMinimize = false;
+      },
+      action: 'hideDesktopLyricByPlaying',
+    );
   }
 
   void _syncLyric() {
@@ -202,6 +249,7 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
         currentLine: null,
         nextLine: null,
         isPlaying: playerState.isPlaying,
+        progress: 0.0,
       );
       return;
     }
@@ -214,12 +262,34 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
         currentLine: null,
         nextLine: null,
         isPlaying: playerState.isPlaying,
+        progress: 0.0,
       );
       return;
     }
 
     final lines = lyricState.lyricData.lines;
     final currentLyricLine = lines[currentIndex];
+
+    // 计算当前行的进度（用于卡拉OK效果）
+    double progress = 0.0;
+    if (playerState.isPlaying) {
+      final currentTimeMs = playerState.position.inMilliseconds;
+      final lineStartMs = currentLyricLine.time.inMilliseconds;
+
+      // 计算当前行结束时间（下一行开始时间）
+      int lineEndMs;
+      if (currentIndex + 1 < lines.length) {
+        lineEndMs = lines[currentIndex + 1].time.inMilliseconds;
+      } else {
+        // 最后一行，假设持续 5 秒
+        lineEndMs = lineStartMs + 5000;
+      }
+
+      final lineDuration = lineEndMs - lineStartMs;
+      if (lineDuration > 0) {
+        progress = ((currentTimeMs - lineStartMs) / lineDuration).clamp(0.0, 1.0);
+      }
+    }
 
     // 检测翻译歌词（同一时间戳的下一行）
     String? translation;
@@ -256,6 +326,7 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
       currentLine: currentLine,
       nextLine: nextLine,
       isPlaying: playerState.isPlaying,
+      progress: progress,
     );
   }
 

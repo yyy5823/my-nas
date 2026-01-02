@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
-import 'package:window_manager/window_manager.dart';
 
 import 'package:my_nas/features/music/domain/entities/desktop_lyric_settings.dart';
 import 'package:my_nas/features/music/presentation/widgets/desktop_lyric_content.dart';
@@ -18,40 +17,25 @@ Future<void> desktopLyricMain(List<String> args) async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化窗口管理器
-  await windowManager.ensureInitialized();
-
-  // 初始化透明效果（仅 Windows）
-  if (Platform.isWindows) {
-    await Window.initialize();
-  }
-
   // 解析设置
   final settingsJson = arguments['settings'] as Map<String, dynamic>?;
   final settings = settingsJson != null
       ? DesktopLyricSettings.fromJson(settingsJson)
       : const DesktopLyricSettings();
 
-  // 配置窗口属性
-  await windowManager.waitUntilReadyToShow(
-    WindowOptions(
-      size: Size(settings.windowWidth, settings.windowHeight),
-      backgroundColor: Colors.transparent,
-      skipTaskbar: true,
-      titleBarStyle: TitleBarStyle.hidden,
-      alwaysOnTop: settings.alwaysOnTop,
-    ),
-    () async {
-      // 设置透明效果
-      if (Platform.isWindows) {
-        await Window.setEffect(
-          effect: WindowEffect.transparent,
-          color: Colors.transparent,
-        );
-      }
-      await windowManager.show();
-    },
-  );
+  // 初始化透明效果（仅 Windows）
+  // 注意：子窗口不能使用 window_manager，需要用 flutter_acrylic 和 WindowController
+  if (Platform.isWindows) {
+    try {
+      await Window.initialize();
+      await Window.setEffect(
+        effect: WindowEffect.transparent,
+        color: Colors.transparent,
+      );
+    } catch (_) {
+      // flutter_acrylic 可能在子窗口中不可用，忽略错误
+    }
+  }
 
   runApp(DesktopLyricApp(
     windowId: windowId,
@@ -100,29 +84,34 @@ class DesktopLyricWindow extends StatefulWidget {
   State<DesktopLyricWindow> createState() => _DesktopLyricWindowState();
 }
 
-class _DesktopLyricWindowState extends State<DesktopLyricWindow>
-    with WindowListener {
+class _DesktopLyricWindowState extends State<DesktopLyricWindow> {
   late DesktopLyricSettings _settings;
+  late WindowController _windowController;
   String? _currentLyric;
   String? _currentTranslation;
   String? _nextLyric;
   String? _nextTranslation;
   bool _isPlaying = false;
+  double _progress = 0.0;
   bool _isHovering = false;
-  bool _isDragging = false;
+  Offset? _dragStartPosition;
+  Offset? _windowStartPosition;
 
   @override
   void initState() {
     super.initState();
     _settings = widget.initialSettings;
-    windowManager.addListener(this);
+    _windowController = WindowController.fromWindowId(widget.windowId);
     _setupMethodHandler();
+    _initWindow();
   }
 
-  @override
-  void dispose() {
-    windowManager.removeListener(this);
-    super.dispose();
+  Future<void> _initWindow() async {
+    // 初始化窗口位置
+    _windowStartPosition = Offset(
+      _settings.windowX ?? 0,
+      _settings.windowY ?? 0,
+    );
   }
 
   void _setupMethodHandler() {
@@ -148,14 +137,13 @@ class _DesktopLyricWindowState extends State<DesktopLyricWindow>
           _nextLyric = nextLine?['text'] as String?;
           _nextTranslation = nextLine?['translation'] as String?;
           _isPlaying = data['isPlaying'] as bool? ?? false;
+          _progress = (data['progress'] as num?)?.toDouble() ?? 0.0;
         });
-        break;
 
       case 'updatePlayingState':
         setState(() {
           _isPlaying = data['isPlaying'] as bool? ?? false;
         });
-        break;
 
       case 'updateSettings':
         final settingsJson = data['settings'] as Map<String, dynamic>?;
@@ -163,23 +151,17 @@ class _DesktopLyricWindowState extends State<DesktopLyricWindow>
           setState(() {
             _settings = DesktopLyricSettings.fromJson(settingsJson);
           });
-          _applySettings();
         }
-        break;
     }
   }
 
-  Future<void> _applySettings() async {
-    await windowManager.setAlwaysOnTop(_settings.alwaysOnTop);
-    await windowManager.setOpacity(_settings.opacity);
-  }
-
   Future<void> _closeWindow() async {
-    await windowManager.close();
+    // 通知主窗口
+    await DesktopMultiWindow.invokeMethod(0, 'onWindowClose', null);
+    await _windowController.close();
   }
 
-  Future<void> _savePosition() async {
-    final position = await windowManager.getPosition();
+  Future<void> _savePosition(Offset position) async {
     // 通知主窗口保存位置
     await DesktopMultiWindow.invokeMethod(
       0, // 主窗口 ID
@@ -191,28 +173,69 @@ class _DesktopLyricWindowState extends State<DesktopLyricWindow>
     );
   }
 
-  @override
-  void onWindowMove() {
-    if (!_isDragging) {
-      _isDragging = true;
-    }
+  void _onPanStart(DragStartDetails details) {
+    _dragStartPosition = details.globalPosition;
   }
 
-  @override
-  void onWindowMoved() {
-    _isDragging = false;
-    _savePosition();
+  Future<void> _onPanUpdate(DragUpdateDetails details) async {
+    if (_dragStartPosition == null || _windowStartPosition == null) return;
+
+    final delta = details.globalPosition - _dragStartPosition!;
+    final newPosition = _windowStartPosition! + delta;
+
+    await _windowController.setFrame(
+      Rect.fromLTWH(
+        newPosition.dx,
+        newPosition.dy,
+        _settings.windowWidth,
+        _settings.windowHeight,
+      ),
+    );
+  }
+
+  Future<void> _onPanEnd(DragEndDetails details) async {
+    if (_dragStartPosition == null || _windowStartPosition == null) return;
+
+    // 计算最终位置
+    final delta = details.localPosition - _dragStartPosition!;
+    final finalPosition = _windowStartPosition! + delta;
+
+    // 更新本地缓存的位置
+    _windowStartPosition = finalPosition;
+
+    // 保存位置到主窗口
+    await _savePosition(finalPosition);
+    _dragStartPosition = null;
   }
 
   @override
   Widget build(BuildContext context) {
+    // 获取系统亮度模式
+    final brightness = MediaQuery.platformBrightnessOf(context);
+    final isDarkMode = brightness == Brightness.dark;
+
+    // 根据系统外观调整颜色
+    final effectiveTextColor = isDarkMode
+        ? _settings.textColor
+        : const Color(0xFF333333); // 亮色模式使用深色文字
+    final effectiveBackgroundColor = isDarkMode
+        ? _settings.backgroundColor
+        : const Color(0xE6FFFFFF); // 亮色模式使用浅色背景
+
+    final effectiveSettings = _settings.copyWith(
+      textColor: effectiveTextColor,
+      backgroundColor: effectiveBackgroundColor,
+    );
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: MouseRegion(
         onEnter: (_) => setState(() => _isHovering = true),
         onExit: (_) => setState(() => _isHovering = false),
         child: GestureDetector(
-          onPanStart: _settings.lockPosition ? null : (_) => windowManager.startDragging(),
+          onPanStart: _settings.lockPosition ? null : _onPanStart,
+          onPanUpdate: _settings.lockPosition ? null : _onPanUpdate,
+          onPanEnd: _settings.lockPosition ? null : _onPanEnd,
           child: DesktopLyricContent(
             currentLyric: _currentLyric,
             currentTranslation: _currentTranslation,
@@ -220,7 +243,8 @@ class _DesktopLyricWindowState extends State<DesktopLyricWindow>
             nextTranslation: _nextTranslation,
             isPlaying: _isPlaying,
             isHovering: _isHovering,
-            settings: _settings,
+            settings: effectiveSettings,
+            progress: _progress,
             onClose: _closeWindow,
             onLockToggle: () {
               setState(() {

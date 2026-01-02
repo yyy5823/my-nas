@@ -26,10 +26,12 @@ abstract class DesktopLyricService {
   Future<void> toggle();
 
   /// 更新歌词内容
+  /// [progress] 当前行进度 (0.0-1.0)，用于卡拉OK效果
   Future<void> updateLyric({
     required LyricLineData? currentLine,
     LyricLineData? nextLine,
     required bool isPlaying,
+    double progress = 0.0,
   });
 
   /// 更新播放状态（暂停/播放）

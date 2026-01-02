@@ -6,6 +6,7 @@ class DesktopLyricSettings {
     this.enabled = false,
     this.fontSize = 28.0,
     this.textColor = const Color(0xFFFFFFFF),
+    this.highlightColor = const Color(0xFF00BFFF), // 高亮颜色（卡拉OK效果）
     this.backgroundColor = const Color(0xCC000000),
     this.opacity = 0.9,
     this.showTranslation = true,
@@ -14,6 +15,7 @@ class DesktopLyricSettings {
     this.lockPosition = false,
     this.showOnMinimize = false,
     this.hideOnRestore = true,
+    this.showWhenPlaying = true,
     this.windowX,
     this.windowY,
     this.windowWidth = 800.0,
@@ -28,6 +30,9 @@ class DesktopLyricSettings {
 
   /// 歌词文字颜色
   final Color textColor;
+
+  /// 高亮颜色（卡拉OK效果，已唱过的歌词颜色）
+  final Color highlightColor;
 
   /// 背景颜色（包含透明度）
   final Color backgroundColor;
@@ -53,6 +58,9 @@ class DesktopLyricSettings {
   /// 恢复主窗口时是否隐藏桌面歌词（仅当 showOnMinimize 为 true 时有效）
   final bool hideOnRestore;
 
+  /// 播放音乐时是否自动显示桌面歌词
+  final bool showWhenPlaying;
+
   /// 窗口 X 坐标（null 表示居中）
   final double? windowX;
 
@@ -72,6 +80,7 @@ class DesktopLyricSettings {
     bool? enabled,
     double? fontSize,
     Color? textColor,
+    Color? highlightColor,
     Color? backgroundColor,
     double? opacity,
     bool? showTranslation,
@@ -80,6 +89,7 @@ class DesktopLyricSettings {
     bool? lockPosition,
     bool? showOnMinimize,
     bool? hideOnRestore,
+    bool? showWhenPlaying,
     double? windowX,
     double? windowY,
     double? windowWidth,
@@ -89,6 +99,7 @@ class DesktopLyricSettings {
       enabled: enabled ?? this.enabled,
       fontSize: fontSize ?? this.fontSize,
       textColor: textColor ?? this.textColor,
+      highlightColor: highlightColor ?? this.highlightColor,
       backgroundColor: backgroundColor ?? this.backgroundColor,
       opacity: opacity ?? this.opacity,
       showTranslation: showTranslation ?? this.showTranslation,
@@ -97,6 +108,7 @@ class DesktopLyricSettings {
       lockPosition: lockPosition ?? this.lockPosition,
       showOnMinimize: showOnMinimize ?? this.showOnMinimize,
       hideOnRestore: hideOnRestore ?? this.hideOnRestore,
+      showWhenPlaying: showWhenPlaying ?? this.showWhenPlaying,
       windowX: windowX ?? this.windowX,
       windowY: windowY ?? this.windowY,
       windowWidth: windowWidth ?? this.windowWidth,
@@ -110,6 +122,7 @@ class DesktopLyricSettings {
       enabled: json['enabled'] as bool? ?? false,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 28.0,
       textColor: Color(json['textColor'] as int? ?? 0xFFFFFFFF),
+      highlightColor: Color(json['highlightColor'] as int? ?? 0xFF00BFFF),
       backgroundColor: Color(json['backgroundColor'] as int? ?? 0xCC000000),
       opacity: (json['opacity'] as num?)?.toDouble() ?? 0.9,
       showTranslation: json['showTranslation'] as bool? ?? true,
@@ -118,6 +131,7 @@ class DesktopLyricSettings {
       lockPosition: json['lockPosition'] as bool? ?? false,
       showOnMinimize: json['showOnMinimize'] as bool? ?? false,
       hideOnRestore: json['hideOnRestore'] as bool? ?? true,
+      showWhenPlaying: json['showWhenPlaying'] as bool? ?? true,
       windowX: (json['windowX'] as num?)?.toDouble(),
       windowY: (json['windowY'] as num?)?.toDouble(),
       windowWidth: (json['windowWidth'] as num?)?.toDouble() ?? 800.0,
@@ -131,6 +145,7 @@ class DesktopLyricSettings {
       'enabled': enabled,
       'fontSize': fontSize,
       'textColor': textColor.toARGB32(),
+      'highlightColor': highlightColor.toARGB32(),
       'backgroundColor': backgroundColor.toARGB32(),
       'opacity': opacity,
       'showTranslation': showTranslation,
@@ -139,6 +154,7 @@ class DesktopLyricSettings {
       'lockPosition': lockPosition,
       'showOnMinimize': showOnMinimize,
       'hideOnRestore': hideOnRestore,
+      'showWhenPlaying': showWhenPlaying,
       'windowX': windowX,
       'windowY': windowY,
       'windowWidth': windowWidth,
@@ -153,6 +169,7 @@ class DesktopLyricSettings {
         other.enabled == enabled &&
         other.fontSize == fontSize &&
         other.textColor == textColor &&
+        other.highlightColor == highlightColor &&
         other.backgroundColor == backgroundColor &&
         other.opacity == opacity &&
         other.showTranslation == showTranslation &&
@@ -161,6 +178,7 @@ class DesktopLyricSettings {
         other.lockPosition == lockPosition &&
         other.showOnMinimize == showOnMinimize &&
         other.hideOnRestore == hideOnRestore &&
+        other.showWhenPlaying == showWhenPlaying &&
         other.windowX == windowX &&
         other.windowY == windowY &&
         other.windowWidth == windowWidth &&
@@ -173,6 +191,7 @@ class DesktopLyricSettings {
       enabled,
       fontSize,
       textColor,
+      highlightColor,
       backgroundColor,
       opacity,
       showTranslation,
@@ -181,6 +200,7 @@ class DesktopLyricSettings {
       lockPosition,
       showOnMinimize,
       hideOnRestore,
+      showWhenPlaying,
       windowX,
       windowY,
       windowWidth,

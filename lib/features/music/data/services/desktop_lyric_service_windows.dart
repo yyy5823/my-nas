@@ -85,6 +85,7 @@ class DesktopLyricServiceWindowsImpl implements DesktopLyricService {
     required LyricLineData? currentLine,
     LyricLineData? nextLine,
     required bool isPlaying,
+    double progress = 0.0,
   }) async {
     if (_windowController == null || !_isVisible) return;
 
@@ -105,6 +106,7 @@ class DesktopLyricServiceWindowsImpl implements DesktopLyricService {
                 }
               : null,
           'isPlaying': isPlaying,
+          'progress': progress,
         };
         await DesktopMultiWindow.invokeMethod(
           _windowController!.windowId,
@@ -223,14 +225,16 @@ class DesktopLyricServiceWindowsImpl implements DesktopLyricService {
     await _windowController!.setTitle('Desktop Lyrics');
 
     // 设置窗口回调（通过 DesktopMultiWindow handler）
+    // 主窗口接收来自子窗口的消息
     DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
-      if (fromWindowId != _windowController?.windowId) return null;
+      // 只处理来自歌词子窗口的消息
+      final lyricWindowId = _windowController?.windowId;
+      if (lyricWindowId == null || fromWindowId != lyricWindowId) return null;
 
       switch (call.method) {
         case 'onWindowClose':
           _isVisible = false;
           _windowController = null;
-          break;
 
         case 'saveDesktopLyricPosition':
           if (call.arguments != null) {
@@ -240,7 +244,6 @@ class DesktopLyricServiceWindowsImpl implements DesktopLyricService {
             _currentPosition = Offset(x, y);
             onPositionChanged?.call(x, y);
           }
-          break;
       }
       return null;
     });

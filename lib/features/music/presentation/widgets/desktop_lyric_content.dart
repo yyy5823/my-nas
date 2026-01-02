@@ -12,6 +12,7 @@ class DesktopLyricContent extends StatelessWidget {
     required this.isPlaying,
     required this.isHovering,
     required this.settings,
+    this.progress = 0.0,
     this.onClose,
     this.onLockToggle,
   });
@@ -37,6 +38,9 @@ class DesktopLyricContent extends StatelessWidget {
   /// 歌词设置
   final DesktopLyricSettings settings;
 
+  /// 当前歌词行的进度 (0.0-1.0)，用于卡拉OK效果
+  final double progress;
+
   /// 关闭回调
   final VoidCallback? onClose;
 
@@ -59,31 +63,39 @@ class DesktopLyricContent extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           // 歌词内容
-          Center(
+          Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 8),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // 当前歌词
                   if (hasLyric) ...[
-                    _LyricLine(
-                      text: currentLyric!,
-                      fontSize: settings.fontSize,
-                      color: settings.textColor,
-                      isPlaying: isPlaying,
+                    Flexible(
+                      child: _KaraokeLyricLine(
+                        text: currentLyric!,
+                        fontSize: settings.fontSize,
+                        textColor: settings.textColor,
+                        highlightColor: settings.highlightColor,
+                        progress: progress,
+                        isPlaying: isPlaying,
+                      ),
                     ),
                     // 翻译歌词
                     if (hasTranslation)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: _LyricLine(
-                          text: currentTranslation!,
-                          fontSize: settings.fontSize * 0.7,
-                          color: settings.textColor.withValues(alpha: 0.7),
-                          isPlaying: isPlaying,
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: _LyricLine(
+                            text: currentTranslation!,
+                            fontSize: settings.fontSize * 0.65,
+                            color: settings.textColor.withValues(alpha: 0.7),
+                            isPlaying: isPlaying,
+                          ),
                         ),
                       ),
                   ] else ...[
@@ -97,13 +109,15 @@ class DesktopLyricContent extends StatelessWidget {
                   ],
                   // 下一行歌词预览
                   if (hasNextLine)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: _LyricLine(
-                        text: nextLyric!,
-                        fontSize: settings.fontSize * 0.6,
-                        color: settings.textColor.withValues(alpha: 0.4),
-                        isPlaying: false,
+                    Flexible(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: _LyricLine(
+                          text: nextLyric!,
+                          fontSize: settings.fontSize * 0.55,
+                          color: settings.textColor.withValues(alpha: 0.4),
+                          isPlaying: false,
+                        ),
                       ),
                     ),
                 ],
@@ -229,6 +243,77 @@ class _ControlButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 卡拉OK效果歌词行组件
+/// 根据进度渐变显示已唱和未唱的部分
+class _KaraokeLyricLine extends StatelessWidget {
+  const _KaraokeLyricLine({
+    required this.text,
+    required this.fontSize,
+    required this.textColor,
+    required this.highlightColor,
+    required this.progress,
+    required this.isPlaying,
+  });
+
+  final String text;
+  final double fontSize;
+  final Color textColor;
+  final Color highlightColor;
+  final double progress; // 0.0-1.0
+  final bool isPlaying;
+
+  @override
+  Widget build(BuildContext context) {
+    // 如果不在播放，直接显示普通文本
+    if (!isPlaying || progress <= 0) {
+      return _buildText(textColor);
+    }
+
+    // 使用 ShaderMask 实现渐变高亮效果
+    return ShaderMask(
+      shaderCallback: (Rect bounds) {
+        return LinearGradient(
+          colors: [
+            highlightColor,
+            highlightColor,
+            textColor,
+            textColor,
+          ],
+          stops: [
+            0.0,
+            progress.clamp(0.0, 1.0),
+            progress.clamp(0.0, 1.0),
+            1.0,
+          ],
+        ).createShader(bounds);
+      },
+      blendMode: BlendMode.srcIn,
+      child: _buildText(Colors.white),
+    );
+  }
+
+  Widget _buildText(Color color) {
+    return Text(
+      text,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w600,
+        color: color,
+        shadows: [
+          Shadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
     );
   }

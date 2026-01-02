@@ -721,32 +721,150 @@ const footnoteBackdrop = document.getElementById('footnote-backdrop')
 const closeFootnoteDialog = () => {
   if (footnoteDialog) footnoteDialog.style.display = 'none'
   if (footnoteBackdrop) footnoteBackdrop.style.display = 'none'
+  // 设置标志阻止翻页，延迟重置
+  globalThis.__footnoteProcessing = true
+  setTimeout(() => { globalThis.__footnoteProcessing = false }, 300)
   callFlutter("onFootnoteClose")
 }
 
 // 初始化脚注元素
 if (footnoteDialog) {
   footnoteDialog.style.display = 'none'
-
-  // 点击弹框外部区域关闭
-  footnoteDialog.addEventListener('click', e => {
-    if (e.target === footnoteDialog) {
-      closeFootnoteDialog()
-    }
-  })
-
-  // 点击关闭按钮关闭
-  const closeBtn = footnoteDialog.querySelector('.footnote-close')
-  if (closeBtn) {
-    closeBtn.addEventListener('click', closeFootnoteDialog)
-  }
 }
 
 // 点击背景关闭
 if (footnoteBackdrop) {
-  footnoteBackdrop.addEventListener('click', closeFootnoteDialog)
+  footnoteBackdrop.addEventListener('click', e => {
+    e.preventDefault()
+    e.stopPropagation()
+    closeFootnoteDialog()
+  })
+  // 阻止 touch 事件传播到下层
+  footnoteBackdrop.addEventListener('touchstart', e => {
+    e.stopPropagation()
+  }, { passive: true })
+  footnoteBackdrop.addEventListener('touchend', e => {
+    e.stopPropagation()
+  }, { passive: true })
 }
 
+// 判断是否为移动设备（宽度 < 768px）
+const isMobileView = () => window.innerWidth < 768
+
+// 定位桌面端弹框
+const positionDesktopDialog = (anchorRect) => {
+  if (!footnoteDialog || !anchorRect) return
+
+  const padding = 12 // 弹框与锚点的间距
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+
+  // 先显示弹框以获取其尺寸（visibility: hidden）
+  footnoteDialog.style.visibility = 'hidden'
+  footnoteDialog.style.display = 'flex'
+
+  const dialogRect = footnoteDialog.getBoundingClientRect()
+  const dialogWidth = dialogRect.width
+  const dialogHeight = dialogRect.height
+
+  // 计算锚点中心位置
+  const anchorCenterX = (anchorRect.left + anchorRect.right) / 2
+  const anchorTop = anchorRect.top
+  const anchorBottom = anchorRect.bottom
+
+  // 决定弹框显示在上方还是下方
+  const spaceAbove = anchorTop
+  const spaceBelow = viewportHeight - anchorBottom
+  const showAbove = spaceAbove > spaceBelow && spaceAbove >= dialogHeight + padding
+
+  let top, left
+
+  if (showAbove) {
+    // 显示在锚点上方
+    top = anchorTop - dialogHeight - padding
+    footnoteDialog.classList.remove('arrow-up')
+    footnoteDialog.classList.add('arrow-down')
+  } else {
+    // 显示在锚点下方
+    top = anchorBottom + padding
+    footnoteDialog.classList.remove('arrow-down')
+    footnoteDialog.classList.add('arrow-up')
+  }
+
+  // 水平居中于锚点，但不超出屏幕
+  left = anchorCenterX - dialogWidth / 2
+  left = Math.max(padding, Math.min(left, viewportWidth - dialogWidth - padding))
+
+  // 计算箭头相对于弹框的位置
+  const arrowLeft = anchorCenterX - left
+  footnoteDialog.style.setProperty('--arrow-left', `${arrowLeft}px`)
+
+  // 确保垂直方向不超出屏幕
+  top = Math.max(padding, Math.min(top, viewportHeight - dialogHeight - padding))
+
+  // 应用定位
+  footnoteDialog.style.top = `${top}px`
+  footnoteDialog.style.left = `${left}px`
+  footnoteDialog.style.transform = 'none'
+  footnoteDialog.style.visibility = 'visible'
+}
+
+// 直接显示脚注 HTML 内容（简化版本，更快更可靠）
+const showFootnoteContent = (htmlContent, anchorRect) => {
+  console.log('[showFootnoteContent] called, content length:', htmlContent?.length, 'anchorRect:', anchorRect)
+  if (!footnoteDialog) {
+    console.warn('[showFootnoteContent] footnoteDialog not found!')
+    return
+  }
+
+  const mainEl = footnoteDialog.querySelector('main')
+  if (!mainEl) return
+
+  // 判断是否暗色模式
+  const isDark = style && style.backgroundColor && isColorDark(style.backgroundColor)
+  footnoteDialog.classList.toggle('dark', isDark)
+
+  // 设置弹框背景色和文字颜色
+  const bgColor = (style && style.backgroundColor) ? style.backgroundColor : '#ffffff'
+  const textColor = (style && style.fontColor) ? style.fontColor : (isDark ? '#e0e0e0' : '#333333')
+  footnoteDialog.style.setProperty('--footnote-bg', bgColor)
+  footnoteDialog.style.setProperty('--footnote-text', textColor)
+
+  // 创建内容容器，应用阅读样式
+  const contentDiv = document.createElement('div')
+  contentDiv.className = 'footnote-content'
+  contentDiv.innerHTML = htmlContent
+  contentDiv.style.cssText = `
+    padding: 12px 16px;
+    font-size: ${style?.fontSize ? style.fontSize + 'em' : '1em'};
+    line-height: ${style?.spacing || 1.6};
+    color: ${textColor};
+    font-family: ${style?.fontName && style.fontName !== 'book' ? style.fontName : 'inherit'};
+  `
+
+  mainEl.replaceChildren(contentDiv)
+
+  // 显示背景遮罩
+  if (footnoteBackdrop) footnoteBackdrop.style.display = 'block'
+
+  // 根据设备类型定位弹框
+  if (isMobileView()) {
+    // 移动端：底部弹出，清除桌面端的定位样式
+    footnoteDialog.classList.remove('arrow-up', 'arrow-down')
+    footnoteDialog.style.top = ''
+    footnoteDialog.style.left = ''
+    footnoteDialog.style.transform = ''
+    footnoteDialog.style.display = 'flex'
+  } else {
+    // 桌面端：定位到锚点附近
+    positionDesktopDialog(anchorRect)
+  }
+
+  // 通知 Flutter 脚注已打开
+  callFlutter("onFootnoteOpen")
+}
+
+// 使用 foliate-view 显示脚注（原版本，保留作为备用）
 const replaceFootnote = (view) => {
   console.log('[replaceFootnote] called with view:', view)
   if (!footnoteDialog) {
@@ -833,12 +951,19 @@ class Reader {
     id: null,
   }
   constructor() {
+    // 使用快速版本显示脚注内容
+    this.#footnoteHandler.addEventListener('footnote-content', e => {
+      const { htmlContent, anchorRect } = e.detail
+      console.log('[Reader] footnote-content event received, length:', htmlContent?.length, 'anchorRect:', anchorRect)
+      showFootnoteContent(htmlContent, anchorRect)
+    })
+
+    // 备用：使用 foliate-view 显示脚注（如果需要更复杂的渲染）
     this.#footnoteHandler.addEventListener('before-render', e => {
       const { view } = e.detail
       this.setView(view)
       replaceFootnote(view)
     })
-    // render 事件中不再需要 showModal，因为 replaceFootnote 中已处理显示
     this.#footnoteHandler.addEventListener('render', e => {
       // 脚注渲染完成
     })
