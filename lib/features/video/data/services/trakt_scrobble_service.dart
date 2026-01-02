@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/errors/errors.dart';
+import 'package:my_nas/core/services/error_report/device_info_helper.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -59,7 +62,7 @@ class TraktScrobbleService {
       final request = TraktScrobbleRequest(
         media: media,
         progress: progress,
-        appVersion: '1.0.0', // TODO: 从 package_info 获取
+        appVersion: DeviceInfoHelper.instance.appVersion ?? '1.0.0',
       );
 
       final response = await _api!.scrobbleStart(request);
@@ -242,8 +245,19 @@ class TraktScrobbleSettings {
     this.minProgress = 80.0, // 最小标记已观看进度
   });
 
+  factory TraktScrobbleSettings.fromJson(Map<String, dynamic> json) =>
+      TraktScrobbleSettings(
+        enabled: json['enabled'] as bool? ?? true,
+        minProgress: (json['minProgress'] as num?)?.toDouble() ?? 80.0,
+      );
+
   final bool enabled;
   final double minProgress;
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'minProgress': minProgress,
+      };
 
   TraktScrobbleSettings copyWith({
     bool? enabled,
@@ -255,6 +269,49 @@ class TraktScrobbleSettings {
       );
 }
 
-/// Trakt Scrobble 设置 Provider
+/// Trakt Scrobble 设置 Provider（持久化）
 final traktScrobbleSettingsProvider =
-    StateProvider<TraktScrobbleSettings>((ref) => const TraktScrobbleSettings());
+    StateNotifierProvider<TraktScrobbleSettingsNotifier, TraktScrobbleSettings>(
+  (ref) => TraktScrobbleSettingsNotifier(),
+);
+
+class TraktScrobbleSettingsNotifier extends StateNotifier<TraktScrobbleSettings> {
+  TraktScrobbleSettingsNotifier() : super(const TraktScrobbleSettings()) {
+    _loadSettings();
+  }
+
+  static const _boxName = 'trakt_settings';
+  static const _storageKey = 'scrobble_settings';
+
+  Future<void> _loadSettings() async {
+    try {
+      final box = await Hive.openBox<String>(_boxName);
+      final json = box.get(_storageKey);
+      if (json != null) {
+        final decoded = jsonDecode(json) as Map<String, dynamic>;
+        state = TraktScrobbleSettings.fromJson(decoded);
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '加载 Trakt Scrobble 设置失败');
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      final box = await Hive.openBox<String>(_boxName);
+      await box.put(_storageKey, jsonEncode(state.toJson()));
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '保存 Trakt Scrobble 设置失败');
+    }
+  }
+
+  void setEnabled(bool enabled) {
+    state = state.copyWith(enabled: enabled);
+    _saveSettings();
+  }
+
+  void setMinProgress(double minProgress) {
+    state = state.copyWith(minProgress: minProgress);
+    _saveSettings();
+  }
+}

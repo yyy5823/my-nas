@@ -4,17 +4,31 @@ import 'dart:typed_data';
 ///
 /// 设计说明：
 /// - 统一接口，隐藏不同格式的差异
-/// - 支持的格式根据实现类而定
+/// - 主方案使用 audiotags（基于 Rust lofty-rs）
+/// - 备选方案使用 FFmpegKit（支持 DSD/WMA 等）
 /// - 封面数据使用 Uint8List（JPEG/PNG）
 ///
-/// 格式支持情况：
-/// | 格式 | 元数据标准 | 封面 | 歌词 |
-/// |------|----------|------|------|
-/// | MP3  | ID3v2.3  | ✓    | ✓    |
-/// | FLAC | Vorbis   | ✓    | ✓    |
-/// | M4A  | iTunes   | ✓    | ✓    |
-/// | OGG  | Vorbis   | ✓    | ✓    |
-/// | WAV  | RIFF     | ✗    | ✗    |
+/// 格式支持情况（audiotags）：
+/// | 格式 | 元数据标准 | 读取 | 写入 | 封面 |
+/// |------|----------|:----:|:----:|:----:|
+/// | MP3  | ID3v2/v1 | ✓    | ✓    | ✓    |
+/// | FLAC | Vorbis   | ✓    | ✓    | ✓    |
+/// | M4A  | iTunes   | ✓    | ✓    | ✓    |
+/// | OGG  | Vorbis   | ✓    | ✓    | ✓    |
+/// | Opus | Vorbis   | ✓    | ✓    | ✓    |
+/// | WAV  | ID3v2    | ✓    | ✓    | ✓    |
+/// | AIFF | ID3v2    | ✓    | ✓    | ✓    |
+/// | APE  | APEv2    | ✓    | ✓    | ✓    |
+/// | MPC  | APE      | ✓    | ✓    | ✓    |
+/// | WavPack| APE    | ✓    | ✓    | ✓    |
+/// | Speex| Vorbis   | ✓    | ✓    | ✓    |
+///
+/// 需要 FFmpegKit 的格式：
+/// | 格式 | 元数据标准 |
+/// |------|----------|
+/// | DSF  | ID3v2    |
+/// | DFF  | 无标准    |
+/// | WMA  | ASF      |
 abstract class MusicMetadataWriter {
   /// 写入元数据到文件
   ///

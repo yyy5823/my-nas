@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
+import 'package:my_nas/features/media_tracking/presentation/providers/trakt_sync_provider.dart';
+import 'package:my_nas/features/video/data/services/trakt_scrobble_service.dart';
 import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
 import 'package:my_nas/service_adapters/trakt/trakt_config.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -197,6 +199,14 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+
+          // 同步设置
+          _buildSyncSettingsCard(context),
+          const SizedBox(height: 16),
+
+          // 继续观看
+          _buildContinueWatchingCard(context),
           const SizedBox(height: 24),
 
           // 注销按钮
@@ -212,6 +222,243 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 同步设置卡片
+  Widget _buildSyncSettingsCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final scrobbleSettings = ref.watch(traktScrobbleSettingsProvider);
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: colorScheme.outline.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '同步设置',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Scrobble 开关
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('自动 Scrobble'),
+              subtitle: Text(
+                '播放时自动上报进度到 Trakt',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              value: scrobbleSettings.enabled,
+              onChanged: (value) {
+                ref.read(traktScrobbleSettingsProvider.notifier).setEnabled(value);
+              },
+            ),
+            const Divider(),
+            // 说明文字
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '播放进度 ≥80% 时自动标记为已观看',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 继续观看卡片
+  Widget _buildContinueWatchingCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final traktSync = ref.watch(traktSyncProvider);
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: colorScheme.outline.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '继续观看',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (traktSync.isLoading)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 20),
+                    onPressed: () {
+                      ref.read(traktSyncProvider.notifier).refreshPlaybackProgress();
+                    },
+                    tooltip: '刷新',
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (traktSync.playbackProgress.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    '暂无未完成的播放',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ...traktSync.playbackProgress.take(5).map(
+                    (item) => _buildPlaybackProgressItem(context, item),
+                  ),
+            if (traktSync.playbackProgress.length > 5)
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    // TODO: 跳转到完整列表
+                  },
+                  child: Text('查看全部 (${traktSync.playbackProgress.length})'),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 播放进度项
+  Widget _buildPlaybackProgressItem(BuildContext context, TraktPlaybackItem item) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    String title;
+    String? subtitle;
+
+    if (item.type == 'movie') {
+      title = item.movie?.title ?? '未知电影';
+      subtitle = item.movie?.year?.toString();
+    } else {
+      title = item.show?.title ?? '未知剧集';
+      final ep = item.episode;
+      if (ep != null) {
+        subtitle = 'S${ep.season.toString().padLeft(2, '0')}E${ep.number.toString().padLeft(2, '0')}${ep.title.isNotEmpty ? ' ${ep.title}' : ''}';
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          // 进度圆环
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: item.progress / 100,
+                  strokeWidth: 3,
+                  backgroundColor: colorScheme.surfaceContainerHighest,
+                  color: colorScheme.primary,
+                ),
+                Text(
+                  '${item.progress.round()}%',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 标题和副标题
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+          ),
+          // 删除按钮
+          IconButton(
+            icon: Icon(
+              Icons.close,
+              size: 18,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            onPressed: () {
+              ref.read(traktSyncProvider.notifier).deleteProgress(item.id);
+            },
+            tooltip: '删除进度',
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ),

@@ -118,6 +118,7 @@ dependencies:
   scrollable_positioned_list: ^0.3.8  # For efficient scrolling in reader
   archive: ^4.0.7  # ZIP/CBZ archive handling (upgraded for lottie compatibility)
   audio_metadata_reader: ^1.4.2
+  audiotags: ^1.4.5  # 音频元数据读写 (基于 Rust lofty-rs)
   image: ^4.3.0
   flutter_native_splash: ^2.4.4
   sqflite_common_ffi: ^2.4.0
