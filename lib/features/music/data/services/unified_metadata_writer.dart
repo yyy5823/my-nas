@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/audiotags_metadata_writer.dart';
 import 'package:my_nas/features/music/data/services/ffmpeg_metadata_writer.dart';
+import 'package:my_nas/features/music/data/services/metadata_write_lock.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_writer.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -72,19 +74,22 @@ class UnifiedMetadataWriter implements MusicMetadataWriter {
   Future<bool> writeMetadata(String filePath, WritableMetadata metadata) async {
     await _ensureInitialized();
 
-    final ext = p.extension(filePath).toLowerCase();
+    // 使用文件锁防止并发写入
+    return metadataWriteLock.withLock(filePath, () async {
+      final ext = p.extension(filePath).toLowerCase();
 
-    // 优先使用 audiotags（性能更好）
-    if (_audiotagsWriter.isFormatSupported(ext) &&
-        !_audiotagsWriter.needsFallback(ext)) {
-      final result = await _audiotagsWriter.writeMetadata(filePath, metadata);
-      if (result) return true;
-      // 失败则尝试备选方案
-      logger.d('UnifiedMetadataWriter: audiotags 失败，尝试 FFmpeg');
-    }
+      // 优先使用 audiotags（性能更好）
+      if (_audiotagsWriter.isFormatSupported(ext) &&
+          !_audiotagsWriter.needsFallback(ext)) {
+        final result = await _audiotagsWriter.writeMetadata(filePath, metadata);
+        if (result) return true;
+        // 失败则尝试备选方案
+        logger.d('UnifiedMetadataWriter: audiotags 失败，尝试 FFmpeg');
+      }
 
-    // 使用 FFmpeg 作为备选
-    return _ffmpegWriter.writeMetadata(filePath, metadata);
+      // 使用 FFmpeg 作为备选
+      return _ffmpegWriter.writeMetadata(filePath, metadata);
+    });
   }
 
   @override
@@ -95,34 +100,40 @@ class UnifiedMetadataWriter implements MusicMetadataWriter {
   }) async {
     await _ensureInitialized();
 
-    final ext = p.extension(filePath).toLowerCase();
+    // 使用文件锁防止并发写入
+    return metadataWriteLock.withLock(filePath, () async {
+      final ext = p.extension(filePath).toLowerCase();
 
-    if (_audiotagsWriter.isFormatSupported(ext) &&
-        !_audiotagsWriter.needsFallback(ext)) {
-      final result = await _audiotagsWriter.writeCover(
-        filePath,
-        coverData,
-        mimeType: mimeType,
-      );
-      if (result) return true;
-    }
+      if (_audiotagsWriter.isFormatSupported(ext) &&
+          !_audiotagsWriter.needsFallback(ext)) {
+        final result = await _audiotagsWriter.writeCover(
+          filePath,
+          coverData,
+          mimeType: mimeType,
+        );
+        if (result) return true;
+      }
 
-    return _ffmpegWriter.writeCover(filePath, coverData, mimeType: mimeType);
+      return _ffmpegWriter.writeCover(filePath, coverData, mimeType: mimeType);
+    });
   }
 
   @override
   Future<bool> removeAllMetadata(String filePath) async {
     await _ensureInitialized();
 
-    final ext = p.extension(filePath).toLowerCase();
+    // 使用文件锁防止并发写入
+    return metadataWriteLock.withLock(filePath, () async {
+      final ext = p.extension(filePath).toLowerCase();
 
-    if (_audiotagsWriter.isFormatSupported(ext) &&
-        !_audiotagsWriter.needsFallback(ext)) {
-      final result = await _audiotagsWriter.removeAllMetadata(filePath);
-      if (result) return true;
-    }
+      if (_audiotagsWriter.isFormatSupported(ext) &&
+          !_audiotagsWriter.needsFallback(ext)) {
+        final result = await _audiotagsWriter.removeAllMetadata(filePath);
+        if (result) return true;
+      }
 
-    return _ffmpegWriter.removeAllMetadata(filePath);
+      return _ffmpegWriter.removeAllMetadata(filePath);
+    });
   }
 
   /// 读取元数据
@@ -285,22 +296,29 @@ class UnifiedMetadataWriter implements MusicMetadataWriter {
 
   /// 上传文件到 NAS
   ///
-  /// 注意：对于大文件，会将整个文件加载到内存
-  /// 如果 NasFileSystem 支持流式上传，应该使用流式方式
+  /// 使用 NasFileSystem.upload 方法，支持流式上传，避免大文件内存问题
   Future<void> _uploadFile(
     NasFileSystem fileSystem,
     File localFile,
     String remotePath,
     void Function(double progress) onProgress,
   ) async {
-    // 读取文件数据
-    // TODO: 考虑对大文件使用流式上传（如果 NasFileSystem 支持）
-    onProgress(0.0);
-    final data = await localFile.readAsBytes();
-    onProgress(0.5);
+    final directory = p.dirname(remotePath);
+    final fileName = p.basename(remotePath);
 
-    // 写入到 NAS
-    await fileSystem.writeFile(remotePath, data);
+    onProgress(0.0);
+
+    await fileSystem.upload(
+      localFile.path,
+      directory,
+      fileName: fileName,
+      onProgress: (sent, total) {
+        if (total > 0) {
+          onProgress(sent / total);
+        }
+      },
+    );
+
     onProgress(1.0);
   }
 

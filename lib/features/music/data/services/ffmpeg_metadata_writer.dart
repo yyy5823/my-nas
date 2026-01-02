@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_writer.dart';
 import 'package:path/path.dart' as p;
@@ -56,6 +58,7 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
   };
 
   bool _ffmpegAvailable = false;
+  bool _ffmpegKitAvailable = false;
   bool _toneAvailable = false;
   String? _tonePath;
   bool _initialized = false;
@@ -74,9 +77,17 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
   Future<void> _ensureInitialized() async {
     if (_initialized) return;
 
-    // 检查 FFmpeg 是否可用
-    _ffmpegAvailable = await _checkFFmpegAvailable();
-    logger.d('FFmpegMetadataWriter: FFmpeg 可用: $_ffmpegAvailable');
+    // 检查 FFmpeg 是否可用（桌面平台）
+    if (Platform.isWindows || Platform.isLinux) {
+      _ffmpegAvailable = await _checkFFmpegAvailable();
+      logger.d('FFmpegMetadataWriter: FFmpeg 可用: $_ffmpegAvailable');
+    }
+
+    // 检查 FFmpegKit 是否可用（移动平台 + macOS）
+    if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
+      _ffmpegKitAvailable = await _checkFFmpegKitAvailable();
+      logger.d('FFmpegMetadataWriter: FFmpegKit 可用: $_ffmpegKitAvailable');
+    }
 
     // 检查 Tone CLI 是否可用（桌面平台备选）
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -94,6 +105,18 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       final result = await Process.run('ffmpeg', ['-version']);
       return result.exitCode == 0;
     } catch (_) {
+      return false;
+    }
+  }
+
+  /// 检查 FFmpegKit 是否可用
+  Future<bool> _checkFFmpegKitAvailable() async {
+    try {
+      final session = await FFmpegKit.execute('-version');
+      final returnCode = await session.getReturnCode();
+      return ReturnCode.isSuccess(returnCode);
+    } catch (e) {
+      logger.d('FFmpegMetadataWriter: FFmpegKit 检查失败: $e');
       return false;
     }
   }
@@ -149,13 +172,13 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       return _writeWithTone(filePath, metadata);
     }
 
-    // 使用 FFmpeg
+    // 使用系统 FFmpeg（桌面平台）
     if (_ffmpegAvailable) {
       return _writeWithFFmpeg(filePath, metadata);
     }
 
-    // 移动平台使用 FFmpegKit
-    if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
+    // 使用 FFmpegKit（移动平台 + macOS）
+    if (_ffmpegKitAvailable) {
       return _writeWithFFmpegKit(filePath, metadata);
     }
 
@@ -313,12 +336,122 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
 
   /// 使用 FFmpegKit 写入（移动平台）
   Future<bool> _writeWithFFmpegKit(String filePath, WritableMetadata metadata) async {
-    // TODO: 实现 FFmpegKit 调用
-    // 需要添加 ffmpeg_kit_flutter_audio 依赖
-    // 代码结构类似 _writeWithFFmpeg，但使用 FFmpegKit API
-    logger.w('FFmpegMetadataWriter: FFmpegKit 尚未实现');
-    return false;
+    File? coverFile;
+    String? tempOutput;
+
+    try {
+      final ext = p.extension(filePath);
+      tempOutput = '${filePath}_temp$ext';
+
+      final args = <String>[
+        '-y', // 覆盖输出
+        '-i', _escapeFFmpegPath(filePath),
+      ];
+
+      // 添加封面（如果有）
+      if (metadata.coverData != null && metadata.coverData!.isNotEmpty) {
+        coverFile = await _saveTempCover(metadata.coverData!, metadata.coverMimeType);
+        if (coverFile != null) {
+          args.addAll(['-i', _escapeFFmpegPath(coverFile.path)]);
+        }
+      }
+
+      // 复制流，不重新编码
+      args.addAll(['-c', 'copy']);
+
+      // 添加元数据
+      if (metadata.title != null) {
+        args.addAll(['-metadata', 'title=${_escapeMetadataValue(metadata.title!)}']);
+      }
+      if (metadata.artist != null) {
+        args.addAll(['-metadata', 'artist=${_escapeMetadataValue(metadata.artist!)}']);
+      }
+      if (metadata.album != null) {
+        args.addAll(['-metadata', 'album=${_escapeMetadataValue(metadata.album!)}']);
+      }
+      if (metadata.albumArtist != null) {
+        args.addAll(['-metadata', 'album_artist=${_escapeMetadataValue(metadata.albumArtist!)}']);
+      }
+      if (metadata.year != null) {
+        args.addAll(['-metadata', 'date=${metadata.year}']);
+      }
+      if (metadata.trackNumber != null) {
+        args.addAll(['-metadata', 'track=${metadata.trackNumber}']);
+      }
+      if (metadata.genre != null) {
+        args.addAll(['-metadata', 'genre=${_escapeMetadataValue(metadata.genre!)}']);
+      }
+
+      // 如果有封面，映射封面流
+      if (coverFile != null) {
+        args.addAll([
+          '-map', '0:a', // 音频流
+          '-map', '1:v', // 封面图片
+          '-metadata:s:v', 'title=Cover',
+          '-metadata:s:v', 'comment=Cover (front)',
+        ]);
+      }
+
+      args.add(_escapeFFmpegPath(tempOutput));
+
+      // 构建命令字符串
+      final command = args.join(' ');
+      logger.d('FFmpegMetadataWriter: 执行 FFmpegKit 命令: $command');
+
+      // 执行 FFmpegKit 命令
+      final session = await FFmpegKit.execute(command);
+      final returnCode = await session.getReturnCode();
+
+      if (ReturnCode.isSuccess(returnCode)) {
+        // 替换原文件
+        await File(tempOutput).rename(filePath);
+        logger.i('FFmpegMetadataWriter: FFmpegKit 写入成功: $filePath');
+        return true;
+      } else {
+        // 获取错误日志
+        final logs = await session.getAllLogsAsString();
+        logger.e('FFmpegMetadataWriter: FFmpegKit 写入失败: $logs');
+
+        // 清理临时输出
+        try {
+          await File(tempOutput).delete();
+        } catch (_) {}
+        return false;
+      }
+    } catch (e, st) {
+      logger.e('FFmpegMetadataWriter: FFmpegKit 写入异常', e, st);
+
+      // 清理临时输出
+      if (tempOutput != null) {
+        try {
+          await File(tempOutput).delete();
+        } catch (_) {}
+      }
+      return false;
+    } finally {
+      // 清理临时封面
+      if (coverFile != null) {
+        try {
+          await coverFile.delete();
+        } catch (_) {}
+      }
+    }
   }
+
+  /// 转义 FFmpeg 路径（处理空格和特殊字符）
+  String _escapeFFmpegPath(String path) {
+    // FFmpegKit 在移动端需要对路径中的特殊字符进行处理
+    if (path.contains(' ') || path.contains("'")) {
+      // 使用单引号包裹，并转义内部的单引号
+      return "'${path.replaceAll("'", r"'\''")}'";//  ignore: use_raw_strings
+    }
+    return path;
+  }
+
+  /// 转义元数据值（处理特殊字符）
+  String _escapeMetadataValue(String value) =>
+      // ignore: use_raw_strings
+      value.replaceAll(r'\', r'\\').replaceAll('"', r'\"').replaceAll("'", r"\'");
 
   /// 保存临时封面文件
   Future<File?> _saveTempCover(Uint8List data, String mimeType) async {
@@ -380,15 +513,48 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       }
     }
 
+    // 使用 FFmpegKit（移动平台 + macOS）
+    if (_ffmpegKitAvailable) {
+      try {
+        final ext = p.extension(filePath);
+        final tempOutput = '${filePath}_temp$ext';
+
+        final command = [
+          '-y',
+          '-i', _escapeFFmpegPath(filePath),
+          '-c', 'copy',
+          '-map_metadata', '-1',
+          _escapeFFmpegPath(tempOutput),
+        ].join(' ');
+
+        final session = await FFmpegKit.execute(command);
+        final returnCode = await session.getReturnCode();
+
+        if (ReturnCode.isSuccess(returnCode)) {
+          await File(tempOutput).rename(filePath);
+          return true;
+        } else {
+          // 清理临时文件
+          try {
+            await File(tempOutput).delete();
+          } catch (_) {}
+        }
+      } catch (e) {
+        logger.e('FFmpegMetadataWriter: FFmpegKit 清除元数据失败', e);
+      }
+    }
+
     return false;
   }
 
   /// 获取工具可用性状态
-  Future<Map<String, bool>> getToolStatus() async {
+  Future<Map<String, dynamic>> getToolStatus() async {
     await _ensureInitialized();
     return {
       'ffmpeg': _ffmpegAvailable,
+      'ffmpegKit': _ffmpegKitAvailable,
       'tone': _toneAvailable,
+      'anyAvailable': _ffmpegAvailable || _ffmpegKitAvailable || _toneAvailable,
     };
   }
 }

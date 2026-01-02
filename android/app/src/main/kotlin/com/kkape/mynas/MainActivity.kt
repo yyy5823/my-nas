@@ -1,12 +1,12 @@
 package com.kkape.mynas
 
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import com.kkape.mynas.widgets.WidgetDataChannel
 import com.kkape.mynas.dynamicisland.DynamicIslandChannel
 import com.kkape.mynas.transcoding.MediaCodecTranscodingPlugin
 
-class MainActivity : FlutterActivity() {
+class MainActivity : AudioServiceFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
