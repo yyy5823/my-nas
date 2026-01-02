@@ -78,6 +78,8 @@ class FoliateViewer extends StatefulWidget {
     this.onLocationChanged,
     this.onTocLoaded,
     this.onError,
+    this.onFootnoteOpen,
+    this.onFootnoteClose,
     this.style,
     this.backgroundColor,
     this.textColor,
@@ -108,6 +110,12 @@ class FoliateViewer extends StatefulWidget {
 
   /// 错误回调
   final void Function(String error)? onError;
+
+  /// 脚注打开回调
+  final VoidCallback? onFootnoteOpen;
+
+  /// 脚注关闭回调
+  final VoidCallback? onFootnoteClose;
 
   /// 完整样式设置（优先级高于单独的样式参数）
   final FoliateStyle? style;
@@ -195,6 +203,91 @@ class _FoliateViewerState extends State<FoliateViewer> {
     }
     #footnote-dialog {
       display: none;
+      position: fixed;
+      left: 5%;
+      right: 5%;
+      bottom: 10%;
+      max-height: 50%;
+      margin: 0;
+      padding: 0;
+      border: none;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
+      background: var(--footnote-bg, #ffffff);
+      z-index: 9999;
+      overflow: hidden;
+      animation: footnote-slide-up 0.25s ease-out;
+    }
+    #footnote-dialog.dark {
+      background: var(--footnote-bg, #2d2d2d);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    @keyframes footnote-slide-up {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    #footnote-dialog .footnote-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+      background: inherit;
+    }
+    #footnote-dialog .footnote-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--footnote-text, #333);
+      margin: 0;
+    }
+    #footnote-dialog.dark .footnote-title {
+      color: var(--footnote-text, #e0e0e0);
+    }
+    #footnote-dialog .footnote-close {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(128, 128, 128, 0.15);
+      color: var(--footnote-text, #666);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    #footnote-dialog .footnote-close:hover {
+      background: rgba(128, 128, 128, 0.25);
+    }
+    #footnote-dialog.dark .footnote-close {
+      color: var(--footnote-text, #aaa);
+    }
+    #footnote-dialog main {
+      padding: 16px;
+      overflow-y: auto;
+      max-height: calc(50vh - 60px);
+    }
+    #footnote-backdrop {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.3);
+      z-index: 9998;
+      animation: footnote-fade-in 0.2s ease-out;
+    }
+    @keyframes footnote-fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
     #loading {
       position: fixed;
@@ -210,7 +303,14 @@ class _FoliateViewerState extends State<FoliateViewer> {
   </style>
 </head>
 <body>
-  <div id="footnote-dialog"><main></main></div>
+  <div id="footnote-backdrop"></div>
+  <div id="footnote-dialog">
+    <div class="footnote-header">
+      <span class="footnote-title">注释</span>
+      <button class="footnote-close" aria-label="关闭">×</button>
+    </div>
+    <main></main>
+  </div>
   <div id="loading"></div>
 
   <script>
@@ -463,6 +563,22 @@ $bundleJs
       handlerName: 'onClick',
       callback: (args) {
         // 可通过 controller 处理点击事件
+      },
+    );
+
+    // 脚注打开
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onFootnoteOpen',
+      callback: (args) {
+        widget.onFootnoteOpen?.call();
+      },
+    );
+
+    // 脚注关闭
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onFootnoteClose',
+      callback: (args) {
+        widget.onFootnoteClose?.call();
       },
     );
   }

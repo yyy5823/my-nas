@@ -23,7 +23,6 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 电子书阅读器状态（支持 EPUB、MOBI、AZW3 等格式）
 sealed class EbookReaderState {}
@@ -763,6 +762,18 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(error)),
                   );
+                },
+                onFootnoteOpen: () {
+                  // 脚注打开时隐藏控制栏
+                  if (_showControls) {
+                    setState(() {
+                      _showControls = false;
+                      _showToc = false;
+                    });
+                  }
+                },
+                onFootnoteClose: () {
+                  // 脚注关闭时可以做一些处理
                 },
               ),
             ),

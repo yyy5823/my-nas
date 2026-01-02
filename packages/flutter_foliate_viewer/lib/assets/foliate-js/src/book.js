@@ -690,52 +690,47 @@ const readingFeaturesDocHandler = (doc) => {
 
 
 const footnoteDialog = document.getElementById('footnote-dialog')
+const footnoteBackdrop = document.getElementById('footnote-backdrop')
 footnoteDialog.style.display = 'none'
-footnoteDialog.addEventListener('click', () => {
-  // display none
+
+// 关闭脚注弹框
+const closeFootnoteDialog = () => {
   footnoteDialog.style.display = 'none'
+  footnoteBackdrop.style.display = 'none'
   callFlutter("onFootnoteClose")
-})
+}
+
+// 点击背景关闭
+footnoteBackdrop.addEventListener('click', closeFootnoteDialog)
+
+// 点击关闭按钮关闭
+const closeBtn = footnoteDialog.querySelector('.footnote-close')
+if (closeBtn) {
+  closeBtn.addEventListener('click', closeFootnoteDialog)
+}
 
 const replaceFootnote = (view) => {
   clearSelection()
   footnoteDialog.querySelector('main').replaceChildren(view)
 
+  // 判断是否暗色模式
+  const isDark = style.backgroundColor && isColorDark(style.backgroundColor)
+  footnoteDialog.classList.toggle('dark', isDark)
+
   view.addEventListener('load', (e) => {
     const { doc, index } = e.detail
     globalThis.footnoteSelection = () => handleSelection(view, doc, index)
     setSelectionHandler(view, doc, index)
-    // convertChineseHandler(convertChineseMode, doc)
     readingFeaturesDocHandler(doc)
     doc.__isFootNote = true
 
-
     setTimeout(() => {
-      const dialog = document.getElementById('footnote-dialog')
-      const content = document.querySelector("#footnote-dialog > main > foliate-view")
-        .shadowRoot.querySelector("foliate-paginator")
-        .shadowRoot.querySelector("#container > div > iframe")
+      // 显示背景遮罩和弹框
+      footnoteBackdrop.style.display = 'block'
+      footnoteDialog.style.display = 'block'
 
-      dialog.style.display = 'block'
-
-      // dialog.style.width = 'auto'
-      // dialog.style.height = 'auto'
-
-      // const contentWidth = content.clientWidth
-      // const contentHeight = content.clientHeight
-
-      // const squareSize = contentWidth * contentHeight
-
-      // dialog.style.height = 100 + 'px'
-      // dialog.style.width = squareSize / 100 + 'px'
-
-      // if (squareSize > window.innerWidth * 100 * 0.8) {
-      //   dialog.style.width = window.innerWidth * 0.8 + 'px'
-      //   dialog.style.height = squareSize / (window.innerWidth * 3.0) + 'px'
-      // }
-
-      //dialog.style.width = `${Math.min(Math.max(contentWidth, 200), window.innerWidth * 0.8)}px`
-      //dialog.style.height = `${Math.min(Math.max(contentHeight, 100), window.innerHeight * 0.8)}px`
+      // 通知 Flutter 脚注已打开
+      callFlutter("onFootnoteOpen")
     }, 0)
   })
 
@@ -744,6 +739,7 @@ const replaceFootnote = (view) => {
   renderer.setAttribute('gap', '5%')
   renderer.setAttribute('top-margin', '0px')
   renderer.setAttribute('bottom-margin', '0px')
+
   const footNoteStyle = {
     fontSize: style.fontSize,
     fontName: style.fontName,
@@ -761,12 +757,37 @@ const replaceFootnote = (view) => {
     writingMode: style.writingMode,
   }
   renderer.setStyles(getCSS(footNoteStyle))
-  // set background color of dialog
-  // if #rrggbbaa, replace aa to ee
-  footnoteDialog.style.backgroundColor = style.backgroundColor.slice(0, 7) + '33'
+
+  // 设置弹框背景色（使用当前主题背景色）
+  const bgColor = style.backgroundColor || '#ffffff'
+  footnoteDialog.style.setProperty('--footnote-bg', bgColor)
+  footnoteDialog.style.setProperty('--footnote-text', style.fontColor || (isDark ? '#e0e0e0' : '#333333'))
 }
-footnoteDialog.addEventListener('click', e =>
-  e.target === footnoteDialog ? footnoteDialog.close() : null)
+
+// 判断颜色是否为暗色
+const isColorDark = (color) => {
+  if (!color) return false
+  // 处理 hex 颜色
+  let hex = color.replace('#', '')
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
+  }
+  if (hex.length >= 6) {
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    // 计算亮度
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return luminance < 0.5
+  }
+  return false
+}
+// 点击弹框外部区域（弹框本身，非内容区）关闭
+footnoteDialog.addEventListener('click', e => {
+  if (e.target === footnoteDialog) {
+    closeFootnoteDialog()
+  }
+})
 
 class Reader {
   annotations = new Map()
@@ -788,9 +809,9 @@ class Reader {
       this.setView(view)
       replaceFootnote(view)
     })
+    // render 事件中不再需要 showModal，因为 replaceFootnote 中已处理显示
     this.#footnoteHandler.addEventListener('render', e => {
-      const { view } = e.detail
-      footnoteDialog.showModal()
+      // 脚注渲染完成
     })
     this.#originalContent = null
   }
@@ -1628,12 +1649,10 @@ window.getChapterContentByHref = async (href, opts) =>
 
 // window.bionicReading = (enable) => reader.bionicReading(enable)
 
-window.isFootNoteOpen = () => footnoteDialog.getAttribute('style').includes('display: block')
+window.isFootNoteOpen = () => footnoteDialog.style.display === 'block'
 
 window.closeFootNote = () => {
-  // set zindex to 0
-  footnoteDialog.style.display = 'none'
-  callFlutter("onFootnoteClose")
+  closeFootnoteDialog()
 }
 
 window.readingFeatures = (rules) => {

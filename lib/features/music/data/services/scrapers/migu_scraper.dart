@@ -105,22 +105,30 @@ class MiguScraper implements MusicScraper {
       debugPrint('[MiguScraper] response status: ${response.statusCode}');
 
       // 处理响应数据
-      Map<String, dynamic> data;
       if (response.data == null) {
         debugPrint('[MiguScraper] Response data is null');
         return MusicScraperSearchResult.empty(type);
+      }
+
+      Map<String, dynamic> data;
+
+      // 如果 Dio 已自动解析为 Map，直接使用
+      if (response.data is Map<String, dynamic>) {
+        data = response.data as Map<String, dynamic>;
+        debugPrint('[MiguScraper] Response is Map, keys: ${data.keys.take(5).join(', ')}...');
       } else if (response.data is String) {
+        final responseStr = response.data as String;
+        // 打印前200字符用于调试
+        debugPrint('[MiguScraper] Response preview: ${responseStr.substring(0, responseStr.length > 200 ? 200 : responseStr.length)}');
+
         try {
-          data = json.decode(response.data as String) as Map<String, dynamic>;
+          data = json.decode(responseStr) as Map<String, dynamic>;
         } on FormatException catch (e) {
           debugPrint('[MiguScraper] Failed to parse JSON: $e');
           return MusicScraperSearchResult.empty(type);
         }
-      } else if (response.data is Map<String, dynamic>) {
-        data = response.data as Map<String, dynamic>;
       } else {
-        debugPrint(
-            '[MiguScraper] Invalid response data format: ${response.data.runtimeType}');
+        debugPrint('[MiguScraper] Invalid response type: ${response.data.runtimeType}');
         return MusicScraperSearchResult.empty(type);
       }
 
@@ -159,7 +167,7 @@ class MiguScraper implements MusicScraper {
 
   @override
   Future<MusicScraperDetail?> getDetail(String externalId) async {
-    // externalId 格式: copyrightId|songName|artist|albumName|albumId|cover
+    // externalId 格式: copyrightId|songName|artist|albumName|albumId|cover|duration
     final parts = externalId.split('|');
     if (parts.length < 6) return null;
 
@@ -169,6 +177,7 @@ class MiguScraper implements MusicScraper {
     final artistName = parts[2];
     final albumName = parts[3];
     final cover = parts[5];
+    final durationSec = parts.length > 6 ? int.tryParse(parts[6]) ?? 0 : 0;
 
     return MusicScraperDetail(
       externalId: externalId,
@@ -176,6 +185,7 @@ class MiguScraper implements MusicScraper {
       title: songName,
       artist: artistName.isEmpty ? null : artistName,
       album: albumName.isEmpty ? null : albumName,
+      durationMs: durationSec > 0 ? durationSec * 1000 : null,
       coverUrl: cover.isNotEmpty ? cover : null,
     );
   }
@@ -292,9 +302,18 @@ class MiguScraper implements MusicScraper {
     final albumId = data['albumId'] as String? ?? '';
     final cover = data['cover'] as String? ?? data['albumPicM'] as String? ?? '';
 
-    // 构建 externalId: copyrightId|songName|artist|albumName|albumId|cover
+    // 时长：咪咕返回秒数（兼容 int 和 String 类型）
+    int duration = 0;
+    final durationValue = data['duration'] ?? data['length'];
+    if (durationValue is int) {
+      duration = durationValue;
+    } else if (durationValue != null) {
+      duration = int.tryParse(durationValue.toString()) ?? 0;
+    }
+
+    // 构建 externalId: copyrightId|songName|artist|albumName|albumId|cover|duration
     final externalId =
-        '$copyrightId|$songName|$artistName|$albumName|$albumId|$cover';
+        '$copyrightId|$songName|$artistName|$albumName|$albumId|$cover|$duration';
 
     return MusicScraperItem(
       externalId: externalId,
@@ -302,6 +321,7 @@ class MiguScraper implements MusicScraper {
       title: songName,
       artist: artistName.isEmpty ? null : artistName,
       album: albumName.isEmpty ? null : albumName,
+      durationMs: duration > 0 ? duration * 1000 : null,
       coverUrl: cover.isNotEmpty ? cover : null,
     );
   }

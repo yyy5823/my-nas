@@ -332,16 +332,32 @@ class MusicScraperManagerService {
     final sources = await getSources();
     final result = <(MusicScraperSourceEntity, MusicScraper)>[];
 
+    debugPrint('[MusicScraperManager] 所有源: ${sources.map((s) => '${s.type.name}(enabled=${s.isEnabled},configured=${s.isConfigured})').join(', ')}');
+
     for (final source in sources) {
-      if (!source.isEnabled || !source.isConfigured) continue;
-      if (!MusicScraperFactory.isImplemented(source.type)) continue;
+      if (!source.isEnabled) {
+        debugPrint('[MusicScraperManager] ${source.type.name}: 跳过(未启用)');
+        continue;
+      }
+      if (!source.isConfigured) {
+        debugPrint('[MusicScraperManager] ${source.type.name}: 跳过(未配置)');
+        continue;
+      }
+      if (!MusicScraperFactory.isImplemented(source.type)) {
+        debugPrint('[MusicScraperManager] ${source.type.name}: 跳过(未实现)');
+        continue;
+      }
 
       final scraper = await getScraper(source.id);
       if (scraper != null) {
         result.add((source, scraper));
+        debugPrint('[MusicScraperManager] ${source.type.name}: 已加载');
+      } else {
+        debugPrint('[MusicScraperManager] ${source.type.name}: 创建失败');
       }
     }
 
+    debugPrint('[MusicScraperManager] 可用刮削器: ${result.map((r) => r.$1.type.name).join(', ')}');
     return result;
   }
 

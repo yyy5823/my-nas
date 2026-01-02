@@ -203,10 +203,22 @@ class _ModernTrackCardState extends State<_ModernTrackCard> {
   Widget _buildCover(double size) {
     Widget coverImage;
     if (widget.track.coverPath != null && widget.track.coverPath!.isNotEmpty) {
+      // 本地文件封面
       coverImage = Image.file(
         File(widget.track.coverPath!),
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => _buildDefaultCover(),
+      );
+    } else if (widget.track.coverUrl != null && widget.track.coverUrl!.isNotEmpty) {
+      // 远程 URL 封面
+      coverImage = Image.network(
+        widget.track.coverUrl!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildDefaultCover();
+        },
       );
     } else {
       coverImage = _buildDefaultCover();
@@ -626,10 +638,22 @@ class _ModernTrackItem extends StatelessWidget {
   Widget _buildCover() {
     Widget coverImage;
     if (track.coverPath != null && track.coverPath!.isNotEmpty) {
+      // 本地文件封面
       coverImage = Image.file(
         File(track.coverPath!),
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => _buildDefaultCover(),
+      );
+    } else if (track.coverUrl != null && track.coverUrl!.isNotEmpty) {
+      // 远程 URL 封面
+      coverImage = Image.network(
+        track.coverUrl!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildDefaultCover();
+        },
       );
     } else {
       coverImage = _buildDefaultCover();

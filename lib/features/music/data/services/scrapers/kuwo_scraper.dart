@@ -19,10 +19,8 @@ class KuwoScraper implements MusicScraper {
       receiveTimeout: const Duration(seconds: 15),
       headers: {
         'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'http://www.kuwo.cn/',
-        'Cookie': 'kw_token=ABCDEFG',
-        'csrf': 'ABCDEFG',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+        'Accept': 'application/json, text/plain, */*',
       },
     ));
 
@@ -32,15 +30,18 @@ class KuwoScraper implements MusicScraper {
         createHttpClient: () {
           final client = HttpClient()
             ..badCertificateCallback = (cert, host, port) =>
-                host.endsWith('.kuwo.cn') || host == 'www.kuwo.cn';
+                host.endsWith('.kuwo.cn') ||
+                host.endsWith('searchapi.kuwo.cn') ||
+                host == 'www.kuwo.cn';
           return client;
         },
       );
     }
   }
 
+  // 使用移动端搜索 API（无需 csrf token）
   static const String _searchUrl =
-      'http://www.kuwo.cn/api/www/search/searchMusicBykeyWord';
+      'http://search.kuwo.cn/r.s';
   static const String _lyricUrl =
       'http://m.kuwo.cn/newh5/singles/songinfoandlrc';
 
@@ -92,56 +93,72 @@ class KuwoScraper implements MusicScraper {
       final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             _searchUrl,
             queryParameters: {
-              'key': searchQuery,
-              'pn': page,
+              'all': searchQuery,
+              'ft': 'music',
+              'itemset': 'web_2013',
+              'client': 'kt',
+              'pn': page - 1, // 0-indexed
               'rn': limit,
-              'httpsStatus': 1,
-              'reqId': DateTime.now().millisecondsSinceEpoch.toString(),
+              'rformat': 'json',
+              'encoding': 'utf8',
             },
           ));
 
       debugPrint('[KuwoScraper] response status: ${response.statusCode}');
 
-      // 处理响应数据
-      Map<String, dynamic> data;
+      // 处理响应数据 - 移动端 API 返回格式不同
       if (response.data == null) {
         debugPrint('[KuwoScraper] Response data is null');
         return MusicScraperSearchResult.empty(type);
-      } else if (response.data is String) {
-        try {
-          data = json.decode(response.data as String) as Map<String, dynamic>;
-        } on FormatException catch (e) {
-          debugPrint('[KuwoScraper] Failed to parse JSON: $e');
-          return MusicScraperSearchResult.empty(type);
-        }
-      } else if (response.data is Map<String, dynamic>) {
+      }
+
+      Map<String, dynamic> data;
+
+      // 如果 Dio 已自动解析为 Map，直接使用
+      if (response.data is Map<String, dynamic>) {
         data = response.data as Map<String, dynamic>;
+        debugPrint('[KuwoScraper] Response is Map, keys: ${data.keys.take(5).join(', ')}...');
+      } else if (response.data is String) {
+        final responseStr = response.data as String;
+        // 打印前200字符用于调试
+        debugPrint('[KuwoScraper] Response preview: ${responseStr.substring(0, responseStr.length > 200 ? 200 : responseStr.length)}');
+
+        // 尝试直接解析 JSON
+        try {
+          data = json.decode(responseStr) as Map<String, dynamic>;
+        } on FormatException {
+          // 可能是 JSONP 格式，尝试提取 JSON 部分
+          // 格式可能是: callback({...}) 或直接 {...}
+          var jsonStr = responseStr;
+
+          // 移除 JSONP callback 包装
+          final jsonpMatch = RegExp(r'^\s*\w+\s*\(\s*([\s\S]*)\s*\)\s*;?\s*$').firstMatch(responseStr);
+          if (jsonpMatch != null) {
+            jsonStr = jsonpMatch.group(1)!;
+          }
+
+          // 尝试提取 JSON 对象
+          final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(jsonStr);
+          if (jsonMatch == null) {
+            debugPrint('[KuwoScraper] Failed to extract JSON from response');
+            return MusicScraperSearchResult.empty(type);
+          }
+          try {
+            data = json.decode(jsonMatch.group(0)!) as Map<String, dynamic>;
+          } on FormatException catch (e) {
+            debugPrint('[KuwoScraper] Failed to parse JSON: $e');
+            return MusicScraperSearchResult.empty(type);
+          }
+        }
       } else {
-        debugPrint(
-            '[KuwoScraper] Invalid response data format: ${response.data.runtimeType}');
+        debugPrint('[KuwoScraper] Invalid response type: ${response.data.runtimeType}');
         return MusicScraperSearchResult.empty(type);
       }
 
-      final code = data['code'] as int?;
-      if (code != 200) {
-        debugPrint(
-            '[KuwoScraper] API returned error code: $code, msg: ${data['msg']}');
-        return MusicScraperSearchResult.empty(type);
-      }
-
-      final dataSection = data['data'] as Map<String, dynamic>?;
-      if (dataSection == null) {
-        debugPrint('[KuwoScraper] No data section in response');
-        return MusicScraperSearchResult.empty(type);
-      }
-
-      final songs = (dataSection['list'] as List?)
-              ?.whereType<Map<String, dynamic>>()
-              .toList() ??
-          [];
-      final total = dataSection['total'] as int? ??
-          int.tryParse(dataSection['total']?.toString() ?? '0') ??
-          0;
+      // 检查是否有 abslist（移动端 API 格式）
+      final abslist = data['abslist'] as List?;
+      final songs = abslist?.whereType<Map<String, dynamic>>().toList() ?? [];
+      final total = int.tryParse(data['TOTAL']?.toString() ?? '0') ?? 0;
 
       debugPrint('[KuwoScraper] Found ${songs.length} songs, total: $total');
 
@@ -166,7 +183,7 @@ class KuwoScraper implements MusicScraper {
 
   @override
   Future<MusicScraperDetail?> getDetail(String externalId) async {
-    // externalId 格式: rid|songName|artist|albumName|albumId|duration
+    // externalId 格式: rid|songName|artist|albumName|albumId|duration|pic
     final parts = externalId.split('|');
     if (parts.length < 6) return null;
 
@@ -176,10 +193,14 @@ class KuwoScraper implements MusicScraper {
     final albumName = parts[3];
     final albumId = parts[4];
     final duration = int.tryParse(parts[5]) ?? 0;
+    final pic = parts.length > 6 ? parts[6] : '';
 
-    // 获取封面
+    // 获取封面：优先使用搜索结果中的封面 URL
     String? coverUrl;
-    if (albumId.isNotEmpty && albumId != '0') {
+    if (pic.isNotEmpty) {
+      // 使用高清版本
+      coverUrl = pic.replaceAll('/120/', '/300/').replaceAll('/240/', '/500/');
+    } else if (albumId.isNotEmpty && albumId != '0') {
       coverUrl = 'http://img1.kuwo.cn/star/albumcover/300/$albumId.jpg';
     }
 
@@ -324,15 +345,46 @@ class KuwoScraper implements MusicScraper {
     return request();
   }
 
-  /// 解析歌曲搜索结果
+  /// 解析歌曲搜索结果（兼容 web API 和移动端 API）
   MusicScraperItem _parseSong(Map<String, dynamic> data) {
-    final rid = data['rid']?.toString() ?? '';
-    final songName = data['name'] as String? ?? '';
-    final artistName = data['artist'] as String? ?? '';
-    final albumName = data['album'] as String? ?? '';
-    final albumId = data['albumid']?.toString() ?? '0';
-    final duration = data['duration'] as int? ?? 0;
-    final pic = data['pic'] as String? ?? data['albumpic'] as String? ?? '';
+    // 兼容两种 API 格式（web API 和移动端 API）
+    // 移动端 API 使用大写字段名，如 MUSICRID, NAME, ARTIST 等
+    String rid = data['rid']?.toString() ?? '';
+    if (rid.isEmpty) {
+      // 移动端 API 格式: MUSICRID 或 DC_TARGETID 包含 "MUSIC_" 前缀
+      rid = (data['MUSICRID'] as String? ?? data['DC_TARGETID'] as String? ?? '')
+          .replaceFirst('MUSIC_', '');
+    }
+
+    final songName = data['name'] as String? ??
+        data['NAME'] as String? ??
+        data['SONGNAME'] as String? ??
+        '';
+    final artistName = data['artist'] as String? ??
+        data['ARTIST'] as String? ??
+        '';
+    final albumName = data['album'] as String? ??
+        data['ALBUM'] as String? ??
+        '';
+    final albumId = data['albumid']?.toString() ??
+        data['ALBUMID']?.toString() ??
+        '0';
+
+    // 时长：返回秒数（兼容 int 和 String 类型）
+    int duration = 0;
+    final durationValue = data['duration'] ?? data['DURATION'];
+    if (durationValue is int) {
+      duration = durationValue;
+    } else if (durationValue != null) {
+      duration = int.tryParse(durationValue.toString()) ?? 0;
+    }
+
+    // 封面图片
+    final pic = data['pic'] as String? ??
+        data['albumpic'] as String? ??
+        data['web_albumpic_short'] as String? ??
+        data['hts_MVPIC'] as String? ??
+        '';
 
     // 构建 externalId: rid|songName|artist|albumName|albumId|duration|pic
     final externalId =

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -139,14 +138,28 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         limit: 30, // 每个源最多30个结果
       );
 
-      // 合并所有结果到统一列表
+      // 合并所有结果到统一列表并记录每个源的结果数量
       final allItems = <MusicScraperItem>[];
+      final sourceStats = <String, int>{};
       for (final result in results) {
         allItems.addAll(result.items);
+        final sourceName = result.source.displayName;
+        sourceStats[sourceName] = result.items.length;
       }
+      debugPrint('[ManualScraper] 搜索结果统计: $sourceStats, 总计: ${allItems.length}');
+      debugPrint('[ManualScraper] 当前音乐时长: ${_musicDurationMs}ms (${widget.music.duration})');
 
       // 按时长匹配度排序
       _sortByDurationMatch(allItems);
+
+      // 打印排序后前10个结果的来源和时长差
+      if (allItems.isNotEmpty) {
+        final first10 = allItems.take(10).map((e) {
+          final diff = e.durationMs != null ? (e.durationMs! - _musicDurationMs).abs() : 999999999;
+          return '${e.source.displayName}:${e.durationMs ?? 0}ms(diff=$diff)';
+        }).join(', ');
+        debugPrint('[ManualScraper] 排序后前10: $first10');
+      }
 
       setState(() {
         _searchResults = allItems;
@@ -530,17 +543,17 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         coverUrl: coverUrl,
       );
 
-      // 刷新 provider 使 UI 更新
-      unawaited(ref.read(musicFavoritesProvider.notifier).refresh());
-      unawaited(ref.read(musicHistoryProvider.notifier).refresh());
+      // 刷新 provider 使 UI 更新（必须 await 确保刷新完成后再关闭页面）
+      await ref.read(musicFavoritesProvider.notifier).refresh();
+      await ref.read(musicHistoryProvider.notifier).refresh();
 
       // 刷新音乐列表中该曲目的元数据
       final sourceId = widget.music.sourceId;
       if (sourceId != null) {
-        unawaited(ref.read(musicListProvider.notifier).refreshTrackMetadata(
+        await ref.read(musicListProvider.notifier).refreshTrackMetadata(
           sourceId,
           widget.music.path,
-        ));
+        );
       }
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '同步到收藏和播放历史失败');

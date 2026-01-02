@@ -59,6 +59,7 @@ class MusicFileWithSource {
     this.genre,
     this.coverBase64,
     this.coverPath,
+    this.coverUrl, // 远程封面 URL（用于封面显示的备用）
     this.metadataExtracted = false,
   });
 
@@ -97,6 +98,7 @@ class MusicFileWithSource {
   final String? genre;
   final String? coverBase64; // Base64 编码的封面图片
   final String? coverPath; // 封面文件路径（磁盘缓存）
+  final String? coverUrl; // 远程封面 URL
   final bool metadataExtracted; // 是否已提取过元数据
 
   String get name => file.name;
@@ -130,7 +132,8 @@ class MusicFileWithSource {
   /// 是否有封面
   bool get hasCover =>
       (coverBase64 != null && coverBase64!.isNotEmpty) ||
-      (coverPath != null && coverPath!.isNotEmpty);
+      (coverPath != null && coverPath!.isNotEmpty) ||
+      (coverUrl != null && coverUrl!.isNotEmpty);
 
   /// 获取封面数据（从 Base64 解码，优先使用磁盘缓存会在 UI 层处理）
   List<int>? get coverData {
@@ -229,6 +232,7 @@ class MusicFileWithSource {
     String? genre,
     String? coverBase64,
     String? coverPath,
+    String? coverUrl,
     bool? metadataExtracted,
   }) => MusicFileWithSource(
       file: file,
@@ -242,6 +246,7 @@ class MusicFileWithSource {
       genre: genre ?? this.genre,
       coverBase64: coverBase64 ?? this.coverBase64,
       coverPath: coverPath ?? this.coverPath,
+      coverUrl: coverUrl ?? this.coverUrl,
       metadataExtracted: metadataExtracted ?? this.metadataExtracted,
     );
 }
@@ -2028,6 +2033,23 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         .where((h) => state.trackByFilePath.containsKey(h.musicPath))
         .map((h) {
           final m = state.trackByFilePath[h.musicPath]!;
+
+          // 优先使用数据库中的 coverPath，如果没有则尝试从历史的 coverUrl 获取
+          String? effectiveCoverPath = m.coverPath;
+          String? effectiveCoverUrl;
+
+          if (effectiveCoverPath == null || effectiveCoverPath.isEmpty) {
+            if (h.coverUrl != null && h.coverUrl!.isNotEmpty) {
+              // 如果历史记录有 file:// 格式的封面 URL，提取路径
+              if (h.coverUrl!.startsWith('file://')) {
+                effectiveCoverPath = h.coverUrl!.replaceFirst('file://', '');
+              } else {
+                // 远程 URL
+                effectiveCoverUrl = h.coverUrl;
+              }
+            }
+          }
+
           return MusicFileWithSource(
             file: FileItem(
               name: m.fileName,
@@ -2043,7 +2065,8 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             duration: m.duration,
             year: m.year,
             genre: m.genre,
-            coverPath: m.coverPath,
+            coverPath: effectiveCoverPath,
+            coverUrl: effectiveCoverUrl,
             metadataExtracted: true,
           );
         })
