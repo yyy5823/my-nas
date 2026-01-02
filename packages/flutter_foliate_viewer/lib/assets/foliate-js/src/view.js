@@ -240,10 +240,30 @@ export class View extends HTMLElement {
     const section = book.sections[index]
     const links = doc.querySelectorAll('a[href]')
     console.log('[View] #handleLinks - found', links.length, 'links in section', index)
-    for (const a of links)
+    for (const a of links) {
+      // 在 touchstart 时设置标志，阻止翻页（因为可能是点击链接）
+      a.addEventListener('touchstart', e => {
+        console.log('[View] link touchstart:', a.getAttribute('href'))
+        globalThis.__linkTouched = true
+        globalThis.__footnoteProcessing = true
+      }, { passive: true })
+
+      // 在 touchend 时检查是否是有效点击
+      a.addEventListener('touchend', e => {
+        console.log('[View] link touchend:', a.getAttribute('href'))
+        // 延迟重置，让 click 事件有机会处理
+        setTimeout(() => {
+          if (globalThis.__linkTouched) {
+            globalThis.__linkTouched = false
+            globalThis.__footnoteProcessing = false
+          }
+        }, 300)
+      }, { passive: true })
+
       a.addEventListener('click', e => {
         e.preventDefault()
         e.stopPropagation()
+        globalThis.__linkTouched = false // 标记 click 已处理
         const href_ = a.getAttribute('href')
         const href = section?.resolveHref?.(href_) ?? href_
         console.log('[View] link clicked:', href_, '->', href, 'a.outerHTML:', a.outerHTML?.substring(0, 100))
@@ -266,6 +286,7 @@ export class View extends HTMLElement {
           }
         }
       })
+    }
   }
 
   #handleImage(doc) {

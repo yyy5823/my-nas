@@ -22,6 +22,9 @@ class DesktopLyricServiceWindowsImpl implements DesktopLyricService {
   bool _isInitialized = false;
   Offset? _currentPosition;
 
+  /// 位置变化回调
+  void Function(double x, double y)? onPositionChanged;
+
   @override
   bool get isSupported => Platform.isWindows;
 
@@ -219,12 +222,25 @@ class DesktopLyricServiceWindowsImpl implements DesktopLyricService {
     // 设置窗口标题（不显示，但用于识别）
     await _windowController!.setTitle('Desktop Lyrics');
 
-    // 设置窗口关闭回调（通过 DesktopMultiWindow handler）
+    // 设置窗口回调（通过 DesktopMultiWindow handler）
     DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
-      if (call.method == 'onWindowClose' &&
-          fromWindowId == _windowController?.windowId) {
-        _isVisible = false;
-        _windowController = null;
+      if (fromWindowId != _windowController?.windowId) return null;
+
+      switch (call.method) {
+        case 'onWindowClose':
+          _isVisible = false;
+          _windowController = null;
+          break;
+
+        case 'saveDesktopLyricPosition':
+          if (call.arguments != null) {
+            final data = jsonDecode(call.arguments as String) as Map<String, dynamic>;
+            final x = (data['x'] as num).toDouble();
+            final y = (data['y'] as num).toDouble();
+            _currentPosition = Offset(x, y);
+            onPositionChanged?.call(x, y);
+          }
+          break;
       }
       return null;
     });

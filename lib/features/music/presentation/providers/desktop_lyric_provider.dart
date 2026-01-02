@@ -87,6 +87,9 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
           if (_service is DesktopLyricServiceMacOSImpl) {
             (_service as DesktopLyricServiceMacOSImpl).onPositionChanged =
                 _onPositionChanged;
+          } else if (_service is DesktopLyricServiceWindowsImpl) {
+            (_service as DesktopLyricServiceWindowsImpl).onPositionChanged =
+                _onPositionChanged;
           }
 
           state = state.copyWith(

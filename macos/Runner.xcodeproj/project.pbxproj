@@ -38,6 +38,10 @@
 		65NAVP112F01A100003CEDC6 /* NativeAVPlayerChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NAVP012F01A100003CEDC6 /* NativeAVPlayerChannel.swift */; };
 		65NAVP122F01A100003CEDC6 /* NativeAVPlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NAVP022F01A100003CEDC6 /* NativeAVPlayerController.swift */; };
 		65NAVP132F01A100003CEDC6 /* NativeAVPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NAVP032F01A100003CEDC6 /* NativeAVPlayerView.swift */; };
+		65DLYR112F02A000003CEDC6 /* DesktopLyricChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DLYR012F02A000003CEDC6 /* DesktopLyricChannel.swift */; };
+		65DLYR122F02A000003CEDC6 /* DesktopLyricController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DLYR022F02A000003CEDC6 /* DesktopLyricController.swift */; };
+		65SBAR112F02A000003CEDC6 /* StatusBarChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65SBAR012F02A000003CEDC6 /* StatusBarChannel.swift */; };
+		65SBAR122F02A000003CEDC6 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65SBAR022F02A000003CEDC6 /* StatusBarController.swift */; };
 		D95812FFD559C104CBE77DF6 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4519CB014C561650C67C4318 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
 
@@ -123,6 +127,10 @@
 		65NAVP012F01A100003CEDC6 /* NativeAVPlayerChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerChannel.swift; sourceTree = "<group>"; };
 		65NAVP022F01A100003CEDC6 /* NativeAVPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerController.swift; sourceTree = "<group>"; };
 		65NAVP032F01A100003CEDC6 /* NativeAVPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerView.swift; sourceTree = "<group>"; };
+		65DLYR012F02A000003CEDC6 /* DesktopLyricChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopLyricChannel.swift; sourceTree = "<group>"; };
+		65DLYR022F02A000003CEDC6 /* DesktopLyricController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopLyricController.swift; sourceTree = "<group>"; };
+		65SBAR012F02A000003CEDC6 /* StatusBarChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarChannel.swift; sourceTree = "<group>"; };
+		65SBAR022F02A000003CEDC6 /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		925AA0E82455F19AE3521366 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
@@ -271,6 +279,8 @@
 				65AUDC022F00F200003CEDC6 /* AudioCapabilityChannel.swift */,
 				65NBLUR022F00F300003CEDC6 /* NativeBlurView.swift */,
 				65NAVP002F01A100003CEDC6 /* NativeAVPlayer */,
+				65DLYR002F02A000003CEDC6 /* DesktopLyric */,
+				65SBAR002F02A000003CEDC6 /* StatusBar */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -287,6 +297,24 @@
 				65NAVP032F01A100003CEDC6 /* NativeAVPlayerView.swift */,
 			);
 			path = NativeAVPlayer;
+			sourceTree = "<group>";
+		};
+		65DLYR002F02A000003CEDC6 /* DesktopLyric */ = {
+			isa = PBXGroup;
+			children = (
+				65DLYR012F02A000003CEDC6 /* DesktopLyricChannel.swift */,
+				65DLYR022F02A000003CEDC6 /* DesktopLyricController.swift */,
+			);
+			path = DesktopLyric;
+			sourceTree = "<group>";
+		};
+		65SBAR002F02A000003CEDC6 /* StatusBar */ = {
+			isa = PBXGroup;
+			children = (
+				65SBAR012F02A000003CEDC6 /* StatusBarChannel.swift */,
+				65SBAR022F02A000003CEDC6 /* StatusBarController.swift */,
+			);
+			path = StatusBar;
 			sourceTree = "<group>";
 		};
 		D73912EC22F37F3D000D13A0 /* Frameworks */ = {
@@ -590,6 +618,10 @@
 				65NAVP112F01A100003CEDC6 /* NativeAVPlayerChannel.swift in Sources */,
 				65NAVP122F01A100003CEDC6 /* NativeAVPlayerController.swift in Sources */,
 				65NAVP132F01A100003CEDC6 /* NativeAVPlayerView.swift in Sources */,
+				65DLYR112F02A000003CEDC6 /* DesktopLyricChannel.swift in Sources */,
+				65DLYR122F02A000003CEDC6 /* DesktopLyricController.swift in Sources */,
+				65SBAR112F02A000003CEDC6 /* StatusBarChannel.swift in Sources */,
+				65SBAR122F02A000003CEDC6 /* StatusBarController.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
