@@ -464,6 +464,7 @@ $bundleJs
     _webViewController?.addJavaScriptHandler(
       handlerName: 'onLoadEnd',
       callback: (args) {
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });
@@ -487,6 +488,7 @@ $bundleJs
             }
           }
         }
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });
@@ -552,6 +554,7 @@ $bundleJs
       callback: (args) {
         final error = args.isNotEmpty ? args[0].toString() : '未知错误';
         widget.onError?.call(error);
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });
@@ -579,6 +582,81 @@ $bundleJs
       handlerName: 'onFootnoteClose',
       callback: (args) {
         widget.onFootnoteClose?.call();
+      },
+    );
+
+    // 渲染注释回调（book.js 加载完成后调用，用于通知 Dart 层可以发送注释数据）
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'renderAnnotations',
+      callback: (args) {
+        if (kDebugMode) {
+          debugPrint('Foliate: renderAnnotations callback received');
+        }
+      },
+    );
+
+    // 以下是 book.js 可能调用但目前不需要处理的 handler
+    // 必须注册它们以避免 Windows WebView2 上的潜在问题
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onPushState',
+      callback: (args) {
+        // 历史状态变化，目前不需要处理
+      },
+    );
+
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onImageClick',
+      callback: (args) {
+        // 图片点击，目前不需要处理
+      },
+    );
+
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'handleBookmark',
+      callback: (args) {
+        // 书签处理，目前不需要处理
+      },
+    );
+
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onAnnotationClick',
+      callback: (args) {
+        // 注释点击，目前不需要处理
+      },
+    );
+
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onExternalLink',
+      callback: (args) {
+        // 外部链接，目前不需要处理
+      },
+    );
+
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onSelectionEnd',
+      callback: (args) {
+        // 选择结束，目前不需要处理
+      },
+    );
+
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onSelectionCleared',
+      callback: (args) {
+        // 选择清除，目前不需要处理
+      },
+    );
+
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onSearch',
+      callback: (args) {
+        // 搜索结果，目前不需要处理
+      },
+    );
+
+    _webViewController?.addJavaScriptHandler(
+      handlerName: 'onPullUp',
+      callback: (args) {
+        // 上拉操作，目前不需要处理
       },
     );
   }
@@ -671,6 +749,7 @@ $bundleJs
     } on Exception catch (e) {
       debugPrint('Foliate: _loadBook failed: $e');
       widget.onError?.call('加载书籍失败: $e');
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });

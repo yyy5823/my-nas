@@ -1377,7 +1377,6 @@ window.setFoliateVars = (newStyle, newReadingRules, newImporting) => {
 
 
 const callFlutter = (name, data) => {
-  // console.log('callFlutter', name, data)
   window.flutter_inappwebview.callHandler(name, data)
 }
 
