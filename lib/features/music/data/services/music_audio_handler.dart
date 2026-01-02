@@ -400,7 +400,7 @@ class MusicAudioHandler extends BaseAudioHandler
     final playing = _player.playing;
     final processingState = _mapProcessingState(_player.processingState);
 
-    logger.d('MusicAudioHandler: 广播状态 - playing=$playing, processingState=$processingState, position=${_player.position}, hasMediaItem=${mediaItem.value != null}');
+    // logger.d('MusicAudioHandler: 广播状态 - playing=$playing, processingState=$processingState, position=${_player.position}, hasMediaItem=${mediaItem.value != null}');
 
     playbackState.add(playbackState.value.copyWith(
       // 显示的控制按钮

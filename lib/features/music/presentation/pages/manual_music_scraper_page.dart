@@ -160,25 +160,36 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
 
   /// 按时长匹配度排序（混合所有来源）
   void _sortByDurationMatch(List<MusicScraperItem> items) {
+    // 如果播放歌曲有时长信息，按时长差值排序
+    // 否则只按来源交替排序
+    final hasMusicDuration = _musicDurationMs > 0;
+
     items.sort((a, b) {
-      // 1. 如果有播放歌曲时长，按时长差值排序
-      if (_musicDurationMs > 0) {
+      if (hasMusicDuration) {
+        // 1. 首先按时长差值排序（主要排序条件）
         final diffA = _getDurationDiff(a);
         final diffB = _getDurationDiff(b);
         if (diffA != diffB) {
           return diffA.compareTo(diffB);
         }
+      } else {
+        // 没有播放歌曲时长时，有时长的优先
+        final hasA = a.durationMs != null && a.durationMs! > 0;
+        final hasB = b.durationMs != null && b.durationMs! > 0;
+        if (hasA != hasB) {
+          return hasA ? -1 : 1;
+        }
       }
 
-      // 2. 时长差值相同或无法比较时，有时长的优先
-      final hasA = a.durationMs != null && a.durationMs! > 0;
-      final hasB = b.durationMs != null && b.durationMs! > 0;
-      if (hasA != hasB) {
-        return hasA ? -1 : 1;
+      // 2. 时长差值相同时，按来源类型排序（确保不同来源的结果交替出现）
+      final sourceA = a.source.index;
+      final sourceB = b.source.index;
+      if (sourceA != sourceB) {
+        return sourceA.compareTo(sourceB);
       }
 
-      // 3. 都有或都无时长时，按标题相似度（简单比较）
-      return 0;
+      // 3. 同来源同时长时，按标题排序
+      return a.title.compareTo(b.title);
     });
   }
 

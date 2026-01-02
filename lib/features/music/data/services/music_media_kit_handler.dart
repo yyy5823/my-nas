@@ -140,6 +140,9 @@ class MusicMediaKitAudioHandler extends BaseAudioHandler
       ),
     );
 
+    // 配置 MPV 播放器选项（禁用自动字幕加载等）
+    await _configureMpvOptions();
+
     // 初始化封面缓存目录
     await _initArtworkCacheDir();
 
@@ -564,6 +567,23 @@ class MusicMediaKitAudioHandler extends BaseAudioHandler
     _passthroughCodecs = codecs ?? [];
 
     await _applyPassthroughConfig();
+  }
+
+  /// 配置 MPV 播放器选项
+  Future<void> _configureMpvOptions() async {
+    try {
+      final nativePlayer = _player.platform;
+      if (nativePlayer is NativePlayer) {
+        // 禁用自动字幕/歌词加载 - 我们有自己的歌词服务
+        await nativePlayer.setProperty('sub-auto', 'no');
+        // 禁用 OSD 显示
+        await nativePlayer.setProperty('osd-level', '0');
+        logger.d('MusicMediaKitHandler: MPV 选项已配置');
+      }
+    } on Exception catch (e, st) {
+      // 配置失败不影响播放，仅记录日志
+      logger.w('MusicMediaKitHandler: 配置 MPV 选项失败', e, st);
+    }
   }
 
   /// 应用直通配置
