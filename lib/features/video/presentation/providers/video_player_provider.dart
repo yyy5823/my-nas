@@ -28,6 +28,8 @@ import 'package:my_nas/features/video/domain/entities/hdr_capability.dart';
 import 'package:my_nas/features/video/domain/entities/playback_configuration.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/data/services/trakt_scrobble_service.dart';
+import 'package:my_nas/features/media_tracking/presentation/providers/trakt_sync_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/hdr_audio_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playback_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
@@ -263,6 +265,8 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         if (completed && _currentVideo != null) {
           _historyService.clearProgress(_currentVideo!.path);
           logger.d('VideoPlayerNotifier: 播放完成，清除进度');
+          // 上报 Trakt Scrobble（播放完成 = 100% 进度）
+          _reportTraktComplete();
           _playNextFromPlaylist();
         }
       }));
@@ -341,6 +345,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         // 播放完成，清除进度
         _historyService.clearProgress(_currentVideo!.path);
         logger.d('VideoPlayerNotifier: 播放完成，清除进度');
+
+        // 上报 Trakt Scrobble（播放完成 = 100% 进度）
+        _reportTraktComplete();
 
         // 尝试播放下一个
         _playNextFromPlaylist();
@@ -707,13 +714,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     // 确定起始位置
     var resumePosition = startPosition;
 
-    // 如果没有指定起始位置，尝试从历史中恢复
+    // 如果没有指定起始位置，尝试从多个来源恢复进度
     if (resumePosition == null) {
-      final savedProgress = await _historyService.getProgress(video.path);
-      if (savedProgress != null && savedProgress.progressPercent < 0.95) {
-        resumePosition = savedProgress.position;
-        logger.i('VideoPlayerNotifier: 从上次位置恢复 ${resumePosition.inSeconds}s');
-      }
+      resumePosition = await _getResumePosition(video);
     }
 
     // 检测是否需要使用原生播放器（杜比视界）
@@ -852,6 +855,139 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     if (currentBackend == PlayerBackendType.mediaKit) {
       await _initQualityController(video, playUrl: playUrl);
     }
+
+    // 上报 Trakt Scrobble 开始
+    _reportTraktStart(video);
+  }
+
+  /// 上报 Trakt Scrobble 开始播放
+  void _reportTraktStart(VideoItem video) {
+    final settings = _ref.read(traktScrobbleSettingsProvider);
+    if (!settings.enabled) return;
+
+    AppError.fireAndForget(
+      _ref.read(traktScrobbleServiceProvider).reportStart(
+            video: video,
+            progress: state.progress * 100,
+          ),
+      action: 'traktScrobbleStart',
+    );
+  }
+
+  /// 上报 Trakt Scrobble 暂停
+  void _reportTraktPause() {
+    final settings = _ref.read(traktScrobbleSettingsProvider);
+    if (!settings.enabled) return;
+
+    final scrobbleService = _ref.read(traktScrobbleServiceProvider);
+    if (!scrobbleService.hasActiveSession) return;
+
+    AppError.fireAndForget(
+      scrobbleService.reportPause(progress: state.progress * 100),
+      action: 'traktScrobblePause',
+    );
+  }
+
+  /// 上报 Trakt Scrobble 停止
+  void _reportTraktStop() {
+    final settings = _ref.read(traktScrobbleSettingsProvider);
+    if (!settings.enabled) return;
+
+    final scrobbleService = _ref.read(traktScrobbleServiceProvider);
+    if (!scrobbleService.hasActiveSession) return;
+
+    AppError.fireAndForget(
+      scrobbleService.reportStop(progress: state.progress * 100),
+      action: 'traktScrobbleStop',
+    );
+  }
+
+  /// 上报 Trakt Scrobble 播放完成（100% 进度）
+  void _reportTraktComplete() {
+    final settings = _ref.read(traktScrobbleSettingsProvider);
+    if (!settings.enabled) return;
+
+    final scrobbleService = _ref.read(traktScrobbleServiceProvider);
+    if (!scrobbleService.hasActiveSession) return;
+
+    // 播放完成，上报 100% 进度，Trakt 会自动标记为已观看
+    AppError.fireAndForget(
+      scrobbleService.reportStop(progress: 100.0),
+      action: 'traktScrobbleComplete',
+    );
+  }
+
+  /// 获取恢复播放位置
+  ///
+  /// 优先级：
+  /// 1. Trakt 进度（如果已连接且有进度）
+  /// 2. 本地进度
+  Future<Duration?> _getResumePosition(VideoItem video) async {
+    // 1. 尝试从 Trakt 恢复
+    final traktPosition = await _getTraktResumePosition(video);
+    if (traktPosition != null) {
+      return traktPosition;
+    }
+
+    // 2. 尝试从本地历史恢复
+    final savedProgress = await _historyService.getProgress(video.path);
+    if (savedProgress != null && savedProgress.progressPercent < 0.95) {
+      logger.i('VideoPlayerNotifier: 从本地历史恢复 ${savedProgress.position.inSeconds}s');
+      return savedProgress.position;
+    }
+
+    return null;
+  }
+
+  /// 从 Trakt 获取恢复位置
+  Future<Duration?> _getTraktResumePosition(VideoItem video) async {
+    try {
+      final traktSync = _ref.read(traktSyncProvider.notifier);
+
+      // 如果未连接 Trakt，返回 null
+      if (!traktSync.isConnected) return null;
+
+      // 获取视频对应的 Trakt 进度
+      final traktProgress = await traktSync.getProgressForVideo(
+        video.path,
+        video.sourceId ?? '',
+      );
+
+      if (traktProgress == null) return null;
+
+      // 如果进度太低或太高，不恢复
+      if (traktProgress.progress < 5 || traktProgress.progress >= 95) {
+        return null;
+      }
+
+      // 需要知道视频总时长才能计算位置
+      // 这里我们先返回一个占位值，实际位置将在视频加载后计算
+      // 由于此时视频还没加载，我们暂时使用本地保存的时长
+      final localProgress = await _historyService.getProgress(video.path);
+      if (localProgress != null && localProgress.duration.inSeconds > 0) {
+        final position = traktSync.progressToDuration(
+          traktProgress.progress,
+          localProgress.duration,
+        );
+        logger.i('VideoPlayerNotifier: 从 Trakt 恢复 ${position.inSeconds}s (${traktProgress.progress.toStringAsFixed(1)}%)');
+        return position;
+      }
+
+      // 如果没有本地时长信息，尝试使用视频的 duration
+      if (video.duration != null && video.duration!.inSeconds > 0) {
+        final position = traktSync.progressToDuration(
+          traktProgress.progress,
+          video.duration!,
+        );
+        logger.i('VideoPlayerNotifier: 从 Trakt 恢复 ${position.inSeconds}s (${traktProgress.progress.toStringAsFixed(1)}%)');
+        return position;
+      }
+
+      return null;
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '从 Trakt 获取恢复位置失败（使用本地进度）');
+      return null;
+    }
   }
 
   /// 初始化清晰度控制器
@@ -968,6 +1104,8 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       _captureProgressThumbnail(),
       action: 'pauseProgressThumbnail',
     );
+    // 上报 Trakt Scrobble 暂停
+    _reportTraktPause();
   }
 
   /// 同步暂停（用于 dispose）
@@ -1002,6 +1140,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       final positionTicks = state.actualPosition.inMicroseconds * 10;
       await reporter.reportStop(positionTicks: positionTicks);
     }
+
+    // 上报 Trakt Scrobble 停止
+    _reportTraktStop();
 
     // 停止播放器
     if (isUsingNativePlayer && _nativeBackend != null) {

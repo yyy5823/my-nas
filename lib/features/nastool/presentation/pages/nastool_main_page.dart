@@ -1100,8 +1100,9 @@ class _MediaContentState extends ConsumerState<_MediaContent> {
                                 onTap: () => _showMediaActions(context, m),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Expanded(
+                                    Flexible(
                                       child: m.posterPath != null
                                           ? Image.network('https://image.tmdb.org/t/p/w500${m.posterPath}', fit: BoxFit.cover, errorBuilder: (_, _, _) => ColoredBox(color: AppColors.primary.withValues(alpha: 0.1), child: const Icon(Icons.movie_rounded, size: 48)))
                                           : Container(color: AppColors.primary.withValues(alpha: 0.1), child: const Icon(Icons.movie_rounded, size: 48)),
@@ -1110,6 +1111,7 @@ class _MediaContentState extends ConsumerState<_MediaContent> {
                                       padding: const EdgeInsets.all(8),
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Text(m.title ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: context.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold)),
                                           Text('${m.year ?? ""} • ${m.type == 'movie' ? '电影' : '剧集'}', style: context.textTheme.bodySmall?.copyWith(fontSize: 10)),

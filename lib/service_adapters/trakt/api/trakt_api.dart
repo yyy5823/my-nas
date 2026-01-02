@@ -426,6 +426,166 @@ class TraktApi {
         .toList();
   }
 
+  // ==================== Scrobble API ====================
+
+  /// Scrobble 开始播放
+  ///
+  /// 当用户开始播放媒体时调用
+  Future<TraktScrobbleResponse?> scrobbleStart(TraktScrobbleRequest request) =>
+      _scrobble('start', request);
+
+  /// Scrobble 暂停播放
+  ///
+  /// 当用户暂停播放时调用
+  Future<TraktScrobbleResponse?> scrobblePause(TraktScrobbleRequest request) =>
+      _scrobble('pause', request);
+
+  /// Scrobble 停止播放
+  ///
+  /// 当用户停止播放或播放完成时调用
+  /// 如果进度 >= 80%，Trakt 会自动标记为已观看
+  Future<TraktScrobbleResponse?> scrobbleStop(TraktScrobbleRequest request) =>
+      _scrobble('stop', request);
+
+  /// 执行 Scrobble 请求
+  Future<TraktScrobbleResponse?> _scrobble(String action, TraktScrobbleRequest request) async {
+    try {
+      final response = await _makeAuthenticatedRequest(
+        'POST',
+        '/scrobble/$action',
+        body: request.toJson(),
+      );
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return TraktScrobbleResponse.fromJson(data);
+      }
+
+      // 404 表示未找到媒体（但不是错误，可能是用户的本地视频）
+      if (response.statusCode == 404) {
+        return null;
+      }
+
+      return null;
+    } on TraktApiException {
+      // Scrobble 失败不应该影响播放
+      rethrow;
+    }
+  }
+
+  // ==================== Playback Sync API ====================
+
+  /// 获取播放进度（用于恢复播放）
+  ///
+  /// 返回所有未完成的播放进度
+  Future<List<TraktPlaybackItem>> getPlaybackProgress({
+    String type = 'movies,episodes',
+    int? startAt,
+    int? endAt,
+  }) async {
+    final queryParams = <String, String>{};
+    if (startAt != null) queryParams['start_at'] = startAt.toString();
+    if (endAt != null) queryParams['end_at'] = endAt.toString();
+
+    final response = await _makeAuthenticatedRequest(
+      'GET',
+      '/sync/playback/$type',
+      queryParams: queryParams.isNotEmpty ? queryParams : null,
+    );
+
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((e) => TraktPlaybackItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 删除播放进度
+  ///
+  /// [playbackId] 从 getPlaybackProgress 返回的 id
+  Future<void> deletePlaybackProgress(int playbackId) async {
+    await _makeAuthenticatedRequest(
+      'DELETE',
+      '/sync/playback/$playbackId',
+    );
+  }
+
+  /// 从观看历史中移除
+  Future<void> removeFromHistory(List<TraktMediaItem> items) async {
+    await _makeAuthenticatedRequest(
+      'POST',
+      '/sync/history/remove',
+      body: {
+        'movies': items
+            .where((i) => i.type == 'movie')
+            .map((i) => i.toJson())
+            .toList(),
+        'shows': items
+            .where((i) => i.type == 'show')
+            .map((i) => i.toJson())
+            .toList(),
+        'episodes': items
+            .where((i) => i.type == 'episode')
+            .map((i) => i.toJson())
+            .toList(),
+      },
+    );
+  }
+
+  /// 从待看列表中移除
+  Future<void> removeFromWatchlist(List<TraktMediaItem> items) async {
+    await _makeAuthenticatedRequest(
+      'POST',
+      '/sync/watchlist/remove',
+      body: {
+        'movies': items
+            .where((i) => i.type == 'movie')
+            .map((i) => i.toJson())
+            .toList(),
+        'shows': items
+            .where((i) => i.type == 'show')
+            .map((i) => i.toJson())
+            .toList(),
+      },
+    );
+  }
+
+  /// 通过 ID 查找媒体
+  Future<TraktSearchResult?> lookupById({
+    String? imdbId,
+    int? tmdbId,
+    int? tvdbId,
+    String type = 'movie,show,episode',
+  }) async {
+    String? idType;
+    String? idValue;
+
+    if (imdbId != null) {
+      idType = 'imdb';
+      idValue = imdbId;
+    } else if (tmdbId != null) {
+      idType = 'tmdb';
+      idValue = tmdbId.toString();
+    } else if (tvdbId != null) {
+      idType = 'tvdb';
+      idValue = tvdbId.toString();
+    }
+
+    if (idType == null || idValue == null) {
+      return null;
+    }
+
+    final response = await _makeRequest(
+      'GET',
+      '/search/$idType/$idValue',
+      queryParams: {'type': type},
+    );
+
+    final data = jsonDecode(response.body) as List<dynamic>;
+    if (data.isEmpty) return null;
+
+    return TraktSearchResult.fromJson(data.first as Map<String, dynamic>);
+  }
+
   /// 发起认证请求
   Future<http.Response> _makeAuthenticatedRequest(String method,
       String path, {
@@ -851,33 +1011,190 @@ class TraktMediaItem {
     this.traktId,
     this.imdbId,
     this.tmdbId,
+    this.tvdbId,
     this.season,
     this.episode,
     this.watchedAt,
+    this.title,
+    this.year,
   });
 
   final String type; // 'movie', 'show', 'episode'
   final int? traktId;
   final String? imdbId;
   final int? tmdbId;
+  final int? tvdbId;
   final int? season;
   final int? episode;
   final DateTime? watchedAt;
+  final String? title;
+  final int? year;
 
   Map<String, dynamic> toJson() {
     final ids = <String, dynamic>{};
     if (traktId != null) ids['trakt'] = traktId;
     if (imdbId != null) ids['imdb'] = imdbId;
     if (tmdbId != null) ids['tmdb'] = tmdbId;
+    if (tvdbId != null) ids['tvdb'] = tvdbId;
 
     final result = <String, dynamic>{
       'ids': ids,
     };
+
+    if (title != null) result['title'] = title;
+    if (year != null) result['year'] = year;
 
     if (watchedAt != null) {
       result['watched_at'] = watchedAt!.toUtc().toIso8601String();
     }
 
     return result;
+  }
+}
+
+/// Scrobble 动作类型
+enum TraktScrobbleAction {
+  start,
+  pause,
+  stop,
+}
+
+/// Scrobble 请求
+class TraktScrobbleRequest {
+  const TraktScrobbleRequest({
+    required this.media,
+    required this.progress,
+    this.appVersion,
+    this.appDate,
+  });
+
+  final TraktMediaItem media;
+  final double progress; // 0.0 - 100.0
+  final String? appVersion;
+  final String? appDate;
+
+  Map<String, dynamic> toJson() {
+    final result = <String, dynamic>{
+      'progress': progress,
+    };
+
+    // 根据媒体类型添加对应字段
+    if (media.type == 'movie') {
+      result['movie'] = media.toJson();
+    } else if (media.type == 'episode') {
+      result['show'] = {
+        'ids': {
+          if (media.traktId != null) 'trakt': media.traktId,
+          if (media.imdbId != null) 'imdb': media.imdbId,
+          if (media.tmdbId != null) 'tmdb': media.tmdbId,
+          if (media.tvdbId != null) 'tvdb': media.tvdbId,
+        },
+        if (media.title != null) 'title': media.title,
+        if (media.year != null) 'year': media.year,
+      };
+      result['episode'] = {
+        'season': media.season ?? 1,
+        'number': media.episode ?? 1,
+      };
+    }
+
+    if (appVersion != null) result['app_version'] = appVersion;
+    if (appDate != null) result['app_date'] = appDate;
+
+    return result;
+  }
+}
+
+/// Scrobble 响应
+class TraktScrobbleResponse {
+  const TraktScrobbleResponse({
+    required this.id,
+    required this.action,
+    required this.progress,
+    this.sharing,
+    this.movie,
+    this.show,
+    this.episode,
+  });
+
+  factory TraktScrobbleResponse.fromJson(Map<String, dynamic> json) =>
+      TraktScrobbleResponse(
+        id: json['id'] as int? ?? 0,
+        action: json['action'] as String? ?? '',
+        progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
+        sharing: json['sharing'] as Map<String, dynamic>?,
+        movie: json['movie'] != null
+            ? TraktMovie.fromJson(json['movie'] as Map<String, dynamic>)
+            : null,
+        show: json['show'] != null
+            ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
+            : null,
+        episode: json['episode'] != null
+            ? TraktEpisode.fromJson(json['episode'] as Map<String, dynamic>)
+            : null,
+      );
+
+  final int id;
+  final String action;
+  final double progress;
+  final Map<String, dynamic>? sharing;
+  final TraktMovie? movie;
+  final TraktShow? show;
+  final TraktEpisode? episode;
+}
+
+/// 播放进度项（用于恢复播放）
+class TraktPlaybackItem {
+  const TraktPlaybackItem({
+    required this.id,
+    required this.progress,
+    required this.pausedAt,
+    required this.type,
+    this.movie,
+    this.show,
+    this.episode,
+  });
+
+  factory TraktPlaybackItem.fromJson(Map<String, dynamic> json) =>
+      TraktPlaybackItem(
+        id: json['id'] as int,
+        progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
+        pausedAt: DateTime.parse(json['paused_at'] as String),
+        type: json['type'] as String,
+        movie: json['movie'] != null
+            ? TraktMovie.fromJson(json['movie'] as Map<String, dynamic>)
+            : null,
+        show: json['show'] != null
+            ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
+            : null,
+        episode: json['episode'] != null
+            ? TraktEpisode.fromJson(json['episode'] as Map<String, dynamic>)
+            : null,
+      );
+
+  final int id;
+  final double progress; // 0.0 - 100.0
+  final DateTime pausedAt;
+  final String type; // 'movie' or 'episode'
+  final TraktMovie? movie;
+  final TraktShow? show;
+  final TraktEpisode? episode;
+
+  /// 获取 TMDB ID
+  int? get tmdbId {
+    if (type == 'movie') return movie?.ids.tmdb;
+    return show?.ids.tmdb;
+  }
+
+  /// 获取 IMDB ID
+  String? get imdbId {
+    if (type == 'movie') return movie?.ids.imdb;
+    return show?.ids.imdb;
+  }
+
+  /// 获取剧集信息
+  (int season, int episode)? get episodeInfo {
+    if (type != 'episode' || episode == null) return null;
+    return (episode!.season, episode!.number);
   }
 }

@@ -3688,9 +3688,10 @@ class _PartialVideoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
     children: [
       // 横向视频缩略图
-      Expanded(
+      Flexible(
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: isDark
@@ -3758,15 +3759,17 @@ class _PartialVideoCard extends StatelessWidget {
           ),
         ),
       ),
-      const SizedBox(height: 6),
-      Text(
-        video.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          color: isDark ? Colors.white : null,
+      Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          video.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.white : null,
+          ),
         ),
       ),
     ],
@@ -8353,9 +8356,10 @@ class _MovieCollectionGridCard extends StatelessWidget {
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           // 封面
-          Expanded(
+          Flexible(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
@@ -8409,16 +8413,18 @@ class _MovieCollectionGridCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
           // 标题
-          Text(
-            collection.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : Colors.black87,
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              collection.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
             ),
           ),
         ],
@@ -8692,9 +8698,10 @@ class _CollectionMovieCard extends StatelessWidget {
         opacity: hasLocal ? 1.0 : 0.5,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             // 海报
-            Expanded(
+            Flexible(
               child: Stack(
                 children: [
                   DecoratedBox(
@@ -8787,17 +8794,19 @@ class _CollectionMovieCard extends StatelessWidget {
               ),
             ),
             // 标题
-            const SizedBox(height: 8),
-            Text(
-              part.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: hasLocal
-                    ? (isDark ? Colors.white : Colors.black87)
-                    : (isDark ? Colors.grey[500] : Colors.grey[600]),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                part.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: hasLocal
+                      ? (isDark ? Colors.white : Colors.black87)
+                      : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                ),
               ),
             ),
             // 年份

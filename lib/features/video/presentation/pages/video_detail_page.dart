@@ -1767,9 +1767,10 @@ class _CollectionMovieGridItem extends ConsumerWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             // 海报
-            Expanded(
+            Flexible(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Stack(
@@ -1868,17 +1869,19 @@ class _CollectionMovieGridItem extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
 
             // 标题
-            Text(
-              part.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                part.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                ),
               ),
             ),
 

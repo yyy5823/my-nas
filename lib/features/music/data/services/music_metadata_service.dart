@@ -298,6 +298,9 @@ class MusicMetadataService {
 
   /// 计算读取策略
   /// 返回应该尝试的读取大小列表（从小到大）
+  ///
+  /// 对于需要尾部数据的格式（如 MP3 的 ID3v1），优先尝试读取整个文件
+  /// 因为简单拼接头部+尾部会破坏文件结构导致解析错误
   List<int> _calculateReadSizes(int fileSize, _FormatConfig config) {
     final sizes = <int>[];
 
@@ -306,21 +309,31 @@ class MusicMetadataService {
       // 小文件：直接读取整个文件
       sizes.add(fileSize);
     } else if (fileSize <= _largeFileThreshold) {
-      // 中等文件：渐进式读取
-      sizes.add(1 * 1024 * 1024); // 1MB
-      if (config.maxRead > 1 * 1024 * 1024) {
-        sizes.add(2 * 1024 * 1024); // 2MB
-      }
-      if (config.maxRead > 2 * 1024 * 1024) {
-        sizes.add(config.maxRead); // 格式建议的最大值
-      }
-      // 如果还没成功，尝试读取整个文件（但不超过绝对上限）
-      final fullRead = fileSize < _absoluteMaxReadSize ? fileSize : _absoluteMaxReadSize;
-      if (!sizes.contains(fullRead)) {
-        sizes.add(fullRead);
+      // 中等文件（<50MB）
+
+      // 对于可能需要尾部数据的格式（如 MP3），优先尝试读取整个文件
+      // 因为无法简单拼接头部和尾部数据
+      if (config.needsTail && fileSize <= _absoluteMaxReadSize) {
+        // 文件小于 8MB，直接读取整个文件
+        sizes.add(fileSize);
+      } else {
+        // 渐进式读取
+        sizes.add(1 * 1024 * 1024); // 1MB
+        if (config.maxRead > 1 * 1024 * 1024) {
+          sizes.add(2 * 1024 * 1024); // 2MB
+        }
+        if (config.maxRead > 2 * 1024 * 1024) {
+          sizes.add(config.maxRead); // 格式建议的最大值
+        }
+        // 如果还没成功，尝试读取整个文件（但不超过绝对上限）
+        final fullRead = fileSize < _absoluteMaxReadSize ? fileSize : _absoluteMaxReadSize;
+        if (!sizes.contains(fullRead)) {
+          sizes.add(fullRead);
+        }
       }
     } else if (fileSize <= _veryLargeFileThreshold) {
       // 大文件（50-200MB）：限制读取量
+      // 对于这种大小的文件，大多数元数据应该在 ID3v2（文件开头）
       sizes
         ..add(2 * 1024 * 1024) // 2MB
         ..add(4 * 1024 * 1024) // 4MB
@@ -369,36 +382,19 @@ class MusicMetadataService {
         }
       }
 
-      var data = bytesBuilder.toBytes();
+      final data = bytesBuilder.toBytes();
 
-      // 如果格式可能需要尾部数据（如 MP3 的 ID3v1）
-      // 且文件较大，尝试追加尾部数据
-      if (formatConfig.needsTail &&
-          bytesToRead < actualFileSize &&
-          actualFileSize > formatConfig.tailSize) {
-        try {
-          final tailStart = actualFileSize - formatConfig.tailSize;
-          final tailStream = await fileSystem.getFileStream(
-            path,
-            range: FileRange(start: tailStart, end: actualFileSize),
-          );
-
-          final tailBuilder = BytesBuilder(copy: false);
-          await for (final chunk in tailStream) {
-            tailBuilder.add(chunk);
-          }
-
-          // 合并头部和尾部数据
-          final combinedBuilder = BytesBuilder(copy: false)
-            ..add(data)
-            ..add(tailBuilder.toBytes());
-          data = combinedBuilder.toBytes();
-
-          logger.d('MusicMetadataService: 已追加尾部数据 ${formatConfig.tailSize} 字节');
-        } catch (e) {
-          logger.d('MusicMetadataService: 读取尾部数据失败，继续使用头部数据: $e');
-        }
-      }
+      // 注意：不再简单拼接头部和尾部数据
+      // 原因：audio_metadata_reader 库期望连续的文件流，简单拼接会导致：
+      // - 文件结构断裂，解析器在读取"中间"数据时遇到尾部数据
+      // - UTF-8 解析错误（如 FormatException: Unfinished UTF-8 octet sequence）
+      //
+      // 对于 MP3 文件：
+      // - ID3v2 在文件开头（我们已经读取）
+      // - ID3v1 在文件末尾（128字节），但大多数现代文件使用 ID3v2
+      // - 如果头部数据不足以提取元数据，调用者会重试更大的读取大小
+      //
+      // 如果确实需要完整的尾部标签，应该读取整个文件而不是拼接
 
       // 保存到临时文件（使用唯一文件名避免并发冲突）
       final ext = p.extension(path).toLowerCase();
@@ -555,24 +551,32 @@ class MusicMetadataService {
   }
 
   /// 安全删除临时文件
+  ///
+  /// Windows 上 audio_metadata_reader 库可能延迟释放文件句柄，
+  /// 需要更长的等待时间和更多重试次数
   Future<void> _deleteTempFile(File tempFile) async {
     // Windows 上延迟删除，确保文件句柄已释放
+    // audio_metadata_reader 内部可能有缓冲区需要时间释放
     if (Platform.isWindows) {
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
     }
 
-    for (var attempt = 0; attempt < 3; attempt++) {
+    // 最多重试 5 次，使用指数退避
+    for (var attempt = 0; attempt < 5; attempt++) {
       try {
         if (await tempFile.exists()) {
           await tempFile.delete();
         }
         return;
       } catch (e) {
-        if (attempt < 2) {
-          // 等待后重试
-          await Future<void>.delayed(Duration(milliseconds: 100 * (attempt + 1)));
+        if (attempt < 4) {
+          // 指数退避：100ms, 200ms, 400ms, 800ms
+          final delay = Duration(milliseconds: 100 * (1 << attempt));
+          await Future<void>.delayed(delay);
         } else {
-          logger.d('MusicMetadataService: 临时文件删除失败，将稍后清理: ${tempFile.path} - $e');
+          // 最后一次失败，记录并添加到待清理列表
+          // 文件会在下次服务初始化时被清理
+          logger.d('MusicMetadataService: 临时文件删除失败，将在下次启动时清理: ${tempFile.path}');
         }
       }
     }

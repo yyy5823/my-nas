@@ -451,9 +451,10 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
           ],
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             // 头像
-            Expanded(
+            Flexible(
               child: ClipRRect(
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(12)),
@@ -475,6 +476,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
             Padding(
               padding: const EdgeInsets.all(8),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     person.displayName,

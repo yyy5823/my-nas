@@ -2569,8 +2569,9 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
+                        Flexible(
                           child: Text(
                             displayName,
                             maxLines: author != null ? 1 : 2,
@@ -2582,26 +2583,29 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
                           ),
                         ),
                         // 显示作者（如果有）
-                        if (author != null && author.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: context.textTheme.labelSmall?.copyWith(
-                              color: widget.isDark
-                                  ? AppColors.darkOnSurfaceVariant
-                                  : context.colorScheme.onSurfaceVariant,
+                        if (author != null && author.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              author,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.textTheme.labelSmall?.copyWith(
+                                color: widget.isDark
+                                    ? AppColors.darkOnSurfaceVariant
+                                    : context.colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
-                        ],
-                        const SizedBox(height: 4),
-                        Text(
-                          book.displaySize,
-                          style: context.textTheme.labelSmall?.copyWith(
-                            color: widget.isDark
-                                ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.7)
-                                : context.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            book.displaySize,
+                            style: context.textTheme.labelSmall?.copyWith(
+                              color: widget.isDark
+                                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.7)
+                                  : context.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            ),
                           ),
                         ),
                       ],

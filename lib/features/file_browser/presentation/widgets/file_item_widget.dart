@@ -177,36 +177,40 @@ class FileItemWidget extends StatelessWidget {
                 padding: const EdgeInsets.all(AppSpacing.md),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
+                    Flexible(
                       child: Center(
                         child: _buildIconContainer(context, size: 56),
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      file.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: context.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: isDark
-                            ? AppColors.darkOnSurface
-                            : context.colorScheme.onSurface,
-                      ),
-                    ),
-                    if (!file.isDirectory) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        file.displaySize,
-                        style: context.textTheme.labelSmall?.copyWith(
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.sm),
+                      child: Text(
+                        file.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: context.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
                           color: isDark
-                              ? AppColors.darkOnSurfaceVariant
-                              : context.colorScheme.onSurfaceVariant,
+                              ? AppColors.darkOnSurface
+                              : context.colorScheme.onSurface,
                         ),
                       ),
-                    ],
+                    ),
+                    if (!file.isDirectory)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          file.displaySize,
+                          style: context.textTheme.labelSmall?.copyWith(
+                            color: isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : context.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
