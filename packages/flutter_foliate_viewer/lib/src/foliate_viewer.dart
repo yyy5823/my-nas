@@ -723,6 +723,17 @@ $bundleJs
               debugPrint('Foliate JS: ${message.message}');
             }
           },
+          onReceivedError: (controller, request, error) {
+            debugPrint('Foliate WebView Error: ${error.type} - ${error.description}');
+            if (error.type == WebResourceErrorType.UNKNOWN) {
+              widget.onError?.call('加载错误: ${error.description}');
+            }
+          },
+          onLoadStop: (controller, url) {
+            if (kDebugMode) {
+              debugPrint('Foliate WebView: Load completed');
+            }
+          },
         ),
         // 加载指示器
         if (_isLoading)

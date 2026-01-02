@@ -689,32 +689,68 @@ const readingFeaturesDocHandler = (doc) => {
 }
 
 
+// 判断颜色是否为暗色（需要在使用前定义）
+const isColorDark = (color) => {
+  if (!color) return false
+  let hex = color.replace('#', '')
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
+  }
+  if (hex.length >= 6) {
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return luminance < 0.5
+  }
+  return false
+}
+
 const footnoteDialog = document.getElementById('footnote-dialog')
 const footnoteBackdrop = document.getElementById('footnote-backdrop')
-footnoteDialog.style.display = 'none'
 
 // 关闭脚注弹框
 const closeFootnoteDialog = () => {
-  footnoteDialog.style.display = 'none'
-  footnoteBackdrop.style.display = 'none'
+  if (footnoteDialog) footnoteDialog.style.display = 'none'
+  if (footnoteBackdrop) footnoteBackdrop.style.display = 'none'
   callFlutter("onFootnoteClose")
 }
 
-// 点击背景关闭
-footnoteBackdrop.addEventListener('click', closeFootnoteDialog)
+// 初始化脚注元素
+if (footnoteDialog) {
+  footnoteDialog.style.display = 'none'
 
-// 点击关闭按钮关闭
-const closeBtn = footnoteDialog.querySelector('.footnote-close')
-if (closeBtn) {
-  closeBtn.addEventListener('click', closeFootnoteDialog)
+  // 点击弹框外部区域关闭
+  footnoteDialog.addEventListener('click', e => {
+    if (e.target === footnoteDialog) {
+      closeFootnoteDialog()
+    }
+  })
+
+  // 点击关闭按钮关闭
+  const closeBtn = footnoteDialog.querySelector('.footnote-close')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeFootnoteDialog)
+  }
+}
+
+// 点击背景关闭
+if (footnoteBackdrop) {
+  footnoteBackdrop.addEventListener('click', closeFootnoteDialog)
 }
 
 const replaceFootnote = (view) => {
-  clearSelection()
-  footnoteDialog.querySelector('main').replaceChildren(view)
+  if (!footnoteDialog) return
+
+  if (typeof clearSelection === 'function') {
+    try { clearSelection() } catch(e) { /* ignore */ }
+  }
+
+  const mainEl = footnoteDialog.querySelector('main')
+  if (mainEl) mainEl.replaceChildren(view)
 
   // 判断是否暗色模式
-  const isDark = style.backgroundColor && isColorDark(style.backgroundColor)
+  const isDark = style && style.backgroundColor && isColorDark(style.backgroundColor)
   footnoteDialog.classList.toggle('dark', isDark)
 
   view.addEventListener('load', (e) => {
@@ -726,8 +762,8 @@ const replaceFootnote = (view) => {
 
     setTimeout(() => {
       // 显示背景遮罩和弹框
-      footnoteBackdrop.style.display = 'block'
-      footnoteDialog.style.display = 'block'
+      if (footnoteBackdrop) footnoteBackdrop.style.display = 'block'
+      if (footnoteDialog) footnoteDialog.style.display = 'block'
 
       // 通知 Flutter 脚注已打开
       callFlutter("onFootnoteOpen")
@@ -741,53 +777,29 @@ const replaceFootnote = (view) => {
   renderer.setAttribute('bottom-margin', '0px')
 
   const footNoteStyle = {
-    fontSize: style.fontSize,
-    fontName: style.fontName,
-    fontPath: style.fontPath,
-    letterSpacing: style.letterSpacing,
-    spacing: style.spacing,
-    textIndent: style.textIndent,
-    fontColor: style.fontColor,
+    fontSize: style ? style.fontSize : undefined,
+    fontName: style ? style.fontName : undefined,
+    fontPath: style ? style.fontPath : undefined,
+    letterSpacing: style ? style.letterSpacing : undefined,
+    spacing: style ? style.spacing : undefined,
+    textIndent: style ? style.textIndent : undefined,
+    fontColor: style ? style.fontColor : undefined,
     backgroundColor: 'transparent',
     justify: true,
-    textAlign: style.textAlign,
+    textAlign: style ? style.textAlign : undefined,
     hyphenate: true,
-    customCSS: style.customCSS,
-    customCSSEnabled: style.customCSSEnabled,
-    writingMode: style.writingMode,
+    customCSS: style ? style.customCSS : undefined,
+    customCSSEnabled: style ? style.customCSSEnabled : undefined,
+    writingMode: style ? style.writingMode : undefined,
   }
   renderer.setStyles(getCSS(footNoteStyle))
 
   // 设置弹框背景色（使用当前主题背景色）
-  const bgColor = style.backgroundColor || '#ffffff'
+  const bgColor = (style && style.backgroundColor) ? style.backgroundColor : '#ffffff'
+  const textColor = (style && style.fontColor) ? style.fontColor : (isDark ? '#e0e0e0' : '#333333')
   footnoteDialog.style.setProperty('--footnote-bg', bgColor)
-  footnoteDialog.style.setProperty('--footnote-text', style.fontColor || (isDark ? '#e0e0e0' : '#333333'))
+  footnoteDialog.style.setProperty('--footnote-text', textColor)
 }
-
-// 判断颜色是否为暗色
-const isColorDark = (color) => {
-  if (!color) return false
-  // 处理 hex 颜色
-  let hex = color.replace('#', '')
-  if (hex.length === 3) {
-    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
-  }
-  if (hex.length >= 6) {
-    const r = parseInt(hex.slice(0, 2), 16)
-    const g = parseInt(hex.slice(2, 4), 16)
-    const b = parseInt(hex.slice(4, 6), 16)
-    // 计算亮度
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    return luminance < 0.5
-  }
-  return false
-}
-// 点击弹框外部区域（弹框本身，非内容区）关闭
-footnoteDialog.addEventListener('click', e => {
-  if (e.target === footnoteDialog) {
-    closeFootnoteDialog()
-  }
-})
 
 class Reader {
   annotations = new Map()
