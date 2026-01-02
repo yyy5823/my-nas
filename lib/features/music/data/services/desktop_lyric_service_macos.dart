@@ -106,6 +106,7 @@ class DesktopLyricServiceMacOSImpl implements DesktopLyricService {
     required LyricLineData? currentLine,
     LyricLineData? nextLine,
     required bool isPlaying,
+    double progress = 0.0,
   }) async {
     if (!isSupported || !_isVisible) return;
 
@@ -125,6 +126,7 @@ class DesktopLyricServiceMacOSImpl implements DesktopLyricService {
                 }
               : null,
           'isPlaying': isPlaying,
+          'progress': progress,
         });
       },
       action: 'updateDesktopLyricMacOS',
