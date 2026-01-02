@@ -1,6 +1,8 @@
 import 'package:my_nas/features/music/data/services/fingerprint/fingerprint_service.dart';
 import 'package:my_nas/features/music/data/services/scrapers/acoustid_scraper.dart';
 import 'package:my_nas/features/music/data/services/scrapers/kugou_scraper.dart';
+import 'package:my_nas/features/music/data/services/scrapers/kuwo_scraper.dart';
+import 'package:my_nas/features/music/data/services/scrapers/migu_scraper.dart';
 import 'package:my_nas/features/music/data/services/scrapers/music_tag_web_scraper.dart';
 import 'package:my_nas/features/music/data/services/scrapers/musicbrainz_scraper.dart';
 import 'package:my_nas/features/music/data/services/scrapers/netease_scraper.dart';
@@ -22,6 +24,8 @@ class MusicScraperFactory {
         MusicScraperType.neteaseMusic => NeteaseScraper(cookie: source.cookie),
         MusicScraperType.qqMusic => QQMusicScraper(cookie: source.cookie),
         MusicScraperType.kugouMusic => KugouScraper(),
+        MusicScraperType.kuwoMusic => KuwoScraper(),
+        MusicScraperType.miguMusic => MiguScraper(),
         MusicScraperType.musicTagWeb => MusicTagWebScraper(
             serverUrl: source.serverUrl ?? '',
             username: source.extraConfig?['username'] as String?,
@@ -39,6 +43,8 @@ class MusicScraperFactory {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
         MusicScraperType.kugouMusic,
+        MusicScraperType.kuwoMusic,
+        MusicScraperType.miguMusic,
         MusicScraperType.musicTagWeb,
       ].contains(type);
 
@@ -49,6 +55,8 @@ class MusicScraperFactory {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
         MusicScraperType.kugouMusic,
+        MusicScraperType.kuwoMusic,
+        MusicScraperType.miguMusic,
         MusicScraperType.musicTagWeb,
       ];
 

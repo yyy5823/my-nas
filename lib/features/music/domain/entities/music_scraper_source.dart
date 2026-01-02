@@ -8,6 +8,8 @@ enum MusicScraperType {
   neteaseMusic('网易云音乐', 'netease'),
   qqMusic('QQ音乐', 'qqmusic'),
   kugouMusic('酷狗音乐', 'kugou'),
+  kuwoMusic('酷我音乐', 'kuwo'),
+  miguMusic('咪咕音乐', 'migu'),
   musicTagWeb('Music Tag Web', 'musictagweb');
 
   const MusicScraperType(this.displayName, this.id);
@@ -25,6 +27,8 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic => Icons.cloud_rounded,
         MusicScraperType.qqMusic => Icons.music_note_rounded,
         MusicScraperType.kugouMusic => Icons.graphic_eq_rounded,
+        MusicScraperType.kuwoMusic => Icons.headphones_rounded,
+        MusicScraperType.miguMusic => Icons.library_music_rounded,
         MusicScraperType.musicTagWeb => Icons.dns_rounded,
       };
 
@@ -35,6 +39,8 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic => const Color(0xFFE60026), // 网易云红
         MusicScraperType.qqMusic => const Color(0xFF31C27C), // QQ音乐绿
         MusicScraperType.kugouMusic => const Color(0xFF2196F3), // 酷狗蓝
+        MusicScraperType.kuwoMusic => const Color(0xFFFF6600), // 酷我橙
+        MusicScraperType.miguMusic => const Color(0xFFFF0653), // 咪咕红
         MusicScraperType.musicTagWeb => const Color(0xFF6366F1), // Indigo
       };
 
@@ -45,6 +51,8 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic => '国内音乐平台，支持歌词和封面',
         MusicScraperType.qqMusic => '国内音乐平台，支持歌词和封面',
         MusicScraperType.kugouMusic => '国内音乐平台，歌词库丰富',
+        MusicScraperType.kuwoMusic => '国内音乐平台，支持歌词和封面',
+        MusicScraperType.miguMusic => '中国移动旗下音乐平台，无损音源丰富',
         MusicScraperType.musicTagWeb => '自托管音乐刮削服务，需配置服务器地址',
       };
 
@@ -54,6 +62,8 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
         MusicScraperType.kugouMusic,
+        MusicScraperType.kuwoMusic,
+        MusicScraperType.miguMusic,
         MusicScraperType.musicTagWeb,
       ].contains(this);
 
@@ -63,6 +73,8 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
         MusicScraperType.kugouMusic,
+        MusicScraperType.kuwoMusic,
+        MusicScraperType.miguMusic,
         MusicScraperType.musicTagWeb,
       ].contains(this);
 
@@ -71,6 +83,8 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
         MusicScraperType.kugouMusic,
+        MusicScraperType.kuwoMusic,
+        MusicScraperType.miguMusic,
         MusicScraperType.musicTagWeb,
       ].contains(this);
 
@@ -159,6 +173,8 @@ class MusicScraperSourceEntity {
         MusicScraperType.neteaseMusic => true, // Cookie 可选
         MusicScraperType.qqMusic => true, // Cookie 可选
         MusicScraperType.kugouMusic => true, // 无需认证
+        MusicScraperType.kuwoMusic => true, // 无需认证
+        MusicScraperType.miguMusic => true, // 无需认证
         MusicScraperType.musicTagWeb => _isMusicTagWebConfigured,
       };
 

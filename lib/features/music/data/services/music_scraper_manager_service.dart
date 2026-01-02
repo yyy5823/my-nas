@@ -81,11 +81,14 @@ class MusicScraperManagerService {
   /// 初始化默认刮削源（不需要配置的源）
   Future<void> _initDefaultSources() async {
     // 默认启用不需要额外配置的源
+    // 优先级：酷狗 > 酷我 > 咪咕 > QQ音乐 > 网易云 > MusicBrainz（国内源优先，歌词库丰富的优先）
     final defaultTypes = [
-      MusicScraperType.musicBrainz,   // 无需配置
-      MusicScraperType.neteaseMusic,  // Cookie 可选
-      MusicScraperType.qqMusic,       // Cookie 可选
-      MusicScraperType.kugouMusic,    // 无需配置
+      MusicScraperType.kugouMusic,    // 酷狗音乐（歌词库最丰富）
+      MusicScraperType.kuwoMusic,     // 酷我音乐
+      MusicScraperType.miguMusic,     // 咪咕音乐（无损音源丰富）
+      MusicScraperType.qqMusic,       // QQ音乐
+      MusicScraperType.neteaseMusic,  // 网易云音乐
+      MusicScraperType.musicBrainz,   // MusicBrainz（国际开源数据库）
     ];
 
     for (var i = 0; i < defaultTypes.length; i++) {
