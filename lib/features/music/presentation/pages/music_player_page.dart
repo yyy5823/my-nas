@@ -18,6 +18,7 @@ import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dar
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 
 class MusicPlayerPage extends ConsumerStatefulWidget {
   const MusicPlayerPage({super.key});
@@ -87,6 +88,8 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(false);
     _rotationController = AnimationController(
       duration: const Duration(seconds: 20),
       vsync: this,
@@ -96,6 +99,8 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   @override
   void dispose() {
     _rotationController.dispose();
+    // 恢复原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(true);
     super.dispose();
   }
 

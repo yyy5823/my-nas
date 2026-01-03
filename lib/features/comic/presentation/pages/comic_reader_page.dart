@@ -11,6 +11,7 @@ import 'package:my_nas/features/reading/data/services/reading_progress_service.d
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 import 'package:path/path.dart' as path;
@@ -288,6 +289,8 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(false);
     _provider = StateNotifierProvider<ComicReaderNotifier, ComicReaderState>(
       (ref) => ComicReaderNotifier(ref, widget.comic),
     );
@@ -311,6 +314,8 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     WakelockPlus.disable();
     // 退出全屏模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // 恢复原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(true);
     super.dispose();
   }
 

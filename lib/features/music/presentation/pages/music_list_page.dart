@@ -2117,84 +2117,17 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     BuildContext context,
     WidgetRef ref,
     bool isDark,
-  ) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 搜索输入框（使用玻璃效果）
-        ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              width: 220,
-              height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.black.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : Colors.black.withValues(alpha: 0.08),
-                  width: 0.5,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.search_rounded,
-                    size: 20,
-                    color: isDark ? Colors.white70 : Colors.black54,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      autofocus: true,
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black87,
-                        fontSize: 16,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: '搜索歌曲、艺术家...',
-                        hintStyle: TextStyle(
-                          color: isDark ? Colors.white38 : Colors.black38,
-                        ),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onChanged: (query) {
-                        ref.read(musicListProvider.notifier).setSearchQuery(query);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        // 关闭按钮
-        GlassButtonGroup(
-          children: [
-            GlassGroupIconButton(
-              icon: Icons.close_rounded,
-              onPressed: () {
-                setState(() => _showSearch = false);
-                _searchController.clear();
-                ref.read(musicListProvider.notifier).setSearchQuery('');
-              },
-              tooltip: '关闭搜索',
-            ),
-          ],
-        ),
-      ],
+  ) => GlassFloatingSearchBar(
+      controller: _searchController,
+      hintText: '搜索歌曲、艺术家...',
+      width: 220,
+      onChanged: (query) {
+        ref.read(musicListProvider.notifier).setSearchQuery(query);
+      },
+      onClose: () {
+        setState(() => _showSearch = false);
+      },
     );
-  }
 
   /// iOS 26 带大标题的音乐内容
   Widget _buildMusicContentWithLargeTitle(
@@ -2286,11 +2219,11 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
 
     return CustomScrollView(
       slivers: [
-        // 顶部安全区域留白 + 悬浮按钮区域
-        SliverPadding(padding: EdgeInsets.only(top: safeTop + 52)),
-        // 大标题区域（iOS 26 风格）
-        _buildLargeTitleSliver(context, state, isDark),
-        // 内容区域
+        // 顶部安全区域留白
+        SliverPadding(padding: EdgeInsets.only(top: safeTop + 8)),
+        // 大标题区域（iOS 26 风格）- 右侧留出浮动按钮空间
+        _buildLargeTitleSliver(context, state, isDark, hasFloatingButtons: true),
+        // 内容区域（使用 returnSlivers 模式避免嵌套滚动）
         SliverToBoxAdapter(
           child: MusicHomeContent(
             tracks: state.tracks,
@@ -2308,6 +2241,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             onTrackTap: (track, allTracks) => _playTrack(context, ref, track, allTracks),
             onCategoryTap: (category) => _navigateToCategory(context, category, state),
             onShuffleTap: () => _shufflePlay(context, ref, state.tracks),
+            returnSlivers: true,
           ),
         ),
         // 底部留白
@@ -2320,8 +2254,9 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   Widget _buildLargeTitleSliver(
     BuildContext context,
     MusicListLoaded state,
-    bool isDark,
-  ) {
+    bool isDark, {
+    bool hasFloatingButtons = false,
+  }) {
     final trackCount = state.totalCount;
     final artistCount = state.artistCount;
     final albumCount = state.albumCount;
@@ -2335,49 +2270,56 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 大标题
-            Text(
-              _getGreeting(),
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-                letterSpacing: -0.5,
+            // 大标题 - 需要避开浮动按钮
+            Padding(
+              padding: EdgeInsets.only(right: hasFloatingButtons ? 150 : 0),
+              child: Text(
+                _getGreeting(),
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                  letterSpacing: -0.5,
+                ),
               ),
             ),
             const SizedBox(height: 8),
-            // 统计信息
+            // 统计信息 - 横向排列，可以延伸到按钮下方
             if (trackCount > 0 || isLoadingMetadata)
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
+              Row(
                 children: [
                   _buildStatChip(
                     icon: Icons.music_note_rounded,
                     label: '$trackCount 首歌曲',
                     isDark: isDark,
                   ),
-                  if (artistCount > 0)
+                  if (artistCount > 0) ...[
+                    const SizedBox(width: 12),
                     _buildStatChip(
                       icon: Icons.person_rounded,
-                      label: '$artistCount 艺术家',
+                      label: '$artistCount 位',
                       isDark: isDark,
                     ),
-                  if (albumCount > 0)
+                  ],
+                  if (albumCount > 0) ...[
+                    const SizedBox(width: 12),
                     _buildStatChip(
                       icon: Icons.album_rounded,
-                      label: '$albumCount 专辑',
+                      label: '$albumCount 张',
                       isDark: isDark,
                     ),
-                  if (isLoadingMetadata)
+                  ],
+                  if (isLoadingMetadata) ...[
+                    const SizedBox(width: 12),
                     _buildStatChip(
                       icon: Icons.sync_rounded,
                       label: metadataTotal > 0
-                          ? '元数据 $metadataProcessed/$metadataTotal'
-                          : '正在加载...',
+                          ? '$metadataProcessed/$metadataTotal'
+                          : '加载中',
                       isDark: isDark,
                       isLoading: true,
                     ),
+                  ],
                 ],
               ),
           ],

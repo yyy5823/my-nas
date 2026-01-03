@@ -20,6 +20,7 @@ import 'package:my_nas/features/reading/presentation/widgets/page_flip_effect.da
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -179,6 +180,8 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(false);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
     _loadProgress();
@@ -261,6 +264,8 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
     }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
+    // 恢复原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(true);
     super.dispose();
   }
 

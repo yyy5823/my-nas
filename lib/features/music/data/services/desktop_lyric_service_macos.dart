@@ -23,6 +23,9 @@ class DesktopLyricServiceMacOSImpl implements DesktopLyricService {
   /// 位置保存回调
   void Function(double x, double y)? onPositionChanged;
 
+  /// 播放控制回调
+  void Function(String action)? onControlAction;
+
   @override
   bool get isSupported => Platform.isMacOS;
 
@@ -62,6 +65,11 @@ class DesktopLyricServiceMacOSImpl implements DesktopLyricService {
       case 'onLockToggled':
         final isLocked = args?['isLocked'] as bool;
         _settings = _settings.copyWith(lockPosition: isLocked);
+      case 'onControlAction':
+        final action = args?['action'] as String?;
+        if (action != null) {
+          onControlAction?.call(action);
+        }
     }
     return null;
   }

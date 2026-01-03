@@ -39,8 +39,12 @@ class MusicHomeContent extends ConsumerStatefulWidget {
     this.playlistCount = 0,
     this.favoritesCount = 0,
     this.recentCount = 0,
+    this.returnSlivers = false,
     super.key,
   });
+
+  /// 是否直接返回 Slivers（用于嵌入到外部 CustomScrollView）
+  final bool returnSlivers;
 
   final List<MusicFileWithSource> tracks;
   final List<MusicFileWithSource> recentTracks;
@@ -103,7 +107,48 @@ class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
       return _buildDesktopLayout(context, isDark);
     }
 
+    // 如果需要返回 Slivers，包装成一个简单的 Column
+    if (widget.returnSlivers) {
+      return _buildMobileContentOnly(context, isDark, layoutState);
+    }
+
     return _buildMobileLayout(context, isDark, layoutState);
+  }
+
+  /// 移动端内容区域（不包含 CustomScrollView，用于嵌入外部滚动视图）
+  Widget _buildMobileContentOnly(
+    BuildContext context,
+    bool isDark,
+    HomeLayoutState layoutState,
+  ) {
+    final sections = <Widget>[];
+
+    for (final config in layoutState.sections) {
+      if (!config.visible) continue;
+
+      final sectionWidget = _buildSectionByType(context, isDark, config.section);
+      if (sectionWidget != null) {
+        sections
+          ..add(sectionWidget)
+          ..add(const SizedBox(height: 20));
+      }
+    }
+
+    return Column(
+      children: [
+        // Hero 播放卡片
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 12),
+          child: HeroPlayerCard(
+            isDark: isDark,
+            onShuffleTap: widget.onShuffleTap,
+            onPlayAllTap: widget.onPlayAllTap,
+          ),
+        ),
+        // 内容区域
+        ...sections,
+      ],
+    );
   }
 
   /// 移动端布局

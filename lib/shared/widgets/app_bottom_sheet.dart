@@ -1,13 +1,65 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
+
+/// iOS 原生底部弹框通道
+const _nativeBottomSheetChannel = MethodChannel('com.kkape.mynas/glass_bottom_sheet');
+
+/// 底部弹框回调管理器（单例）
+/// 避免重复设置 MethodCallHandler 导致回调丢失
+class _BottomSheetCallbackManager {
+  factory _BottomSheetCallbackManager() => _instance;
+
+  _BottomSheetCallbackManager._() {
+    _nativeBottomSheetChannel.setMethodCallHandler(_handleMethodCall);
+  }
+
+  static final _BottomSheetCallbackManager _instance = _BottomSheetCallbackManager._();
+
+  final Map<int, Completer<String?>> _completers = {};
+
+  void registerCompleter(int sheetId, Completer<String?> completer) {
+    _completers[sheetId] = completer;
+  }
+
+  void removeCompleter(int sheetId) {
+    _completers.remove(sheetId);
+  }
+
+  Future<void> _handleMethodCall(MethodCall call) async {
+    final args = call.arguments as Map<dynamic, dynamic>?;
+    if (args == null) return;
+
+    final sheetId = args['sheetId'] as int?;
+    if (sheetId == null) return;
+
+    final completer = _completers[sheetId];
+    if (completer == null || completer.isCompleted) return;
+
+    switch (call.method) {
+      case 'onItemSelected':
+        final value = args['value'] as String?;
+        completer.complete(value);
+        _completers.remove(sheetId);
+      case 'onDismiss':
+        final selectedValue = args['selectedValue'] as String?;
+        completer.complete(selectedValue);
+        _completers.remove(sheetId);
+    }
+  }
+}
+
+/// 获取回调管理器实例
+final _callbackManager = _BottomSheetCallbackManager();
 
 /// 显示应用统一风格的底部弹窗
 ///
@@ -20,6 +72,7 @@ import 'package:my_nas/shared/providers/ui_style_provider.dart';
 /// [minChildSize] 最小高度比例
 /// [maxChildSize] 最大高度比例
 /// [useSafeArea] 是否使用安全区域（默认 true）
+/// [isDismissible] 是否可以点击背景关闭（默认 true）
 Future<T?> showAppBottomSheet<T>({
   required BuildContext context,
   required Widget Function(BuildContext context, ScrollController? scrollController) builder,
@@ -31,12 +84,14 @@ Future<T?> showAppBottomSheet<T>({
   double maxChildSize = 0.9,
   bool useSafeArea = true,
   bool enableDrag = true,
+  bool isDismissible = true,
 }) => showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
     useSafeArea: useSafeArea,
     backgroundColor: Colors.transparent,
     enableDrag: enableDrag,
+    isDismissible: isDismissible,
     builder: (context) => useScrollable
         ? _ScrollableBottomSheet(
             title: title,
@@ -327,13 +382,31 @@ class _FixedBottomSheet extends ConsumerWidget {
 }
 
 /// 显示简单的选项菜单底部弹窗
+///
+/// iOS 26+: 使用原生 UISheetPresentationController (Liquid Glass 自动效果)
+/// 其他平台: 使用 Flutter 实现
 Future<T?> showOptionsBottomSheet<T>({
   required BuildContext context,
-  required List<OptionItem<T>> options, String? title,
-}) => showAppBottomSheet<T>(
+  required List<OptionItem<T>> options,
+  String? title,
+  bool showCancelButton = true,
+}) async {
+  // iOS 平台使用原生底部弹框
+  if (!kIsWeb && Platform.isIOS) {
+    return _showNativeOptionsBottomSheet<T>(
+      context: context,
+      options: options,
+      title: title,
+      showCancelButton: showCancelButton,
+    );
+  }
+
+  // 其他平台使用 Flutter 实现
+  return showAppBottomSheet<T>(
     context: context,
     title: title,
     useScrollable: false,
+    isDismissible: true,
     builder: (context, _) => Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -342,6 +415,269 @@ Future<T?> showOptionsBottomSheet<T>({
       ],
     ),
   );
+}
+
+/// iOS 原生选项底部弹框
+Future<T?> _showNativeOptionsBottomSheet<T>({
+  required BuildContext context,
+  required List<OptionItem<T>> options,
+  String? title,
+  bool showCancelButton = true,
+}) async {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  // 构建选项列表
+  final items = <Map<String, dynamic>>[];
+  final valueMap = <String, T>{};
+
+  for (var i = 0; i < options.length; i++) {
+    final option = options[i];
+    final valueKey = 'option_$i';
+
+    if (option.value != null) {
+      valueMap[valueKey] = option.value as T;
+    }
+
+    items.add({
+      'title': option.title,
+      'subtitle': option.subtitle,
+      'icon': _iconDataToSFSymbol(option.icon),
+      'value': valueKey,
+      'isSelected': option.isSelected,
+      'isDestructive': option.isDestructive,
+      'autoDismiss': true,
+    });
+  }
+
+  try {
+    final sheetId = await _nativeBottomSheetChannel.invokeMethod<int>('showSheet', {
+      'isDark': isDark,
+      'title': title,
+      'items': items,
+      'showDragHandle': true,
+      'showCancelButton': showCancelButton,
+      'dismissOnTapBackground': true,
+      'initialDetent': 'medium',
+      'allowedDetents': ['medium', 'large'],
+    });
+
+    if (sheetId == null) return null;
+
+    // 使用回调管理器等待用户选择
+    final completer = Completer<String?>();
+    _callbackManager.registerCompleter(sheetId, completer);
+
+    final selectedValueKey = await completer.future.timeout(
+      const Duration(minutes: 5),
+      onTimeout: () {
+        _callbackManager.removeCompleter(sheetId);
+        return null;
+      },
+    );
+
+    if (selectedValueKey != null && valueMap.containsKey(selectedValueKey)) {
+      return valueMap[selectedValueKey];
+    }
+    return null;
+  } catch (e) {
+    // 回退到 Flutter 实现
+    debugPrint('Native bottom sheet failed: $e, falling back to Flutter implementation');
+    return showAppBottomSheet<T>(
+      context: context,
+      title: title,
+      useScrollable: false,
+      isDismissible: true,
+      builder: (context, _) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final option in options)
+            _OptionTile<T>(option: option),
+        ],
+      ),
+    );
+  }
+}
+
+/// 将 Flutter IconData 转换为 iOS SF Symbol 名称
+String? _iconDataToSFSymbol(IconData? icon) {
+  if (icon == null) return null;
+
+  final mapping = <int, String>{
+    // 通用操作
+    Icons.add_rounded.codePoint: 'plus',
+    Icons.add.codePoint: 'plus',
+    Icons.remove_rounded.codePoint: 'minus',
+    Icons.delete_rounded.codePoint: 'trash',
+    Icons.delete_outline_rounded.codePoint: 'trash',
+    Icons.delete_forever_rounded.codePoint: 'trash.fill',
+    Icons.edit_rounded.codePoint: 'pencil',
+    Icons.share_rounded.codePoint: 'square.and.arrow.up',
+    Icons.copy_rounded.codePoint: 'doc.on.doc',
+    Icons.content_copy_rounded.codePoint: 'doc.on.doc',
+    Icons.paste_rounded.codePoint: 'doc.on.clipboard',
+
+    // 收藏与喜欢
+    Icons.favorite_rounded.codePoint: 'heart.fill',
+    Icons.favorite_border_rounded.codePoint: 'heart',
+    Icons.star_rounded.codePoint: 'star.fill',
+    Icons.star_border_rounded.codePoint: 'star',
+    Icons.bookmark_rounded.codePoint: 'bookmark.fill',
+    Icons.bookmark_border_rounded.codePoint: 'bookmark',
+    Icons.bookmarks_rounded.codePoint: 'bookmark',
+
+    // 音乐相关
+    Icons.queue_music_rounded.codePoint: 'list.bullet',
+    Icons.playlist_add_rounded.codePoint: 'plus.rectangle.on.rectangle',
+    Icons.playlist_play_rounded.codePoint: 'play.rectangle',
+    Icons.album_rounded.codePoint: 'opticaldisc',
+    Icons.music_note_rounded.codePoint: 'music.note',
+    Icons.audiotrack_rounded.codePoint: 'music.note',
+    Icons.headphones_rounded.codePoint: 'headphones',
+    Icons.lyrics_rounded.codePoint: 'text.quote',
+    Icons.graphic_eq_rounded.codePoint: 'waveform.path',
+    Icons.equalizer_rounded.codePoint: 'slider.horizontal.3',
+
+    // 播放控制
+    Icons.play_arrow_rounded.codePoint: 'play.fill',
+    Icons.pause_rounded.codePoint: 'pause.fill',
+    Icons.stop_rounded.codePoint: 'stop.fill',
+    Icons.skip_next_rounded.codePoint: 'forward.fill',
+    Icons.skip_previous_rounded.codePoint: 'backward.fill',
+    Icons.fast_forward_rounded.codePoint: 'forward.end.fill',
+    Icons.fast_rewind_rounded.codePoint: 'backward.end.fill',
+    Icons.shuffle_rounded.codePoint: 'shuffle',
+    Icons.repeat_rounded.codePoint: 'repeat',
+    Icons.repeat_one_rounded.codePoint: 'repeat.1',
+    Icons.volume_up_rounded.codePoint: 'speaker.wave.3.fill',
+    Icons.volume_down_rounded.codePoint: 'speaker.wave.1.fill',
+    Icons.volume_off_rounded.codePoint: 'speaker.slash.fill',
+    Icons.volume_mute_rounded.codePoint: 'speaker.fill',
+
+    // 信息与设置
+    Icons.info_rounded.codePoint: 'info.circle',
+    Icons.info_outline_rounded.codePoint: 'info.circle',
+    Icons.help_rounded.codePoint: 'questionmark.circle',
+    Icons.help_outline_rounded.codePoint: 'questionmark.circle',
+    Icons.settings_rounded.codePoint: 'gearshape',
+    Icons.tune_rounded.codePoint: 'slider.horizontal.3',
+
+    // 刷新与同步
+    Icons.refresh_rounded.codePoint: 'arrow.clockwise',
+    Icons.sync_rounded.codePoint: 'arrow.triangle.2.circlepath',
+
+    // 下载与上传
+    Icons.download_rounded.codePoint: 'arrow.down.circle',
+    Icons.upload_rounded.codePoint: 'arrow.up.circle',
+    Icons.cloud_download_rounded.codePoint: 'icloud.and.arrow.down',
+    Icons.cloud_upload_rounded.codePoint: 'icloud.and.arrow.up',
+    Icons.file_download_rounded.codePoint: 'arrow.down.doc',
+    Icons.file_upload_rounded.codePoint: 'arrow.up.doc',
+
+    // 文件与文件夹
+    Icons.folder_rounded.codePoint: 'folder',
+    Icons.folder_open_rounded.codePoint: 'folder',
+    Icons.create_new_folder_rounded.codePoint: 'folder.badge.plus',
+    Icons.drive_file_move_rounded.codePoint: 'folder.badge.questionmark',
+    Icons.insert_drive_file_rounded.codePoint: 'doc',
+
+    // 人物
+    Icons.person_rounded.codePoint: 'person',
+    Icons.person_add_rounded.codePoint: 'person.badge.plus',
+    Icons.people_rounded.codePoint: 'person.2',
+    Icons.group_rounded.codePoint: 'person.3',
+
+    // 导航与查看
+    Icons.check_rounded.codePoint: 'checkmark',
+    Icons.check_circle_rounded.codePoint: 'checkmark.circle.fill',
+    Icons.close_rounded.codePoint: 'xmark',
+    Icons.cancel_rounded.codePoint: 'xmark.circle.fill',
+    Icons.more_horiz_rounded.codePoint: 'ellipsis',
+    Icons.more_vert_rounded.codePoint: 'ellipsis',
+    Icons.search_rounded.codePoint: 'magnifyingglass',
+    Icons.visibility_rounded.codePoint: 'eye',
+    Icons.visibility_off_rounded.codePoint: 'eye.slash',
+    Icons.open_in_new_rounded.codePoint: 'arrow.up.forward.square',
+    Icons.launch_rounded.codePoint: 'arrow.up.forward.square',
+    Icons.link_rounded.codePoint: 'link',
+    Icons.arrow_forward_rounded.codePoint: 'arrow.right',
+    Icons.arrow_back_rounded.codePoint: 'arrow.left',
+    Icons.arrow_upward_rounded.codePoint: 'arrow.up',
+    Icons.arrow_downward_rounded.codePoint: 'arrow.down',
+    Icons.expand_more_rounded.codePoint: 'chevron.down',
+    Icons.expand_less_rounded.codePoint: 'chevron.up',
+    Icons.chevron_right_rounded.codePoint: 'chevron.right',
+    Icons.chevron_left_rounded.codePoint: 'chevron.left',
+
+    // 媒体类型
+    Icons.photo_rounded.codePoint: 'photo',
+    Icons.photo_library_rounded.codePoint: 'photo.on.rectangle',
+    Icons.image_rounded.codePoint: 'photo',
+    Icons.video_library_rounded.codePoint: 'film',
+    Icons.movie_rounded.codePoint: 'film',
+    Icons.theaters_rounded.codePoint: 'film',
+    Icons.tv_rounded.codePoint: 'tv',
+    Icons.live_tv_rounded.codePoint: 'tv',
+    Icons.book_rounded.codePoint: 'book',
+    Icons.menu_book_rounded.codePoint: 'book.fill',
+    Icons.collections_bookmark_rounded.codePoint: 'books.vertical',
+    Icons.note_alt_rounded.codePoint: 'note.text',
+
+    // 排序与筛选
+    Icons.sort_rounded.codePoint: 'arrow.up.arrow.down',
+    Icons.filter_list_rounded.codePoint: 'line.3.horizontal.decrease',
+    Icons.filter_alt_rounded.codePoint: 'line.3.horizontal.decrease.circle',
+
+    // 时间与日期
+    Icons.access_time_rounded.codePoint: 'clock',
+    Icons.schedule_rounded.codePoint: 'clock',
+    Icons.calendar_today_rounded.codePoint: 'calendar',
+    Icons.event_rounded.codePoint: 'calendar',
+    Icons.history_rounded.codePoint: 'clock.arrow.circlepath',
+
+    // 其他
+    Icons.home_rounded.codePoint: 'house',
+    Icons.language_rounded.codePoint: 'globe',
+    Icons.wifi_rounded.codePoint: 'wifi',
+    Icons.signal_wifi_off_rounded.codePoint: 'wifi.slash',
+    Icons.bluetooth_rounded.codePoint: 'dot.radiowaves.left.and.right',
+    Icons.battery_full_rounded.codePoint: 'battery.100',
+    Icons.battery_charging_full_rounded.codePoint: 'battery.100.bolt',
+    Icons.brightness_high_rounded.codePoint: 'sun.max',
+    Icons.brightness_low_rounded.codePoint: 'sun.min',
+    Icons.dark_mode_rounded.codePoint: 'moon',
+    Icons.light_mode_rounded.codePoint: 'sun.max',
+    Icons.lock_rounded.codePoint: 'lock',
+    Icons.lock_open_rounded.codePoint: 'lock.open',
+    Icons.security_rounded.codePoint: 'shield',
+    Icons.warning_rounded.codePoint: 'exclamationmark.triangle',
+    Icons.error_rounded.codePoint: 'xmark.circle',
+    Icons.error_outline_rounded.codePoint: 'exclamationmark.circle',
+    Icons.notifications_rounded.codePoint: 'bell',
+    Icons.notifications_off_rounded.codePoint: 'bell.slash',
+    Icons.send_rounded.codePoint: 'paperplane',
+    Icons.mail_rounded.codePoint: 'envelope',
+    Icons.attach_file_rounded.codePoint: 'paperclip',
+    Icons.camera_alt_rounded.codePoint: 'camera',
+    Icons.qr_code_rounded.codePoint: 'qrcode',
+    Icons.crop_rounded.codePoint: 'crop',
+    Icons.rotate_left_rounded.codePoint: 'rotate.left',
+    Icons.rotate_right_rounded.codePoint: 'rotate.right',
+    Icons.zoom_in_rounded.codePoint: 'plus.magnifyingglass',
+    Icons.zoom_out_rounded.codePoint: 'minus.magnifyingglass',
+    Icons.fullscreen_rounded.codePoint: 'arrow.up.left.and.arrow.down.right',
+    Icons.fullscreen_exit_rounded.codePoint: 'arrow.down.right.and.arrow.up.left',
+    Icons.cast_rounded.codePoint: 'airplayvideo',
+    Icons.airplay_rounded.codePoint: 'airplayvideo',
+    Icons.subtitles_rounded.codePoint: 'captions.bubble',
+    Icons.closed_caption_rounded.codePoint: 'captions.bubble',
+    Icons.speed_rounded.codePoint: 'speedometer',
+    Icons.timer_rounded.codePoint: 'timer',
+    Icons.aspect_ratio_rounded.codePoint: 'aspectratio',
+    Icons.hd_rounded.codePoint: 'sparkles.rectangle.stack',
+  };
+
+  return mapping[icon.codePoint];
+}
 
 /// 选项项
 class OptionItem<T> {

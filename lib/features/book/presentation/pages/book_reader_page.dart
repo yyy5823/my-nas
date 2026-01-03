@@ -26,6 +26,7 @@ import 'package:my_nas/features/reading/presentation/providers/reader_settings_p
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
@@ -378,6 +379,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(false);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
     _scrollController.addListener(_onScroll);
@@ -599,6 +602,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       ..dispose();
     _pageController?.dispose();
     _timeTimer?.cancel();
+    // 恢复原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(true);
     super.dispose();
   }
 

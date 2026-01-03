@@ -119,75 +119,50 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
   Widget _buildFloatingButtons(BuildContext context, bool isDark, int currentTab) =>
     GlassButtonGroup(
       children: [
-        _buildTypeSwitcherGlassButton(context, isDark, currentTab),
-      ],
-    );
+        GlassGroupPopupMenuButton<int>(
+          icon: ReadingContentType.values[currentTab].icon,
+          tooltip: '切换内容类型',
+          itemBuilder: (context) => ReadingContentType.values.asMap().entries.map((entry) {
+            final index = entry.key;
+            final type = entry.value;
+            final isSelected = index == currentTab;
 
-  /// 玻璃模式下的类型切换按钮（放入 GlassButtonGroup）
-  Widget _buildTypeSwitcherGlassButton(BuildContext context, bool isDark, int currentTab) =>
-    PopupMenuButton<int>(
-      offset: const Offset(0, 40),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      padding: EdgeInsets.zero,
-      itemBuilder: (context) => ReadingContentType.values.asMap().entries.map((entry) {
-        final index = entry.key;
-        final type = entry.value;
-        final isSelected = index == currentTab;
-
-        return PopupMenuItem<int>(
-          value: index,
-          child: Row(
-            children: [
-              Icon(
-                type.icon,
-                size: 20,
-                color: isSelected
-                    ? AppColors.primary
-                    : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600]),
+            return PopupMenuItem<int>(
+              value: index,
+              child: Row(
+                children: [
+                  Icon(
+                    type.icon,
+                    size: 20,
+                    color: isSelected
+                        ? AppColors.primary
+                        : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600]),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    type.label,
+                    style: TextStyle(
+                      color: isSelected
+                          ? AppColors.primary
+                          : (isDark ? AppColors.darkOnSurface : Colors.black87),
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                  if (isSelected) ...[
+                    const Spacer(),
+                    Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(width: 12),
-              Text(
-                type.label,
-                style: TextStyle(
-                  color: isSelected
-                      ? AppColors.primary
-                      : (isDark ? AppColors.darkOnSurface : Colors.black87),
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-              if (isSelected) ...[
-                const Spacer(),
-                Icon(
-                  Icons.check_rounded,
-                  size: 18,
-                  color: AppColors.primary,
-                ),
-              ],
-            ],
-          ),
-        );
-      }).toList(),
-      onSelected: _onTabChanged,
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              ReadingContentType.values[currentTab].icon,
-              size: 20,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-            Icon(
-              Icons.arrow_drop_down_rounded,
-              size: 16,
-              color: isDark ? Colors.white70 : Colors.black54,
-            ),
-          ],
+            );
+          }).toList(),
+          onSelected: _onTabChanged,
         ),
-      ),
+      ],
     );
 
   /// iOS 26 带大标题的阅读内容
@@ -196,32 +171,59 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     bool isDark,
     int currentTab,
     double safeTop,
-  ) => Column(
+  ) => PageView(
+      controller: _pageController,
+      physics: const NeverScrollableScrollPhysics(),
+      onPageChanged: (index) {
+        ref.read(readingTabProvider.notifier).state = index;
+      },
       children: [
-        // 顶部安全区域 + 悬浮按钮区域留白
-        SizedBox(height: safeTop + 52),
-        // 大标题区域
-        _buildLargeTitleSliver(context, isDark, currentTab),
-        // 内容区域
-        Expanded(
-          child: PageView(
-            controller: _pageController,
-            physics: const NeverScrollableScrollPhysics(),
-            onPageChanged: (index) {
-              ref.read(readingTabProvider.notifier).state = index;
-            },
-            children: const [
-              BookListContent(),
-              ComicListContent(),
-              NoteListContent(),
-            ],
-          ),
+        // 图书页面 - 带大标题的滚动布局
+        _buildScrollableContent(
+          context, isDark, currentTab, safeTop,
+          child: const BookListContent(),
+        ),
+        // 漫画页面
+        _buildScrollableContent(
+          context, isDark, currentTab, safeTop,
+          child: const ComicListContent(),
+        ),
+        // 笔记页面
+        _buildScrollableContent(
+          context, isDark, currentTab, safeTop,
+          child: const NoteListContent(),
         ),
       ],
     );
 
-  /// iOS 26 大标题区域
-  Widget _buildLargeTitleSliver(BuildContext context, bool isDark, int currentTab) {
+  /// 构建带大标题的可滚动内容
+  Widget _buildScrollableContent(
+    BuildContext context,
+    bool isDark,
+    int currentTab,
+    double safeTop, {
+    required Widget child,
+  }) {
+    return Column(
+      children: [
+        // 顶部安全区留白 + 大标题
+        Padding(
+          padding: EdgeInsets.only(top: safeTop + 8),
+          child: _buildLargeTitle(context, isDark, currentTab, hasFloatingButtons: true),
+        ),
+        // 内容 - 使用 Expanded 填充剩余空间
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  /// iOS 26 大标题区域（非 Sliver 版本）
+  Widget _buildLargeTitle(
+    BuildContext context,
+    bool isDark,
+    int currentTab, {
+    bool hasFloatingButtons = false,
+  }) {
     // 获取各类数据统计
     final bookState = ref.watch(bookListProvider);
     final comicState = ref.watch(comicListProvider);
@@ -235,40 +237,44 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // 大标题
-          Text(
-            _getGreeting(),
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Colors.black87,
-              letterSpacing: -0.5,
+          // 大标题 - 需要避开浮动按钮
+          Padding(
+            padding: EdgeInsets.only(right: hasFloatingButtons ? 150 : 0),
+            child: Text(
+              _getGreeting(),
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+                letterSpacing: -0.5,
+              ),
             ),
           ),
           const SizedBox(height: 8),
-          // 统计信息
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
+          // 统计信息 - 横向排列
+          Row(
             children: [
               _buildStatChip(
                 icon: Icons.menu_book_rounded,
-                label: '$bookCount 图书',
+                label: '$bookCount 本',
                 color: Colors.amber[700]!,
                 isDark: isDark,
                 isActive: currentTab == 0,
               ),
+              const SizedBox(width: 12),
               _buildStatChip(
                 icon: Icons.collections_bookmark_rounded,
-                label: '$comicCount 漫画',
+                label: '$comicCount 部',
                 color: Colors.orange[600]!,
                 isDark: isDark,
                 isActive: currentTab == 1,
               ),
+              const SizedBox(width: 12),
               _buildStatChip(
                 icon: Icons.note_alt_rounded,
-                label: '$noteCount 笔记',
+                label: '$noteCount 篇',
                 color: Colors.green[600]!,
                 isDark: isDark,
                 isActive: currentTab == 2,

@@ -91,8 +91,33 @@ class DesktopLyricController: NSObject, NSWindowDelegate {
         // 设置窗口行为（在所有桌面可见）
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
-        // 创建内容视图
-        contentView = DesktopLyricView(frame: window.contentView!.bounds, settings: settings)
+        // 创建容器视图（用于正确分层）
+        let containerView = NSView(frame: window.contentView!.bounds)
+        containerView.wantsLayer = true
+        containerView.autoresizingMask = [.width, .height]
+
+        // 1. 先添加半透明背景色（最底层）
+        let backgroundView = NSView(frame: containerView.bounds)
+        backgroundView.wantsLayer = true
+        backgroundView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        backgroundView.layer?.cornerRadius = 16
+        backgroundView.layer?.masksToBounds = true
+        backgroundView.autoresizingMask = [.width, .height]
+        containerView.addSubview(backgroundView)
+
+        // 2. 添加毛玻璃效果（在背景色上方）
+        let visualEffectView = NSVisualEffectView(frame: containerView.bounds)
+        visualEffectView.material = .hudWindow
+        visualEffectView.blendingMode = .withinWindow
+        visualEffectView.state = .active
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.cornerRadius = 16
+        visualEffectView.layer?.masksToBounds = true
+        visualEffectView.autoresizingMask = [.width, .height]
+        containerView.addSubview(visualEffectView)
+
+        // 3. 添加内容视图（在毛玻璃上方）
+        contentView = DesktopLyricView(frame: containerView.bounds, settings: settings)
         contentView?.autoresizingMask = [.width, .height]
         contentView?.onClose = { [weak self] in
             self?.hide()
@@ -103,26 +128,13 @@ class DesktopLyricController: NSObject, NSWindowDelegate {
             self?.window?.isMovableByWindowBackground = !isLocked
             self?.channel?.invokeMethod("onLockToggled", arguments: ["isLocked": isLocked])
         }
+        contentView?.onControlAction = { [weak self] action in
+            self?.channel?.invokeMethod("onControlAction", arguments: ["action": action])
+        }
+        containerView.addSubview(contentView!)
 
-        window.contentView = contentView
-
-        // 添加毛玻璃效果
-        addVisualEffectView()
-    }
-
-    private func addVisualEffectView() {
-        guard let contentView = window?.contentView else { return }
-
-        let visualEffectView = NSVisualEffectView(frame: contentView.bounds)
-        visualEffectView.material = .hudWindow
-        visualEffectView.blendingMode = .behindWindow
-        visualEffectView.state = .active
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 12
-        visualEffectView.layer?.masksToBounds = true
-        visualEffectView.autoresizingMask = [.width, .height]
-
-        contentView.addSubview(visualEffectView, positioned: .below, relativeTo: nil)
+        // 设置窗口内容
+        window.contentView = containerView
     }
 
     private func getDefaultPosition() -> NSPoint {
@@ -139,9 +151,12 @@ class DesktopLyricController: NSObject, NSWindowDelegate {
 
     private func updateWindowLevel() {
         if settings.alwaysOnTop {
-            window?.level = .floating
+            // 使用更高的窗口层级，确保在全屏应用之上也能显示
+            // .floating (3) < .statusBar (25) < .modalPanel (8)
+            // 使用 statusBar 级别确保歌词窗口始终可见
+            window?.level = .statusBar
         } else {
-            window?.level = .normal
+            window?.level = .floating
         }
     }
 
@@ -164,9 +179,17 @@ class DesktopLyricView: NSView {
     private var currentLyricLabel: NSTextField!
     private var translationLabel: NSTextField!
     private var nextLineLabel: NSTextField!
+
+    // 右上角控制按钮
     private var closeButton: NSButton!
     private var lockButton: NSButton!
     private var controlsContainer: NSView!
+
+    // 播放控制按钮
+    private var playControlsContainer: NSView!
+    private var prevButton: NSButton!
+    private var playPauseButton: NSButton!
+    private var nextButton: NSButton!
 
     private var settings: DesktopLyricSettings
     private var isPlaying: Bool = false
@@ -174,6 +197,7 @@ class DesktopLyricView: NSView {
 
     var onClose: (() -> Void)?
     var onLockToggle: ((Bool) -> Void)?
+    var onControlAction: ((String) -> Void)?
 
     init(frame frameRect: NSRect, settings: DesktopLyricSettings) {
         self.settings = settings
@@ -189,11 +213,11 @@ class DesktopLyricView: NSView {
 
     private func setupUI() {
         wantsLayer = true
-        layer?.cornerRadius = 12
+        layer?.cornerRadius = 16
         layer?.masksToBounds = true
 
-        // 当前歌词
-        currentLyricLabel = createLabel(fontSize: settings.fontSize, bold: true)
+        // 当前歌词（使用高亮色）
+        currentLyricLabel = createLabel(fontSize: settings.fontSize, bold: true, color: settings.highlightColor)
         addSubview(currentLyricLabel)
 
         // 翻译歌词
@@ -203,10 +227,10 @@ class DesktopLyricView: NSView {
 
         // 下一行歌词
         nextLineLabel = createLabel(fontSize: settings.fontSize * 0.6, bold: false)
-        nextLineLabel.alphaValue = 0.4
+        nextLineLabel.alphaValue = 0.5
         addSubview(nextLineLabel)
 
-        // 控制按钮容器
+        // 右上角控制按钮容器
         controlsContainer = NSView(frame: NSRect(x: bounds.width - 60, y: bounds.height - 30, width: 50, height: 24))
         controlsContainer.autoresizingMask = [.minXMargin, .minYMargin]
         controlsContainer.isHidden = true
@@ -226,6 +250,34 @@ class DesktopLyricView: NSView {
         closeButton.action = #selector(closeButtonClicked)
         controlsContainer.addSubview(closeButton)
 
+        // 左侧播放控制按钮容器
+        let playControlsWidth: CGFloat = 90
+        playControlsContainer = NSView(frame: NSRect(x: 12, y: (bounds.height - 28) / 2, width: playControlsWidth, height: 28))
+        playControlsContainer.autoresizingMask = [.maxXMargin, .minYMargin, .maxYMargin]
+        playControlsContainer.isHidden = true
+        addSubview(playControlsContainer)
+
+        // 上一首按钮
+        prevButton = createPlayControlButton(imageName: "backward.fill")
+        prevButton.frame = NSRect(x: 0, y: 0, width: 28, height: 28)
+        prevButton.target = self
+        prevButton.action = #selector(prevButtonClicked)
+        playControlsContainer.addSubview(prevButton)
+
+        // 播放/暂停按钮
+        playPauseButton = createPlayControlButton(imageName: "play.fill")
+        playPauseButton.frame = NSRect(x: 31, y: 0, width: 28, height: 28)
+        playPauseButton.target = self
+        playPauseButton.action = #selector(playPauseButtonClicked)
+        playControlsContainer.addSubview(playPauseButton)
+
+        // 下一首按钮
+        nextButton = createPlayControlButton(imageName: "forward.fill")
+        nextButton.frame = NSRect(x: 62, y: 0, width: 28, height: 28)
+        nextButton.target = self
+        nextButton.action = #selector(nextButtonClicked)
+        playControlsContainer.addSubview(nextButton)
+
         // 添加鼠标追踪
         let trackingArea = NSTrackingArea(
             rect: bounds,
@@ -238,10 +290,10 @@ class DesktopLyricView: NSView {
         updateLayout()
     }
 
-    private func createLabel(fontSize: CGFloat, bold: Bool) -> NSTextField {
+    private func createLabel(fontSize: CGFloat, bold: Bool, color: NSColor? = nil) -> NSTextField {
         let label = NSTextField(labelWithString: "")
         label.font = NSFont.systemFont(ofSize: fontSize, weight: bold ? .semibold : .regular)
-        label.textColor = settings.textColor
+        label.textColor = color ?? settings.textColor
         label.alignment = .center
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
@@ -273,42 +325,78 @@ class DesktopLyricView: NSView {
         return button
     }
 
-    private func updateLayout() {
-        let padding: CGFloat = 48
-        let labelWidth = bounds.width - padding * 2
-        let centerY = bounds.height / 2
+    private func createPlayControlButton(imageName: String) -> NSButton {
+        let button = NSButton(frame: .zero)
+        button.bezelStyle = .regularSquare
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 14
+        button.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
 
-        // 当前歌词居中
+        if #available(macOS 11.0, *) {
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            button.image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+            button.contentTintColor = .white
+        }
+
+        return button
+    }
+
+    private func updateLayout() {
+        let padding: CGFloat = 24
+        let labelWidth = bounds.width - padding * 2
+        let spacing: CGFloat = 4
+
+        // 计算所有可见元素的总高度
+        let currentHeight = settings.fontSize + 4
+        let translationHeight = settings.showTranslation ? (settings.fontSize * 0.7 + 4) : 0
+        let nextLineHeight = settings.showNextLine ? (settings.fontSize * 0.6 + 4) : 0
+
+        var totalHeight = currentHeight
+        if settings.showTranslation {
+            totalHeight += translationHeight + spacing
+        }
+        if settings.showNextLine {
+            totalHeight += nextLineHeight + spacing
+        }
+
+        // 从顶部开始布局（macOS Y 坐标从底部开始，所以需要从 bounds.height 减）
+        // 垂直居中：起始 Y 位置 = (总高度 - 内容高度) / 2 + 内容高度
+        var yPos = (bounds.height + totalHeight) / 2
+
+        // 当前歌词（最上方）
+        yPos -= currentHeight
         currentLyricLabel.frame = NSRect(
             x: padding,
-            y: centerY - settings.fontSize / 2,
+            y: yPos,
             width: labelWidth,
-            height: settings.fontSize + 4
+            height: currentHeight
         )
 
-        // 翻译歌词在下方
+        // 翻译歌词（在当前歌词下方）
         if settings.showTranslation {
-            translationLabel.isHidden = false
+            yPos -= (translationHeight + spacing)
             translationLabel.frame = NSRect(
                 x: padding,
-                y: currentLyricLabel.frame.minY - settings.fontSize * 0.7 - 4,
+                y: yPos,
                 width: labelWidth,
-                height: settings.fontSize * 0.7 + 4
+                height: translationHeight
             )
+            translationLabel.isHidden = false
         } else {
             translationLabel.isHidden = true
         }
 
-        // 下一行歌词在更下方
+        // 下一行歌词（最下方）
         if settings.showNextLine {
-            nextLineLabel.isHidden = false
-            let baseY = settings.showTranslation ? translationLabel.frame.minY : currentLyricLabel.frame.minY
+            yPos -= (nextLineHeight + spacing)
             nextLineLabel.frame = NSRect(
                 x: padding,
-                y: baseY - settings.fontSize * 0.6 - 8,
+                y: yPos,
                 width: labelWidth,
-                height: settings.fontSize * 0.6 + 4
+                height: nextLineHeight
             )
+            nextLineLabel.isHidden = false
         } else {
             nextLineLabel.isHidden = true
         }
@@ -343,13 +431,14 @@ class DesktopLyricView: NSView {
 
     func updatePlayingState(isPlaying: Bool) {
         self.isPlaying = isPlaying
+        updatePlayPauseButtonImage()
     }
 
     func updateSettings(settings: DesktopLyricSettings) {
         self.settings = settings
 
         currentLyricLabel.font = NSFont.systemFont(ofSize: settings.fontSize, weight: .semibold)
-        currentLyricLabel.textColor = settings.textColor
+        currentLyricLabel.textColor = settings.highlightColor  // 当前歌词使用高亮色
         translationLabel.font = NSFont.systemFont(ofSize: settings.fontSize * 0.7, weight: .regular)
         translationLabel.textColor = settings.textColor
         nextLineLabel.font = NSFont.systemFont(ofSize: settings.fontSize * 0.6, weight: .regular)
@@ -378,12 +467,26 @@ class DesktopLyricView: NSView {
         onLockToggle?(settings.lockPosition)
     }
 
+    @objc private func prevButtonClicked() {
+        onControlAction?("previous")
+    }
+
+    @objc private func playPauseButtonClicked() {
+        onControlAction?(isPlaying ? "pause" : "play")
+    }
+
+    @objc private func nextButtonClicked() {
+        onControlAction?("next")
+    }
+
     override func mouseEntered(with event: NSEvent) {
         isHovering = true
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             controlsContainer.animator().isHidden = false
             controlsContainer.animator().alphaValue = 1.0
+            playControlsContainer.animator().isHidden = false
+            playControlsContainer.animator().alphaValue = 1.0
         }
     }
 
@@ -392,8 +495,18 @@ class DesktopLyricView: NSView {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             controlsContainer.animator().alphaValue = 0.0
+            playControlsContainer.animator().alphaValue = 0.0
         } completionHandler: { [weak self] in
             self?.controlsContainer.isHidden = true
+            self?.playControlsContainer.isHidden = true
+        }
+    }
+
+    private func updatePlayPauseButtonImage() {
+        if #available(macOS 11.0, *) {
+            let imageName = isPlaying ? "pause.fill" : "play.fill"
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            playPauseButton.image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         }
     }
 }

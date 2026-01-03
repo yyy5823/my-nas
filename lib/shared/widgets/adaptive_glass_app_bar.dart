@@ -784,6 +784,20 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
           'icon': sfSymbol,
           'tooltip': child.tooltip,
         });
+      } else if (child is GlassGroupPopupMenuButton) {
+        // PopupMenu 按钮也支持
+        final sfSymbol = _iconDataToSFSymbol(child.icon);
+        configs.add({
+          'icon': sfSymbol,
+          'tooltip': child.tooltip,
+        });
+      } else if (child is GlassGroupDynamicButton) {
+        // 动态图标按钮
+        final sfSymbol = _iconDataToSFSymbol(child.icon);
+        configs.add({
+          'icon': sfSymbol,
+          'tooltip': child.tooltip,
+        });
       }
     }
     return configs;
@@ -793,20 +807,56 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
   String _iconDataToSFSymbol(IconData icon) {
     // 常用图标映射
     final mapping = <int, String>{
+      // 通用操作
       Icons.search_rounded.codePoint: 'magnifyingglass',
       Icons.tune_rounded.codePoint: 'slider.horizontal.3',
       Icons.more_vert_rounded.codePoint: 'ellipsis',
+      Icons.settings_rounded.codePoint: 'gearshape',
+      Icons.refresh_rounded.codePoint: 'arrow.clockwise',
+      Icons.add_rounded.codePoint: 'plus',
+      Icons.close_rounded.codePoint: 'xmark',
+      Icons.check_rounded.codePoint: 'checkmark',
+
+      // 列表和视图
       Icons.queue_music_rounded.codePoint: 'list.bullet',
       Icons.check_circle_outline_rounded.codePoint: 'checkmark.circle',
       Icons.view_timeline_rounded.codePoint: 'list.bullet.rectangle',
       Icons.grid_view_rounded.codePoint: 'square.grid.2x2',
-      Icons.arrow_drop_down_rounded.codePoint: 'chevron.down',
-      Icons.settings_rounded.codePoint: 'gearshape',
-      Icons.refresh_rounded.codePoint: 'arrow.clockwise',
       Icons.filter_alt_rounded.codePoint: 'line.3.horizontal.decrease.circle',
       Icons.sort_rounded.codePoint: 'arrow.up.arrow.down',
-      Icons.add_rounded.codePoint: 'plus',
-      Icons.close_rounded.codePoint: 'xmark',
+
+      // 下拉箭头
+      Icons.arrow_drop_down_rounded.codePoint: 'chevron.down',
+      Icons.arrow_drop_up_rounded.codePoint: 'chevron.up',
+      Icons.expand_more_rounded.codePoint: 'chevron.down',
+      Icons.expand_less_rounded.codePoint: 'chevron.up',
+
+      // 阅读相关
+      Icons.menu_book_rounded.codePoint: 'book.fill',
+      Icons.collections_bookmark_rounded.codePoint: 'books.vertical.fill',
+      Icons.note_alt_rounded.codePoint: 'note.text',
+      Icons.bookmark_rounded.codePoint: 'bookmark.fill',
+      Icons.bookmark_border_rounded.codePoint: 'bookmark',
+
+      // 媒体相关
+      Icons.photo_library_rounded.codePoint: 'photo.on.rectangle',
+      Icons.video_library_rounded.codePoint: 'video.fill',
+      Icons.music_note_rounded.codePoint: 'music.note',
+      Icons.album_rounded.codePoint: 'opticaldisc.fill',
+
+      // 云和存储
+      Icons.cloud_rounded.codePoint: 'cloud.fill',
+      Icons.folder_rounded.codePoint: 'folder.fill',
+      Icons.storage_rounded.codePoint: 'externaldrive.fill',
+
+      // 复制和重复
+      Icons.content_copy_rounded.codePoint: 'doc.on.doc',
+      Icons.copy_rounded.codePoint: 'doc.on.doc',
+
+      // 分享和导出
+      Icons.share_rounded.codePoint: 'square.and.arrow.up',
+      Icons.download_rounded.codePoint: 'arrow.down.circle',
+      Icons.upload_rounded.codePoint: 'arrow.up.circle',
     };
     return mapping[icon.codePoint] ?? 'circle';
   }
@@ -821,8 +871,54 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
           return;
         }
         buttonIndex++;
+      } else if (child is GlassGroupPopupMenuButton) {
+        if (buttonIndex == index) {
+          // 对于 PopupMenu，需要手动显示菜单
+          // 使用 context 调用 _showGlassMenu
+          _showPopupMenuForButton(child);
+          return;
+        }
+        buttonIndex++;
+      } else if (child is GlassGroupDynamicButton) {
+        if (buttonIndex == index) {
+          child.onPressed?.call();
+          return;
+        }
+        buttonIndex++;
       }
     }
+  }
+
+  /// 为 PopupMenuButton 显示菜单
+  void _showPopupMenuForButton<T>(GlassGroupPopupMenuButton<T> button) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+
+    // 计算按钮组的位置
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        renderBox.localToGlobal(Offset.zero, ancestor: overlay),
+        renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    final items = button.itemBuilder(context);
+
+    showGlassPopupMenu<T>(
+      context: context,
+      position: position,
+      items: items,
+      isDark: isDark,
+    ).then((value) {
+      if (value != null && button.onSelected != null) {
+        button.onSelected!(value);
+      }
+    });
   }
 
   void _setupChannel(int viewId) {
@@ -869,7 +965,30 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
             ),
             tooltip: child.tooltip,
           );
+        } else if (child is GlassGroupDynamicButton) {
+          return IconButton(
+            onPressed: child.onPressed,
+            icon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  child.icon,
+                  size: child.size,
+                  color: child.color ?? (isDark ? Colors.white : Colors.black87),
+                ),
+                if (child.showDropdownIndicator)
+                  Icon(
+                    Icons.arrow_drop_down_rounded,
+                    size: 16,
+                    color: (child.color ?? (isDark ? Colors.white : Colors.black87))
+                        .withValues(alpha: 0.7),
+                  ),
+              ],
+            ),
+            tooltip: child.tooltip,
+          );
         }
+        // GlassGroupPopupMenuButton 和其他 widget 直接返回
         return child;
       }).toList(),
     );
@@ -914,34 +1033,25 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
         ? Colors.white.withValues(alpha: glassStyle.borderOpacity * 0.8)
         : Colors.black.withValues(alpha: glassStyle.borderOpacity * 0.4);
 
+    // iOS 26 标准：使用间距而不是竖线分隔
     final wrappedChildren = <Widget>[];
     for (var i = 0; i < widget.children.length; i++) {
-      if (i > 0 && widget.spacing > 0) {
-        wrappedChildren.add(SizedBox(width: widget.spacing));
-      }
+      wrappedChildren.add(widget.children[i]);
+      // 按钮之间添加 4px 间距（iOS 26 标准）
       if (i < widget.children.length - 1) {
-        wrappedChildren.add(widget.children[i]);
-        wrappedChildren.add(
-          Container(
-            width: 0.5,
-            height: 24,
-            color: borderColor,
-          ),
-        );
-      } else {
-        wrappedChildren.add(widget.children[i]);
+        wrappedChildren.add(const SizedBox(width: 4));
       }
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(22),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(color: borderColor, width: 0.5),
           ),
           child: Row(
@@ -976,7 +1086,11 @@ class GlassGroupIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final iconColor = color ?? (isDark ? Colors.white : Colors.black87);
+    final isDisabled = onPressed == null;
+    // 禁用时使用较淡的颜色
+    final iconColor = isDisabled
+        ? (isDark ? Colors.white38 : Colors.black26)
+        : (color ?? (isDark ? Colors.white : Colors.black87));
 
     Widget button = Material(
       color: Colors.transparent,
@@ -988,6 +1102,80 @@ class GlassGroupIconButton extends StatelessWidget {
           height: 40,
           alignment: Alignment.center,
           child: Icon(icon, size: size, color: iconColor),
+        ),
+      ),
+    );
+
+    if (tooltip != null) {
+      button = Tooltip(message: tooltip!, child: button);
+    }
+
+    return button;
+  }
+}
+
+/// 动态图标按钮 - 支持根据状态改变图标
+///
+/// 用于需要动态切换图标的场景，如阅读页面的内容类型切换
+/// 在 iOS 原生模式下会显示主图标
+class GlassGroupDynamicButton extends StatelessWidget {
+  const GlassGroupDynamicButton({
+    required this.icon,
+    this.onPressed,
+    this.tooltip,
+    this.size = 20,
+    this.color,
+    this.showDropdownIndicator = false,
+    super.key,
+  });
+
+  /// 当前显示的图标
+  final IconData icon;
+
+  /// 点击回调
+  final VoidCallback? onPressed;
+
+  /// 提示文本
+  final String? tooltip;
+
+  /// 图标大小
+  final double size;
+
+  /// 图标颜色
+  final Color? color;
+
+  /// 是否显示下拉指示器
+  final bool showDropdownIndicator;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = color ?? (isDark ? Colors.white : Colors.black87);
+
+    Widget button = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: showDropdownIndicator ? 52 : 40,
+          height: 40,
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: size, color: iconColor),
+              if (showDropdownIndicator) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  size: 16,
+                  color: iconColor.withValues(alpha: 0.7),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -1088,7 +1276,8 @@ class GlassGroupPopupMenuButton<T> extends StatelessWidget {
 
 /// 显示玻璃风格弹出菜单
 ///
-/// 使用 BackdropFilter 实现毛玻璃效果
+/// iOS 26+: 使用原生 UIAlertController (Liquid Glass 自动效果)
+/// 其他平台: 使用 Flutter BackdropFilter 实现毛玻璃效果
 Future<T?> showGlassPopupMenu<T>({
   required BuildContext context,
   required RelativeRect position,
@@ -1096,7 +1285,18 @@ Future<T?> showGlassPopupMenu<T>({
   bool isDark = false,
   double elevation = 8,
   double blurSigma = 20,
-}) {
+}) async {
+  // iOS 平台使用原生弹出菜单
+  if (!kIsWeb && Platform.isIOS) {
+    return _showNativeIOSPopupMenu<T>(
+      context: context,
+      position: position,
+      items: items,
+      isDark: isDark,
+    );
+  }
+
+  // 其他平台使用 Flutter 实现
   return Navigator.of(context).push<T>(
     _GlassPopupMenuRoute<T>(
       position: position,
@@ -1107,6 +1307,148 @@ Future<T?> showGlassPopupMenu<T>({
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     ),
   );
+}
+
+/// iOS 原生弹出菜单实现
+Future<T?> _showNativeIOSPopupMenu<T>({
+  required BuildContext context,
+  required RelativeRect position,
+  required List<PopupMenuEntry<T>> items,
+  required bool isDark,
+}) async {
+  const channel = MethodChannel('com.kkape.mynas/glass_popup_menu');
+
+  // 提取菜单项信息
+  final menuItems = <Map<String, dynamic>>[];
+  final valueMap = <String, T>{};
+
+  for (var i = 0; i < items.length; i++) {
+    final item = items[i];
+    if (item is PopupMenuItem<T>) {
+      final valueKey = 'item_$i';
+      if (item.value != null) {
+        valueMap[valueKey] = item.value as T;
+      }
+
+      // 尝试从 child 提取文本和图标
+      String title = '';
+      String? icon;
+
+      if (item.child is Text) {
+        title = (item.child as Text).data ?? '';
+      } else if (item.child is Row) {
+        final row = item.child as Row;
+        for (final child in row.children) {
+          if (child is Text) {
+            title = child.data ?? '';
+          } else if (child is Icon) {
+            icon = _iconDataToSFSymbol(child.icon);
+          }
+        }
+      } else if (item.child is ListTile) {
+        // 处理 ListTile 类型的菜单项
+        final listTile = item.child as ListTile;
+        if (listTile.title is Text) {
+          title = (listTile.title as Text).data ?? '';
+        }
+        if (listTile.leading is Icon) {
+          icon = _iconDataToSFSymbol((listTile.leading as Icon).icon);
+        }
+      } else {
+        // 其他类型，尝试获取 Widget 的描述性文本
+        title = _extractTextFromWidget(item.child);
+      }
+
+      menuItems.add({
+        'title': title,
+        'icon': icon,
+        'value': valueKey,
+        'isDestructive': false,
+      });
+    }
+  }
+
+  // 计算屏幕坐标
+  final size = MediaQuery.of(context).size;
+  final x = size.width - position.right;
+  final y = size.height - position.bottom;
+
+  try {
+    final result = await channel.invokeMethod<String>('showMenu', {
+      'x': x,
+      'y': y,
+      'isDark': isDark,
+      'items': menuItems,
+    });
+
+    if (result != null && valueMap.containsKey(result)) {
+      return valueMap[result];
+    }
+  } catch (e) {
+    // 如果原生调用失败，回退到 Flutter 实现
+    debugPrint('Native popup menu failed: $e, falling back to Flutter implementation');
+    return Navigator.of(context).push<T>(
+      _GlassPopupMenuRoute<T>(
+        position: position,
+        items: items,
+        isDark: isDark,
+        elevation: 8,
+        blurSigma: 20,
+        barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      ),
+    );
+  }
+
+  return null;
+}
+
+/// 从 Widget 中提取文本（递归查找）
+String _extractTextFromWidget(Widget? widget) {
+  if (widget == null) return '';
+  if (widget is Text) return widget.data ?? '';
+  if (widget is ListTile) {
+    if (widget.title is Text) {
+      return (widget.title as Text).data ?? '';
+    }
+  }
+  if (widget is Row || widget is Column || widget is Flex) {
+    final flex = widget as Flex;
+    for (final child in flex.children) {
+      final text = _extractTextFromWidget(child);
+      if (text.isNotEmpty) return text;
+    }
+  }
+  return '';
+}
+
+/// 将 Flutter IconData 转换为 iOS SF Symbol 名称
+String? _iconDataToSFSymbol(IconData? icon) {
+  if (icon == null) return null;
+
+  final mapping = <int, String>{
+    Icons.add_rounded.codePoint: 'plus',
+    Icons.delete_rounded.codePoint: 'trash',
+    Icons.edit_rounded.codePoint: 'pencil',
+    Icons.share_rounded.codePoint: 'square.and.arrow.up',
+    Icons.copy_rounded.codePoint: 'doc.on.doc',
+    Icons.content_copy_rounded.codePoint: 'doc.on.doc',
+    Icons.favorite_rounded.codePoint: 'heart.fill',
+    Icons.favorite_border_rounded.codePoint: 'heart',
+    Icons.queue_music_rounded.codePoint: 'list.bullet',
+    Icons.playlist_add_rounded.codePoint: 'plus.rectangle.on.rectangle',
+    Icons.info_rounded.codePoint: 'info.circle',
+    Icons.settings_rounded.codePoint: 'gearshape',
+    Icons.refresh_rounded.codePoint: 'arrow.clockwise',
+    Icons.download_rounded.codePoint: 'arrow.down.circle',
+    Icons.upload_rounded.codePoint: 'arrow.up.circle',
+    Icons.folder_rounded.codePoint: 'folder',
+    Icons.person_rounded.codePoint: 'person',
+    Icons.album_rounded.codePoint: 'opticaldisc',
+    Icons.cloud_rounded.codePoint: 'cloud',
+    Icons.photo_library_rounded.codePoint: 'photo.on.rectangle',
+  };
+
+  return mapping[icon.codePoint];
 }
 
 /// 玻璃风格弹出菜单路由
@@ -1536,4 +1878,435 @@ class LiquidGlassPageLayout extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// iOS 26 风格玻璃搜索栏
+///
+/// 特性：
+/// - 胶囊形状（pill-shaped）全圆角
+/// - iOS 26+: 使用原生 UIGlassEffect
+/// - iOS < 26 / 其他平台: 使用 Flutter BackdropFilter
+/// - 搜索图标在左侧
+/// - 可选的取消按钮
+/// - 支持自动获取焦点
+/// - 支持输入变化回调
+class GlassSearchBar extends StatefulWidget {
+  const GlassSearchBar({
+    this.controller,
+    this.hintText = '搜索',
+    this.onChanged,
+    this.onSubmitted,
+    this.onCancel,
+    this.autofocus = false,
+    this.showCancelButton = true,
+    this.width,
+    this.height = 44,
+    this.enabled = true,
+    super.key,
+  });
+
+  /// 文本控制器
+  final TextEditingController? controller;
+
+  /// 提示文本
+  final String hintText;
+
+  /// 输入变化回调
+  final ValueChanged<String>? onChanged;
+
+  /// 提交回调
+  final ValueChanged<String>? onSubmitted;
+
+  /// 取消回调
+  final VoidCallback? onCancel;
+
+  /// 是否自动获取焦点
+  final bool autofocus;
+
+  /// 是否显示取消按钮
+  final bool showCancelButton;
+
+  /// 宽度（null 表示自动扩展）
+  final double? width;
+
+  /// 高度
+  final double height;
+
+  /// 是否启用
+  final bool enabled;
+
+  @override
+  State<GlassSearchBar> createState() => _GlassSearchBarState();
+}
+
+class _GlassSearchBarState extends State<GlassSearchBar>
+    with SingleTickerProviderStateMixin {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  late final AnimationController _animationController;
+  late final Animation<double> _scaleAnimation;
+  bool _isFocused = false;
+  bool _hasText = false;
+
+  // iOS 原生视图相关
+  MethodChannel? _nativeChannel;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.controller ?? TextEditingController();
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+    _controller.addListener(_onTextChange);
+    _hasText = _controller.text.isNotEmpty;
+
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.removeListener(_onTextChange);
+    if (widget.controller == null) {
+      _controller.dispose();
+    }
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    setState(() {
+      _isFocused = _focusNode.hasFocus;
+    });
+    if (_focusNode.hasFocus) {
+      _animationController.forward();
+    } else {
+      _animationController.reverse();
+    }
+  }
+
+  void _onTextChange() {
+    final hasText = _controller.text.isNotEmpty;
+    if (hasText != _hasText) {
+      setState(() {
+        _hasText = hasText;
+      });
+    }
+    // 同步到原生视图
+    _nativeChannel?.invokeMethod('setText', _controller.text);
+  }
+
+  void _handleCancel() {
+    _controller.clear();
+    _focusNode.unfocus();
+    _nativeChannel?.invokeMethod('clear');
+    widget.onCancel?.call();
+  }
+
+  void _handleClear() {
+    _controller.clear();
+    _nativeChannel?.invokeMethod('clear');
+    widget.onChanged?.call('');
+  }
+
+  void _onNativePlatformViewCreated(int viewId) {
+    _nativeChannel = MethodChannel('com.kkape.mynas/glass_search_bar_$viewId');
+    _nativeChannel!.setMethodCallHandler(_handleNativeMethodCall);
+  }
+
+  Future<dynamic> _handleNativeMethodCall(MethodCall call) async {
+    switch (call.method) {
+      case 'onChanged':
+        final text = call.arguments as String? ?? '';
+        // 同步到 Flutter 控制器（避免循环）
+        if (_controller.text != text) {
+          _controller.text = text;
+          _controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: text.length),
+          );
+        }
+        setState(() {
+          _hasText = text.isNotEmpty;
+        });
+        widget.onChanged?.call(text);
+      case 'onSubmitted':
+        final text = call.arguments as String? ?? '';
+        widget.onSubmitted?.call(text);
+      case 'onFocusChanged':
+        final focused = call.arguments as bool? ?? false;
+        setState(() {
+          _isFocused = focused;
+        });
+        if (focused) {
+          _animationController.forward();
+        } else {
+          _animationController.reverse();
+        }
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // iOS 平台使用原生 Platform View
+    if (Platform.isIOS) {
+      return _buildWithNativeView(context, isDark);
+    }
+
+    // 其他平台使用 Flutter 实现
+    return _buildFlutterImplementation(context, isDark);
+  }
+
+  /// iOS 原生 Platform View 实现
+  Widget _buildWithNativeView(BuildContext context, bool isDark) {
+    final creationParams = <String, dynamic>{
+      'isDark': isDark,
+      'placeholder': widget.hintText,
+      'text': _controller.text,
+      'autofocus': widget.autofocus,
+      'height': widget.height,
+    };
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 原生搜索框
+        SizedBox(
+          width: widget.width,
+          height: widget.height,
+          child: UiKitView(
+            viewType: 'com.kkape.mynas/glass_search_bar',
+            creationParams: creationParams,
+            creationParamsCodec: const StandardMessageCodec(),
+            onPlatformViewCreated: _onNativePlatformViewCreated,
+          ),
+        ),
+        // 取消按钮
+        if (widget.showCancelButton && (_isFocused || _hasText)) ...[
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: _handleCancel,
+            child: Text(
+              '取消',
+              style: TextStyle(
+                fontSize: 16,
+                color: AppColors.primary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Flutter 实现（用于非 iOS 平台）
+  Widget _buildFlutterImplementation(BuildContext context, bool isDark) {
+    // 玻璃效果颜色
+    final glassColor = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.black.withValues(alpha: 0.04);
+
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.18)
+        : Colors.black.withValues(alpha: 0.08);
+
+    final focusedBorderColor = isDark
+        ? Colors.white.withValues(alpha: 0.3)
+        : Colors.black.withValues(alpha: 0.15);
+
+    final iconColor = isDark ? Colors.white60 : Colors.black45;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final hintColor = isDark ? Colors.white38 : Colors.black38;
+
+    return AnimatedBuilder(
+      animation: _scaleAnimation,
+      builder: (context, child) => Transform.scale(
+        scale: _scaleAnimation.value,
+        child: child,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 搜索输入框
+          ClipRRect(
+            borderRadius: BorderRadius.circular(widget.height / 2),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: widget.width,
+                height: widget.height,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: glassColor,
+                  borderRadius: BorderRadius.circular(widget.height / 2),
+                  border: Border.all(
+                    color: _isFocused ? focusedBorderColor : borderColor,
+                    width: _isFocused ? 1.0 : 0.5,
+                  ),
+                  // 添加微妙的内阴影效果
+                  boxShadow: [
+                    if (_isFocused)
+                      BoxShadow(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        spreadRadius: -2,
+                      ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // 搜索图标
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      child: Icon(
+                        Icons.search_rounded,
+                        size: 20,
+                        color: _isFocused
+                            ? (isDark ? Colors.white70 : Colors.black54)
+                            : iconColor,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // 输入框
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        autofocus: widget.autofocus,
+                        enabled: widget.enabled,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w400,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: widget.hintText,
+                          hintStyle: TextStyle(
+                            color: hintColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        onChanged: widget.onChanged,
+                        onSubmitted: widget.onSubmitted,
+                        textInputAction: TextInputAction.search,
+                      ),
+                    ),
+                    // 清除按钮（有文本时显示）
+                    if (_hasText)
+                      GestureDetector(
+                        onTap: _handleClear,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.2)
+                                  : Colors.black.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 12,
+                              color: isDark ? Colors.white70 : Colors.black54,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // 取消按钮
+          if (widget.showCancelButton && (_isFocused || _hasText)) ...[
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: _handleCancel,
+              child: Text(
+                '取消',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// iOS 26 风格玻璃搜索栏（悬浮版）
+///
+/// 用于浮动在内容上方的搜索栏，通常与 GlassButtonGroup 配合使用
+class GlassFloatingSearchBar extends StatelessWidget {
+  const GlassFloatingSearchBar({
+    required this.controller,
+    required this.onChanged,
+    required this.onClose,
+    this.hintText = '搜索',
+    this.width = 240,
+    super.key,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClose;
+  final String hintText;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 玻璃搜索框
+        SizedBox(
+          width: width,
+          child: GlassSearchBar(
+            controller: controller,
+            hintText: hintText,
+            onChanged: onChanged,
+            autofocus: true,
+            showCancelButton: false,
+            height: 40,
+          ),
+        ),
+        const SizedBox(width: 8),
+        // 关闭按钮（使用 GlassButtonGroup 样式）
+        GlassButtonGroup(
+          children: [
+            GlassGroupIconButton(
+              icon: Icons.close_rounded,
+              onPressed: () {
+                controller.clear();
+                onChanged('');
+                onClose();
+              },
+              tooltip: '关闭搜索',
+            ),
+          ],
+        ),
+      ],
+    );
 }

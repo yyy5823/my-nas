@@ -107,6 +107,24 @@ import UIKit
             GlassButtonGroupPlugin.register(with: registrar)
         }
 
+        // 注册玻璃搜索栏 Platform View
+        // 用于实现 iOS 26 Liquid Glass 风格的搜索框
+        if let registrar = flutterEngine.registrar(forPlugin: "GlassSearchBarPlugin") {
+            GlassSearchBarPlugin.register(with: registrar)
+        }
+
+        // 注册玻璃弹出菜单
+        // 用于实现 iOS 26 Liquid Glass 风格的上下文菜单
+        if let registrar = flutterEngine.registrar(forPlugin: "GlassPopupMenuPlugin") {
+            GlassPopupMenuPlugin.register(with: registrar)
+        }
+
+        // 注册玻璃底部弹框
+        // 用于实现 iOS 26 Liquid Glass 风格的底部弹框
+        if let registrar = flutterEngine.registrar(forPlugin: "GlassBottomSheetPlugin") {
+            GlassBottomSheetPlugin.register(with: registrar)
+        }
+
         NSLog("🔮 AppDelegate: Custom plugins registered")
     }
 

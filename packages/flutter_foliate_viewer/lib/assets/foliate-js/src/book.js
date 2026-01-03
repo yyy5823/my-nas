@@ -719,7 +719,14 @@ const footnoteBackdrop = document.getElementById('footnote-backdrop')
 
 // 关闭脚注弹框
 const closeFootnoteDialog = () => {
-  if (footnoteDialog) footnoteDialog.style.display = 'none'
+  if (footnoteDialog) {
+    footnoteDialog.style.display = 'none'
+    // 清理定位样式和类
+    footnoteDialog.classList.remove('arrow-up', 'arrow-down', 'positioned')
+    footnoteDialog.style.top = ''
+    footnoteDialog.style.left = ''
+    footnoteDialog.style.transform = ''
+  }
   if (footnoteBackdrop) footnoteBackdrop.style.display = 'none'
   // 设置标志阻止翻页，延迟重置
   globalThis.__footnoteProcessing = true
@@ -732,75 +739,109 @@ if (footnoteDialog) {
   footnoteDialog.style.display = 'none'
 }
 
-// 点击背景关闭
+// 点击背景关闭（阻止事件传播到下层，避免触发翻页或控制栏）
 if (footnoteBackdrop) {
+  // 使用 pointerdown 和 pointerup 统一处理鼠标和触摸
+  footnoteBackdrop.addEventListener('pointerdown', e => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+  }, { capture: true })
+
+  footnoteBackdrop.addEventListener('pointerup', e => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+    closeFootnoteDialog()
+  }, { capture: true })
+
+  // 阻止 touch 事件传播（针对某些不支持 pointer 事件的设备）
+  footnoteBackdrop.addEventListener('touchstart', e => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+  }, { capture: true, passive: false })
+
+  footnoteBackdrop.addEventListener('touchend', e => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+    closeFootnoteDialog()
+  }, { capture: true, passive: false })
+
+  // 阻止 touchmove 传播
+  footnoteBackdrop.addEventListener('touchmove', e => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+  }, { capture: true, passive: false })
+
+  // 阻止 click 事件传播
   footnoteBackdrop.addEventListener('click', e => {
     e.preventDefault()
     e.stopPropagation()
-    closeFootnoteDialog()
-  })
-  // 阻止 touch 事件传播到下层
-  footnoteBackdrop.addEventListener('touchstart', e => {
-    e.stopPropagation()
-  }, { passive: true })
-  footnoteBackdrop.addEventListener('touchend', e => {
-    e.stopPropagation()
-  }, { passive: true })
+    e.stopImmediatePropagation()
+  }, { capture: true })
 }
 
-// 判断是否为移动设备（宽度 < 768px）
-const isMobileView = () => window.innerWidth < 768
+// 定位气泡弹框（统一用于移动端和桌面端）
+const positionBubbleDialog = (anchorRect) => {
+  if (!footnoteDialog) return
 
-// 定位桌面端弹框
-const positionDesktopDialog = (anchorRect) => {
-  if (!footnoteDialog || !anchorRect) return
-
-  const padding = 12 // 弹框与锚点的间距
+  const padding = 12 // 弹框与锚点/边缘的间距
   const viewportWidth = window.innerWidth
   const viewportHeight = window.innerHeight
 
   // 先显示弹框以获取其尺寸（visibility: hidden）
   footnoteDialog.style.visibility = 'hidden'
   footnoteDialog.style.display = 'flex'
+  footnoteDialog.classList.add('positioned')
 
   const dialogRect = footnoteDialog.getBoundingClientRect()
   const dialogWidth = dialogRect.width
   const dialogHeight = dialogRect.height
 
-  // 计算锚点中心位置
-  const anchorCenterX = (anchorRect.left + anchorRect.right) / 2
-  const anchorTop = anchorRect.top
-  const anchorBottom = anchorRect.bottom
-
-  // 决定弹框显示在上方还是下方
-  const spaceAbove = anchorTop
-  const spaceBelow = viewportHeight - anchorBottom
-  const showAbove = spaceAbove > spaceBelow && spaceAbove >= dialogHeight + padding
-
   let top, left
 
-  if (showAbove) {
-    // 显示在锚点上方
-    top = anchorTop - dialogHeight - padding
-    footnoteDialog.classList.remove('arrow-up')
-    footnoteDialog.classList.add('arrow-down')
+  if (anchorRect) {
+    // 有锚点位置信息，定位到锚点附近
+    const anchorCenterX = (anchorRect.left + anchorRect.right) / 2
+    const anchorTop = anchorRect.top
+    const anchorBottom = anchorRect.bottom
+
+    // 决定弹框显示在上方还是下方
+    const spaceAbove = anchorTop
+    const spaceBelow = viewportHeight - anchorBottom
+    const showAbove = spaceAbove > spaceBelow && spaceAbove >= dialogHeight + padding
+
+    if (showAbove) {
+      // 显示在锚点上方
+      top = anchorTop - dialogHeight - padding
+      footnoteDialog.classList.remove('arrow-up')
+      footnoteDialog.classList.add('arrow-down')
+    } else {
+      // 显示在锚点下方
+      top = anchorBottom + padding
+      footnoteDialog.classList.remove('arrow-down')
+      footnoteDialog.classList.add('arrow-up')
+    }
+
+    // 水平居中于锚点，但不超出屏幕
+    left = anchorCenterX - dialogWidth / 2
+    left = Math.max(padding, Math.min(left, viewportWidth - dialogWidth - padding))
+
+    // 计算箭头相对于弹框的位置
+    const arrowLeft = anchorCenterX - left
+    footnoteDialog.style.setProperty('--arrow-left', `${arrowLeft}px`)
+
+    // 确保垂直方向不超出屏幕
+    top = Math.max(padding, Math.min(top, viewportHeight - dialogHeight - padding))
   } else {
-    // 显示在锚点下方
-    top = anchorBottom + padding
-    footnoteDialog.classList.remove('arrow-down')
-    footnoteDialog.classList.add('arrow-up')
+    // 无锚点位置，居中显示
+    footnoteDialog.classList.remove('arrow-up', 'arrow-down')
+    top = (viewportHeight - dialogHeight) / 2
+    left = (viewportWidth - dialogWidth) / 2
   }
-
-  // 水平居中于锚点，但不超出屏幕
-  left = anchorCenterX - dialogWidth / 2
-  left = Math.max(padding, Math.min(left, viewportWidth - dialogWidth - padding))
-
-  // 计算箭头相对于弹框的位置
-  const arrowLeft = anchorCenterX - left
-  footnoteDialog.style.setProperty('--arrow-left', `${arrowLeft}px`)
-
-  // 确保垂直方向不超出屏幕
-  top = Math.max(padding, Math.min(top, viewportHeight - dialogHeight - padding))
 
   // 应用定位
   footnoteDialog.style.top = `${top}px`
@@ -844,21 +885,11 @@ const showFootnoteContent = (htmlContent, anchorRect) => {
 
   mainEl.replaceChildren(contentDiv)
 
-  // 显示背景遮罩
+  // 显示背景遮罩（透明层用于捕获点击事件）
   if (footnoteBackdrop) footnoteBackdrop.style.display = 'block'
 
-  // 根据设备类型定位弹框
-  if (isMobileView()) {
-    // 移动端：底部弹出，清除桌面端的定位样式
-    footnoteDialog.classList.remove('arrow-up', 'arrow-down')
-    footnoteDialog.style.top = ''
-    footnoteDialog.style.left = ''
-    footnoteDialog.style.transform = ''
-    footnoteDialog.style.display = 'flex'
-  } else {
-    // 桌面端：定位到锚点附近
-    positionDesktopDialog(anchorRect)
-  }
+  // 统一使用气泡样式定位（移动端和桌面端一致）
+  positionBubbleDialog(anchorRect)
 
   // 通知 Flutter 脚注已打开
   callFlutter("onFootnoteOpen")

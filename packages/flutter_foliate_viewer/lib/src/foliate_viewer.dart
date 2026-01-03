@@ -201,52 +201,79 @@ class _FoliateViewerState extends State<FoliateViewer> {
       overflow: hidden;
       user-select: none;
     }
-    /* 脚注弹框 - 移动端底部弹出样式 */
+    /* 脚注弹框 - 气泡样式 */
     #footnote-dialog {
       display: none;
       flex-direction: column;
       position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      max-width: min(90vw, 400px);
       max-height: 50vh;
-      min-height: 80px;
+      min-height: 60px;
+      min-width: 200px;
       margin: 0;
-      padding: 16px 0 0 0;
-      padding-bottom: env(safe-area-inset-bottom, 0);
+      padding: 0;
       border: none;
-      border-radius: 16px 16px 0 0;
-      border-top: 1px solid rgba(128, 128, 128, 0.2);
-      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(128, 128, 128, 0.1);
       background: var(--footnote-bg, #ffffff);
       z-index: 9999;
       overflow: hidden;
-      animation: footnote-slide-up 0.25s ease-out;
+      animation: footnote-pop-in 0.2s ease-out;
+      /* 默认居中，将被 JS 覆盖 */
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
     }
     #footnote-dialog.dark {
       background: var(--footnote-bg, #2d2d2d);
-      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.08);
     }
-    /* 顶部拖拽指示条 */
-    #footnote-dialog::after {
+    /* 箭头指示器 - 向下箭头（弹框在锚点上方时显示） */
+    #footnote-dialog.arrow-down::after {
       content: '';
       position: absolute;
-      top: 6px;
-      left: 50%;
+      bottom: -8px;
+      left: var(--arrow-left, 50%);
       transform: translateX(-50%);
-      width: 36px;
-      height: 4px;
-      background: rgba(128, 128, 128, 0.4);
-      border-radius: 2px;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid var(--footnote-bg, #ffffff);
+      filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.1));
     }
-    @keyframes footnote-slide-up {
+    /* 箭头指示器 - 向上箭头（弹框在锚点下方时显示） */
+    #footnote-dialog.arrow-up::after {
+      content: '';
+      position: absolute;
+      top: -8px;
+      left: var(--arrow-left, 50%);
+      transform: translateX(-50%);
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 8px solid var(--footnote-bg, #ffffff);
+      filter: drop-shadow(0 -2px 2px rgba(0, 0, 0, 0.1));
+    }
+    @keyframes footnote-pop-in {
       from {
         opacity: 0;
-        transform: translateY(100%);
+        transform: translate(-50%, -50%) scale(0.9);
       }
       to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+    /* 已定位时的动画（JS 会设置 transform: none） */
+    #footnote-dialog.positioned {
+      animation: footnote-fade-scale-in 0.2s ease-out;
+    }
+    @keyframes footnote-fade-scale-in {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: none;
       }
     }
     #footnote-dialog main {
@@ -255,6 +282,7 @@ class _FoliateViewerState extends State<FoliateViewer> {
       flex: 1;
       -webkit-overflow-scrolling: touch;
     }
+    /* 透明背景层 - 用于捕获点击关闭气泡 */
     #footnote-backdrop {
       display: none;
       position: fixed;
@@ -262,13 +290,8 @@ class _FoliateViewerState extends State<FoliateViewer> {
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.4);
+      background: transparent;
       z-index: 9998;
-      animation: footnote-fade-in 0.2s ease-out;
-    }
-    @keyframes footnote-fade-in {
-      from { opacity: 0; }
-      to { opacity: 1; }
     }
     #loading {
       position: fixed;

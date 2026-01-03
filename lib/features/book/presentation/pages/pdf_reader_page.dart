@@ -14,6 +14,7 @@ import 'package:my_nas/features/reading/data/services/reading_progress_service.d
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -400,6 +401,8 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(false);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
   }
@@ -412,6 +415,8 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
+    // 恢复原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(true);
     super.dispose();
   }
 

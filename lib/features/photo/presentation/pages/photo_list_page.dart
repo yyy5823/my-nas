@@ -1664,6 +1664,10 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     bool isDark,
     PhotoListState state,
   ) {
+    // 获取视图模式（如果已加载）
+    final viewMode = state is PhotoListLoaded ? state.viewMode : PhotoViewMode.grid;
+    final isLoaded = state is PhotoListLoaded;
+
     return GlassButtonGroup(
       children: [
         GlassGroupIconButton(
@@ -1671,20 +1675,24 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           onPressed: () => setState(() => _showSearch = true),
           tooltip: '搜索',
         ),
-        if (state is PhotoListLoaded) ...[
-          GlassGroupIconButton(
-            icon: Icons.check_circle_outline_rounded,
-            onPressed: () => ref.read(photoListProvider.notifier).enterSelectMode(),
-            tooltip: '多选',
-          ),
-          GlassGroupIconButton(
-            icon: state.viewMode == PhotoViewMode.grid
-                ? Icons.view_timeline_rounded
-                : Icons.grid_view_rounded,
-            onPressed: () => ref.read(photoListProvider.notifier).toggleViewMode(),
-            tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
-          ),
-        ],
+        // 多选按钮 - 始终显示，但只有在加载完成后才启用
+        GlassGroupIconButton(
+          icon: Icons.check_circle_outline_rounded,
+          onPressed: isLoaded
+              ? () => ref.read(photoListProvider.notifier).enterSelectMode()
+              : null,
+          tooltip: '多选',
+        ),
+        // 视图切换按钮 - 始终显示，但只有在加载完成后才启用
+        GlassGroupIconButton(
+          icon: viewMode == PhotoViewMode.grid
+              ? Icons.view_timeline_rounded
+              : Icons.grid_view_rounded,
+          onPressed: isLoaded
+              ? () => ref.read(photoListProvider.notifier).toggleViewMode()
+              : null,
+          tooltip: viewMode == PhotoViewMode.grid ? '时间线' : '网格',
+        ),
         GlassGroupPopupMenuButton<String>(
           icon: Icons.more_vert_rounded,
           tooltip: '更多',
@@ -1752,84 +1760,17 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     BuildContext context,
     WidgetRef ref,
     bool isDark,
-  ) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 搜索输入框（使用玻璃效果）
-        ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              width: 220,
-              height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.black.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : Colors.black.withValues(alpha: 0.08),
-                  width: 0.5,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.search_rounded,
-                    size: 20,
-                    color: isDark ? Colors.white70 : Colors.black54,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      autofocus: true,
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black87,
-                        fontSize: 16,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: '搜索照片...',
-                        hintStyle: TextStyle(
-                          color: isDark ? Colors.white38 : Colors.black38,
-                        ),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onChanged: (query) {
-                        ref.read(photoListProvider.notifier).setSearchQuery(query);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        // 关闭按钮
-        GlassButtonGroup(
-          children: [
-            GlassGroupIconButton(
-              icon: Icons.close_rounded,
-              onPressed: () {
-                setState(() => _showSearch = false);
-                _searchController.clear();
-                ref.read(photoListProvider.notifier).setSearchQuery('');
-              },
-              tooltip: '关闭搜索',
-            ),
-          ],
-        ),
-      ],
+  ) => GlassFloatingSearchBar(
+      controller: _searchController,
+      hintText: '搜索照片...',
+      width: 220,
+      onChanged: (query) {
+        ref.read(photoListProvider.notifier).setSearchQuery(query);
+      },
+      onClose: () {
+        setState(() => _showSearch = false);
+      },
     );
-  }
 
   /// iOS 26 悬浮多选模式头部
   Widget _buildFloatingSelectModeHeader(
@@ -1924,10 +1865,10 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             child: CustomScrollView(
               controller: _scrollController,
               slivers: [
-                // 顶部安全区域留白 + 悬浮按钮区域
-                SliverPadding(padding: EdgeInsets.only(top: safeTop + 52)),
-                // 大标题区域（iOS 26 风格）
-                _buildLargeTitleSliver(context, state, isDark),
+                // 顶部安全区域留白
+                SliverPadding(padding: EdgeInsets.only(top: safeTop + 8)),
+                // 大标题区域（iOS 26 风格）- 右侧留出浮动按钮空间
+                _buildLargeTitleSliver(context, state, isDark, hasFloatingButtons: true),
                 // 时间筛选栏
                 if (state.filterYear != null || state.viewMode == PhotoViewMode.timeline)
                   SliverToBoxAdapter(
@@ -1955,15 +1896,18 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   Widget _buildLargeTitleSliver(
     BuildContext context,
     PhotoListLoaded state,
-    bool isDark,
-  ) {
+    bool isDark, {
+    bool hasFloatingButtons = false,
+  }) {
     final photoCount = state.displayPhotos.length;
     final localCount = state.displayPhotos.where(state.isLocalPhoto).length;
     final remoteCount = photoCount - localCount;
+    // 右侧留出浮动按钮空间
+    final rightPadding = hasFloatingButtons ? 170.0 : 20.0;
 
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        padding: EdgeInsets.fromLTRB(20, 8, rightPadding, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

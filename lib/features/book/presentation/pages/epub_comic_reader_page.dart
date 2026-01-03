@@ -9,6 +9,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/epub_image_extractor.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
@@ -204,6 +205,8 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(false);
     _pageController = PageController();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
@@ -218,6 +221,8 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
     _pageController.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
+    // 恢复原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(true);
     super.dispose();
   }
 

@@ -144,6 +144,7 @@ struct DesktopLyricSettings {
     var enabled: Bool = false
     var fontSize: CGFloat = 28.0
     var textColor: NSColor = .white
+    var highlightColor: NSColor = NSColor(red: 0, green: 0.75, blue: 1.0, alpha: 1.0) // 高亮色（主题色）
     var backgroundColor: NSColor = NSColor.black.withAlphaComponent(0.8)
     var opacity: CGFloat = 0.9
     var showTranslation: Bool = true
@@ -155,27 +156,43 @@ struct DesktopLyricSettings {
     var windowWidth: CGFloat = 800.0
     var windowHeight: CGFloat = 120.0
 
+    /// 从 ARGB 整数值解析颜色（处理有符号/无符号问题）
+    private static func colorFromARGB(_ value: Any?) -> NSColor? {
+        guard let value = value else { return nil }
+
+        // Flutter 传递的颜色可能是 Int 或 Int64
+        let colorValue: UInt32
+        if let intValue = value as? Int {
+            colorValue = UInt32(bitPattern: Int32(truncatingIfNeeded: intValue))
+        } else if let int64Value = value as? Int64 {
+            colorValue = UInt32(truncatingIfNeeded: int64Value)
+        } else {
+            return nil
+        }
+
+        return NSColor(
+            red: CGFloat((colorValue >> 16) & 0xFF) / 255.0,
+            green: CGFloat((colorValue >> 8) & 0xFF) / 255.0,
+            blue: CGFloat(colorValue & 0xFF) / 255.0,
+            alpha: CGFloat((colorValue >> 24) & 0xFF) / 255.0
+        )
+    }
+
     static func fromJson(_ json: [String: Any]) -> DesktopLyricSettings {
         var settings = DesktopLyricSettings()
         settings.enabled = json["enabled"] as? Bool ?? false
         settings.fontSize = CGFloat(json["fontSize"] as? Double ?? 28.0)
 
-        if let colorValue = json["textColor"] as? Int {
-            settings.textColor = NSColor(
-                red: CGFloat((colorValue >> 16) & 0xFF) / 255.0,
-                green: CGFloat((colorValue >> 8) & 0xFF) / 255.0,
-                blue: CGFloat(colorValue & 0xFF) / 255.0,
-                alpha: CGFloat((colorValue >> 24) & 0xFF) / 255.0
-            )
+        if let color = colorFromARGB(json["textColor"]) {
+            settings.textColor = color
         }
 
-        if let colorValue = json["backgroundColor"] as? Int {
-            settings.backgroundColor = NSColor(
-                red: CGFloat((colorValue >> 16) & 0xFF) / 255.0,
-                green: CGFloat((colorValue >> 8) & 0xFF) / 255.0,
-                blue: CGFloat(colorValue & 0xFF) / 255.0,
-                alpha: CGFloat((colorValue >> 24) & 0xFF) / 255.0
-            )
+        if let color = colorFromARGB(json["highlightColor"]) {
+            settings.highlightColor = color
+        }
+
+        if let color = colorFromARGB(json["backgroundColor"]) {
+            settings.backgroundColor = color
         }
 
         settings.opacity = CGFloat(json["opacity"] as? Double ?? 0.9)

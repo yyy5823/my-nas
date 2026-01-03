@@ -7,13 +7,15 @@ import 'package:hive_ce/hive.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/music/data/services/desktop_lyric_service.dart';
 import 'package:my_nas/features/music/data/services/desktop_lyric_service_macos.dart';
-import 'package:my_nas/features/music/data/services/desktop_lyric_service_windows_native.dart';
+import 'package:my_nas/features/music/data/services/desktop_lyric_service_windows.dart';
 import 'package:my_nas/features/music/domain/entities/desktop_lyric_settings.dart';
 import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/shared/providers/theme_provider.dart';
 
 /// 桌面歌词状态
 class DesktopLyricState {
@@ -74,8 +76,10 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
         final settings = await _loadSettings();
 
         // 获取平台服务
+        // Windows: 使用多窗口实现（更稳定）
+        // macOS: 使用原生 Method Channel 实现
         if (Platform.isWindows) {
-          _service = DesktopLyricServiceWindowsNativeImpl.instance;
+          _service = DesktopLyricServiceWindowsImpl.instance;
         } else if (Platform.isMacOS) {
           _service = DesktopLyricServiceMacOSImpl.instance;
         }
@@ -83,12 +87,13 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
         if (_service != null) {
           await _service!.init(settings);
 
-          // 设置位置变化回调
+          // 设置回调
           if (_service is DesktopLyricServiceMacOSImpl) {
-            (_service as DesktopLyricServiceMacOSImpl).onPositionChanged =
-                _onPositionChanged;
-          } else if (_service is DesktopLyricServiceWindowsNativeImpl) {
-            (_service as DesktopLyricServiceWindowsNativeImpl).onPositionChanged =
+            final macService = _service as DesktopLyricServiceMacOSImpl;
+            macService.onPositionChanged = _onPositionChanged;
+            macService.onControlAction = _onControlAction;
+          } else if (_service is DesktopLyricServiceWindowsImpl) {
+            (_service as DesktopLyricServiceWindowsImpl).onPositionChanged =
                 _onPositionChanged;
           }
 
@@ -97,9 +102,13 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
             isInitialized: true,
           );
 
-          // 如果设置了启用，自动显示
+          // 如果设置了启用，且当前正在播放音乐，则自动显示
           if (settings.enabled) {
-            await show();
+            final playerState = _ref.read(musicPlayerControllerProvider);
+            if (playerState.isPlaying) {
+              await _service!.show();
+              state = state.copyWith(isVisible: true);
+            }
           }
 
           // 注册全局快捷键
@@ -110,6 +119,11 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
 
           // 开始监听歌词和播放状态
           _startListening();
+
+          // 监听配色方案变化，更新高亮颜色
+          _ref.listen(colorSchemePresetProvider, (previous, next) {
+            _updateHighlightColor();
+          });
         }
       },
       action: 'initDesktopLyric',
@@ -195,16 +209,25 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
 
   /// 处理播放状态变化，自动显示/隐藏桌面歌词
   void _handlePlayingStateChange(bool isPlaying) {
-    if (!state.settings.showWhenPlaying) return;
     if (_service == null) return;
 
-    if (isPlaying && !state.isVisible) {
-      // 开始播放时自动显示桌面歌词
-      _showByPlaying();
-    } else if (!isPlaying && state.isVisible && _shownByMinimize) {
-      // 停止播放时，如果是因为播放而显示的，则隐藏
-      // 注意：如果用户手动开启了桌面歌词 (enabled=true)，则不隐藏
-      if (!state.settings.enabled) {
+    // 情况1：用户启用了桌面歌词功能 (enabled=true)
+    // 播放时显示，停止时隐藏
+    if (state.settings.enabled) {
+      if (isPlaying && !state.isVisible) {
+        _showByPlaying();
+      } else if (!isPlaying && state.isVisible) {
+        _hideByPlaying();
+      }
+      return;
+    }
+
+    // 情况2：用户未启用桌面歌词，但开启了"播放时自动显示"选项
+    if (state.settings.showWhenPlaying) {
+      if (isPlaying && !state.isVisible) {
+        _showByPlaying();
+      } else if (!isPlaying && state.isVisible && _shownByMinimize) {
+        // 停止播放时隐藏（仅当是自动显示的情况）
         _hideByPlaying();
       }
     }
@@ -349,6 +372,34 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
     });
   }
 
+  /// 处理桌面歌词控制动作
+  void _onControlAction(String action) {
+    final playerNotifier = _ref.read(musicPlayerControllerProvider.notifier);
+    switch (action) {
+      case 'play':
+      case 'pause':
+        playerNotifier.playOrPause();
+      case 'previous':
+        playerNotifier.playPrevious();
+      case 'next':
+        playerNotifier.playNext();
+    }
+  }
+
+  /// 更新高亮颜色为当前主题色
+  Future<void> _updateHighlightColor() async {
+    if (!state.isInitialized) return;
+
+    final newSettings = state.settings.copyWith(
+      highlightColor: AppColors.primary,
+    );
+    state = state.copyWith(settings: newSettings);
+
+    if (_service != null && state.isVisible) {
+      await _service!.updateSettings(newSettings);
+    }
+  }
+
   /// 显示桌面歌词
   Future<void> show() async {
     if (_service == null) return;
@@ -442,14 +493,17 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
       final box = await Hive.openBox<Map<dynamic, dynamic>>('music_settings');
       final data = box.get('desktop_lyric_settings');
       if (data != null) {
-        return DesktopLyricSettings.fromJson(
+        final settings = DesktopLyricSettings.fromJson(
           Map<String, dynamic>.from(data),
         );
+        // 使用当前主题色作为高亮色
+        return settings.copyWith(highlightColor: AppColors.primary);
       }
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '加载桌面歌词设置失败');
     }
-    return const DesktopLyricSettings();
+    // 默认设置使用当前主题色
+    return DesktopLyricSettings(highlightColor: AppColors.primary);
   }
 
   Future<void> _saveSettings(DesktopLyricSettings settings) async {

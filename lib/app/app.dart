@@ -15,6 +15,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
+import 'package:my_nas/features/music/presentation/providers/desktop_lyric_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
@@ -32,6 +33,7 @@ class MyNasApp extends ConsumerStatefulWidget {
 
 class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver {
   bool _deepLinkInitialized = false;
+  bool _desktopLyricInitialized = false;
 
   /// 全局 Toast 服务实例
   final ToastService _toastService = ToastService();
@@ -67,6 +69,18 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
       AppError.handle(e, stackTrace, 'initDeepLinkService');
       // 不抛出异常，允许应用继续运行
     }
+  }
+
+  /// 初始化桌面歌词服务（macOS/Windows）
+  void _initDesktopLyricService() {
+    if (_desktopLyricInitialized) return;
+    if (!Platform.isMacOS && !Platform.isWindows) return;
+    _desktopLyricInitialized = true;
+
+    // 读取 provider 触发初始化
+    // provider 内部会检查设置并自动显示桌面歌词（如果已启用）
+    ref.read(desktopLyricProvider);
+    logger.i('MyNasApp: DesktopLyricProvider 已初始化');
   }
 
   @override
@@ -183,6 +197,9 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     // 初始化 DeepLinkService（在 build 中调用以确保 ref 可用）
     _initDeepLinkService();
+
+    // 初始化桌面歌词服务（macOS/Windows）
+    _initDesktopLyricService();
 
     final themeMode = ref.watch(themeModeProvider);
     final colorPreset = ref.watch(colorSchemePresetProvider);

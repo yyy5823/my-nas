@@ -16,6 +16,7 @@ import 'package:my_nas/features/photo/data/services/photo_save_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/mobile/file_systems/mobile_gallery_file_system.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
@@ -94,6 +95,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(false);
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
 
@@ -176,6 +179,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     _disposeLivePhotoPlayer();
     // 恢复系统 UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // 恢复原生 Tab Bar（iOS）
+    NativeTabBarService.instance.setTabBarVisible(true);
     super.dispose();
   }
 

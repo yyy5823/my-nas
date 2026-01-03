@@ -89,12 +89,8 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         if #available(iOS 26.0, *) {
             let glassEffect = UIGlassEffect()
             glassEffect.isInteractive = true
-            glassView = UIVisualEffectView(effect: nil)
-
-            // 使用动画设置 effect
-            UIView.animate(withDuration: 0.3) { [weak glassView] in
-                glassView?.effect = glassEffect
-            }
+            // 直接使用 glassEffect 初始化，避免动画块中的捕获问题
+            glassView = UIVisualEffectView(effect: glassEffect)
         } else {
             // iOS 13-25 回退
             let blurStyle: UIBlurEffect.Style = isDark ? .systemThinMaterialDark : .systemThinMaterialLight
