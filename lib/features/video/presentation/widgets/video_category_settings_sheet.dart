@@ -609,6 +609,8 @@ class _BasicCategoryTile extends StatelessWidget {
         return Icons.theaters_rounded;
       case VideoHomeCategory.browseTvRegions:
         return Icons.flag_rounded;
+      case VideoHomeCategory.liveStreaming:
+        return Icons.live_tv_rounded;
       default:
         return Icons.category_rounded;
     }
@@ -642,6 +644,8 @@ class _BasicCategoryTile extends StatelessWidget {
         return AppColors.warning;
       case VideoHomeCategory.browseTvRegions:
         return AppColors.musicColor;
+      case VideoHomeCategory.liveStreaming:
+        return Colors.red;
       default:
         return AppColors.disabled;
     }

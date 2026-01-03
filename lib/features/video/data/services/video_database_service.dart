@@ -1775,9 +1775,12 @@ class VideoDatabaseService {
         'SELECT COUNT(*) FROM $_tableMetadata${pathFilter.where}',
         pathFilter.args));
 
-    final movieCount = Sqflite.firstIntValue(await _db!.rawQuery(
-        'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 0${pathFilter.andWhere}',
-        pathFilter.args));
+    // 电影使用去重计数（同一电影不同清晰度只计数一次）
+    final movieBaseWhere = '$_colCategory = 0${pathFilter.andWhere}';
+    final movieCountSql = _buildMovieDeduplicationCountQuery(baseWhere: movieBaseWhere);
+    // 参数需要出现两次（外层和子查询各一次）
+    final movieCountArgs = [...pathFilter.args, ...pathFilter.args];
+    final movieCount = Sqflite.firstIntValue(await _db!.rawQuery(movieCountSql, movieCountArgs));
 
     final tvShowCount = Sqflite.firstIntValue(await _db!.rawQuery(
         'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 1${pathFilter.andWhere}',
@@ -1857,7 +1860,7 @@ class VideoDatabaseService {
       WHERE $baseWhere${pathFilter.andWhere}
         AND m1.rowid = (
           SELECT m2.rowid FROM $_tableMetadata m2
-          WHERE m2.$baseWhere${pathFilter.andWhere}
+          WHERE $baseWhere${pathFilter.andWhere}
             AND (
               (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
               OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
@@ -1900,7 +1903,7 @@ class VideoDatabaseService {
       WHERE $baseWhere
         AND m1.rowid = (
           SELECT m2.rowid FROM $_tableMetadata m2
-          WHERE m2.$baseWhere
+          WHERE $baseWhere
             AND (
               (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
               OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
@@ -1937,7 +1940,7 @@ class VideoDatabaseService {
       WHERE $baseWhere
         AND m1.rowid = (
           SELECT m2.rowid FROM $_tableMetadata m2
-          WHERE m2.$baseWhere
+          WHERE $baseWhere
             AND (
               (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
               OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL

@@ -332,11 +332,39 @@ class VideoCategorySettings {
   });
 
   /// 从 Map 创建
+  /// 
+  /// 自动迁移：如果用户保存的配置缺少新添加的分类，会自动补充
   factory VideoCategorySettings.fromMap(Map<String, dynamic> map) {
     final sectionsData = map['sections'] as List<dynamic>? ?? [];
     final sections = sectionsData
         .map((s) => VideoCategorySectionConfig.fromMap(s as Map<String, dynamic>))
         .toList();
+    
+    // 迁移逻辑：检查是否缺少默认分类中的基础分类（非动态分类）
+    final defaults = VideoCategorySettings.defaults();
+    final existingCategories = sections
+        .where((s) => !s.category.isDynamic)
+        .map((s) => s.category)
+        .toSet();
+    
+    // 获取当前最大 order
+    var maxOrder = sections.isEmpty 
+        ? 0 
+        : sections.map((s) => s.order).reduce((a, b) => a > b ? a : b);
+    
+    // 添加缺失的基础分类
+    for (final defaultSection in defaults.sections) {
+      if (!defaultSection.category.isDynamic && 
+          !existingCategories.contains(defaultSection.category)) {
+        maxOrder++;
+        sections.add(VideoCategorySectionConfig(
+          category: defaultSection.category,
+          order: maxOrder,
+          visible: defaultSection.visible,
+        ));
+      }
+    }
+    
     return VideoCategorySettings(sections: sections);
   }
 
