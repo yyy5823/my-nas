@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:collection/collection.dart';
@@ -1788,7 +1789,58 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(videoListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 Liquid Glass 风格：悬浮布局
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容（包含大标题）
+            switch (state) {
+              VideoListLoading(
+                :final progress,
+                :final currentFolder,
+                :final fromCache,
+                :final partialVideos,
+                :final scannedCount,
+              ) =>
+                _buildLoadingState(
+                  context,
+                  ref,
+                  progress,
+                  currentFolder,
+                  fromCache,
+                  partialVideos,
+                  scannedCount,
+                  isDark,
+                ),
+              VideoListError(:final message) => AppErrorWidget(
+                message: message,
+                onRetry: () =>
+                    ref.read(videoListProvider.notifier).reloadFromCache(),
+              ),
+              final VideoListLoaded loaded =>
+                loaded.totalCount == 0
+                    ? _buildEmptyOrFilteredState(context, ref, loaded, isDark)
+                    : _buildVideoContentWithLargeTitle(context, ref, loaded, isDark, safeTop),
+            },
+            // 悬浮按钮组（右上角）
+            Positioned(
+              top: safeTop + 8,
+              right: 16,
+              child: _showSearch
+                  ? _buildFloatingSearchBar(context, ref, isDark)
+                  : _buildFloatingButtons(context, ref, isDark, state),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：传统布局
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
       body: Column(
@@ -1825,6 +1877,245 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  /// iOS 26 悬浮按钮组
+  Widget _buildFloatingButtons(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    VideoListState state,
+  ) {
+    return GlassButtonGroup(
+      children: [
+        GlassGroupIconButton(
+          icon: Icons.search_rounded,
+          onPressed: () => setState(() => _showSearch = true),
+          tooltip: '搜索',
+        ),
+        GlassGroupIconButton(
+          icon: Icons.tune_rounded,
+          onPressed: () => VideoCategorySettingsSheet.show(context),
+          tooltip: '分类设置',
+        ),
+        GlassGroupIconButton(
+          icon: Icons.more_vert_rounded,
+          onPressed: () => _showSettingsMenu(context),
+          tooltip: '更多',
+        ),
+      ],
+    );
+  }
+
+  /// iOS 26 悬浮搜索栏
+  Widget _buildFloatingSearchBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 搜索输入框（使用玻璃效果）
+        ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              width: 220,
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.08),
+                  width: 0.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: 16,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '搜索视频...',
+                        hintStyle: TextStyle(
+                          color: isDark ? Colors.white38 : Colors.black38,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (query) {
+                        ref.read(videoListProvider.notifier).setSearchQuery(query);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // 关闭按钮
+        GlassButtonGroup(
+          children: [
+            GlassGroupIconButton(
+              icon: Icons.close_rounded,
+              onPressed: () {
+                setState(() => _showSearch = false);
+                _searchController.clear();
+                ref.read(videoListProvider.notifier).setSearchQuery('');
+              },
+              tooltip: '关闭搜索',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// iOS 26 带大标题的视频内容
+  Widget _buildVideoContentWithLargeTitle(
+    BuildContext context,
+    WidgetRef ref,
+    VideoListLoaded state,
+    bool isDark,
+    double safeTop,
+  ) {
+    // 如果有搜索，显示搜索结果
+    if (state.searchQuery.isNotEmpty) {
+      return _buildSearchResults(context, ref, state, isDark);
+    }
+
+    // 获取分类设置
+    final categorySettings = ref.watch(videoCategorySettingsProvider);
+    final visibleSections = categorySettings.visibleSections;
+
+    // 判断设备类型
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth > 800;
+
+    // 预加载数据
+    final recentVideos = _getRecentVideos(state, limit: 10);
+    final allRecentVideos = _getRecentVideos(state);
+    final movies = state.movies;
+    final tvShowGroups = state.tvShowGroupList;
+    final movieCollections = state.movieCollections;
+    final topRated = state.topRatedMovies;
+
+    // 构建分类 slivers
+    final slivers = _buildCategorySlivers(
+      context: context,
+      ref: ref,
+      visibleSections: visibleSections,
+      state: state,
+      isDark: isDark,
+      isDesktop: isDesktop,
+      recentVideos: recentVideos,
+      allRecentVideos: allRecentVideos,
+      movies: movies,
+      tvShowGroups: tvShowGroups,
+      movieCollections: movieCollections,
+      topRated: topRated,
+      categorySettings: categorySettings,
+    );
+
+    return CustomScrollView(
+      slivers: [
+        // 顶部安全区域留白 + 悬浮按钮区域
+        SliverPadding(padding: EdgeInsets.only(top: safeTop + 52)),
+        // 大标题区域（iOS 26 风格）
+        _buildLargeTitleSliver(context, state, isDark),
+        // 内容
+        ...slivers,
+        // 底部留白
+        SliverPadding(padding: EdgeInsets.only(bottom: context.scrollBottomPadding)),
+      ],
+    );
+  }
+
+  /// iOS 26 大标题 Sliver
+  Widget _buildLargeTitleSliver(
+    BuildContext context,
+    VideoListLoaded state,
+    bool isDark,
+  ) {
+    final movieCount = state.movieCount;
+    final tvShowCount = state.tvShowGroupCount;
+    final otherCount = state.otherCount;
+
+    // 判断是否正在刮削
+    final isScraping =
+        _scrapeStats != null &&
+        !_scrapeStats!.isAllDone &&
+        _scrapeStats!.total > 0;
+
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 大标题
+            Text(
+              _getGreeting(),
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 统计信息
+            if (state.totalCount > 0 || isScraping)
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  _buildStatChip(
+                    icon: Icons.movie_filter_rounded,
+                    label: '$movieCount 电影',
+                    color: AppColors.primary,
+                    isDark: isDark,
+                  ),
+                  _buildStatChip(
+                    icon: Icons.tv_rounded,
+                    label: '$tvShowCount 剧集',
+                    color: AppColors.accent,
+                    isDark: isDark,
+                  ),
+                  if (otherCount > 0)
+                    _buildStatChip(
+                      icon: Icons.folder_special_rounded,
+                      label: '$otherCount 其他',
+                      color: Colors.grey,
+                      isDark: isDark,
+                    ),
+                  if (isScraping) _buildScrapeProgressChip(isDark),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

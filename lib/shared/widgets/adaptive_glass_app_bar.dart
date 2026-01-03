@@ -879,16 +879,17 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
     final buttonConfigs = _extractButtonConfigs();
     final buttonCount = buttonConfigs.length;
 
-    // 计算宽度：每个按钮 36px + 分隔线 0.5px + 左右内边距 12px
-    final width = buttonCount * 36.0 + (buttonCount - 1) * 0.5 + 12;
-    const height = 40.0;
+    // iOS 26 风格：更宽松的按钮布局
+    // 每个按钮 40px + 分隔线 0.5px + 左右内边距 20px
+    final width = buttonCount * 40.0 + (buttonCount - 1) * 0.5 + 20;
+    const height = 44.0;
 
     final creationParams = <String, dynamic>{
       'isDark': isDark,
       'items': buttonConfigs,
-      'buttonSize': 36.0,
+      'buttonSize': 40.0,
       'spacing': widget.spacing,
-      'cornerRadius': 20.0,
+      'cornerRadius': 22.0,
     };
 
     return SizedBox(
@@ -961,7 +962,7 @@ class GlassGroupIconButton extends StatelessWidget {
     required this.icon,
     this.onPressed,
     this.tooltip,
-    this.size = 22,
+    this.size = 20,
     this.color,
     super.key,
   });
@@ -981,10 +982,10 @@ class GlassGroupIconButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
-          width: 36,
-          height: 36,
+          width: 40,
+          height: 40,
           alignment: Alignment.center,
           child: Icon(icon, size: size, color: iconColor),
         ),
@@ -996,5 +997,166 @@ class GlassGroupIconButton extends StatelessWidget {
     }
 
     return button;
+  }
+}
+
+/// iOS 26 Liquid Glass 页面布局
+///
+/// 实现 iOS 26 风格的悬浮导航：
+/// - 大标题在内容区域内，随内容滚动
+/// - 工具栏按钮悬浮于内容之上
+/// - 无固定顶栏背景区域
+///
+/// 使用示例：
+/// ```dart
+/// LiquidGlassPageLayout(
+///   floatingButtons: GlassButtonGroup(children: [...]),
+///   largeTitle: '问候语',
+///   subtitle: '副标题',
+///   body: CustomScrollView(slivers: [...]),
+/// )
+/// ```
+class LiquidGlassPageLayout extends ConsumerWidget {
+  const LiquidGlassPageLayout({
+    required this.body,
+    this.floatingButtons,
+    this.floatingButtonsLeft,
+    this.largeTitle,
+    this.subtitle,
+    this.subtitleWidget,
+    this.backgroundColor,
+    this.largeTitlePadding = const EdgeInsets.fromLTRB(20, 8, 20, 16),
+    super.key,
+  });
+
+  /// 页面主体内容（通常是 CustomScrollView）
+  final Widget body;
+
+  /// 悬浮按钮组（右上角）
+  final Widget? floatingButtons;
+
+  /// 左侧悬浮按钮（如返回按钮）
+  final Widget? floatingButtonsLeft;
+
+  /// 大标题文本
+  final String? largeTitle;
+
+  /// 副标题文本
+  final String? subtitle;
+
+  /// 副标题组件（优先于 subtitle）
+  final Widget? subtitleWidget;
+
+  /// 背景颜色
+  final Color? backgroundColor;
+
+  /// 大标题内边距
+  final EdgeInsets largeTitlePadding;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uiStyle = ref.watch(uiStyleProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    // 经典模式使用传统布局
+    if (!uiStyle.isGlass) {
+      return _buildClassicLayout(context, isDark, safeTop);
+    }
+
+    // iOS 26 Liquid Glass 布局
+    return _buildLiquidGlassLayout(context, isDark, safeTop);
+  }
+
+  Widget _buildClassicLayout(BuildContext context, bool isDark, double safeTop) {
+    return Stack(
+      children: [
+        // 主内容
+        body,
+        // 悬浮按钮（右上角）
+        if (floatingButtons != null)
+          Positioned(
+            top: safeTop + 8,
+            right: 16,
+            child: floatingButtons!,
+          ),
+        // 左侧按钮
+        if (floatingButtonsLeft != null)
+          Positioned(
+            top: safeTop + 8,
+            left: 16,
+            child: floatingButtonsLeft!,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLiquidGlassLayout(BuildContext context, bool isDark, double safeTop) {
+    return Stack(
+      children: [
+        // 主内容（无固定顶栏，大标题在内容区域内）
+        body,
+        // 悬浮按钮组（右上角）- 真正悬浮于内容之上
+        if (floatingButtons != null)
+          Positioned(
+            top: safeTop + 8,
+            right: 16,
+            child: floatingButtons!,
+          ),
+        // 左侧按钮
+        if (floatingButtonsLeft != null)
+          Positioned(
+            top: safeTop + 8,
+            left: 16,
+            child: floatingButtonsLeft!,
+          ),
+      ],
+    );
+  }
+
+  /// 构建大标题区域（用于放在 Sliver 中）
+  static Widget buildLargeTitleSliver({
+    required String title,
+    String? subtitle,
+    Widget? subtitleWidget,
+    required bool isDark,
+    EdgeInsets padding = const EdgeInsets.fromLTRB(20, 8, 20, 16),
+    double topPadding = 0,
+  }) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: padding.copyWith(top: padding.top + topPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+                letterSpacing: -0.5,
+              ),
+            ),
+            if (subtitleWidget != null) ...[
+              const SizedBox(height: 6),
+              subtitleWidget,
+            ] else if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.6)
+                      : Colors.black.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

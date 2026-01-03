@@ -145,13 +145,13 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         let button = UIButton(type: .system)
         button.tag = index
 
-        // 配置图标
-        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        // 配置图标 - iOS 26 风格使用更大、更清晰的图标
+        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         let image = UIImage(systemName: item.icon, withConfiguration: config)
         button.setImage(image, for: .normal)
-        button.tintColor = isDark ? .white : .darkGray
+        button.tintColor = isDark ? .white : UIColor(white: 0.2, alpha: 1.0)
 
-        // 设置大小
+        // 设置大小 - 增加触摸区域
         button.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             button.widthAnchor.constraint(equalToConstant: CGFloat(size)),
@@ -198,11 +198,11 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
             glassView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             glassView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
 
-            // Stack view 在 glass view 内部居中，带内边距
-            stackView.topAnchor.constraint(equalTo: glassView.contentView.topAnchor, constant: 2),
-            stackView.bottomAnchor.constraint(equalTo: glassView.contentView.bottomAnchor, constant: -2),
-            stackView.leadingAnchor.constraint(equalTo: glassView.contentView.leadingAnchor, constant: 6),
-            stackView.trailingAnchor.constraint(equalTo: glassView.contentView.trailingAnchor, constant: -6)
+            // Stack view 在 glass view 内部居中，iOS 26 风格更宽松的内边距
+            stackView.topAnchor.constraint(equalTo: glassView.contentView.topAnchor, constant: 4),
+            stackView.bottomAnchor.constraint(equalTo: glassView.contentView.bottomAnchor, constant: -4),
+            stackView.leadingAnchor.constraint(equalTo: glassView.contentView.leadingAnchor, constant: 10),
+            stackView.trailingAnchor.constraint(equalTo: glassView.contentView.trailingAnchor, constant: -10)
         ])
     }
 
