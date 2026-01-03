@@ -1567,10 +1567,39 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                 tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
               ),
             ],
-            GlassGroupIconButton(
+            GlassGroupPopupMenuButton<String>(
               icon: Icons.more_vert_rounded,
-              onPressed: () => _showSettingsMenu(context),
               tooltip: '更多',
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'duplicates',
+                  child: ListTile(
+                    leading: Icon(Icons.content_copy_rounded),
+                    title: Text('重复照片'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'library',
+                  child: ListTile(
+                    leading: Icon(Icons.settings_rounded),
+                    title: Text('媒体库设置'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'sources',
+                  child: ListTile(
+                    leading: Icon(Icons.cloud_rounded),
+                    title: Text('连接源管理'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+              onSelected: (value) => _handlePhotoMenuSelection(context, value),
             ),
           ],
         ),
@@ -1628,57 +1657,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
       ],
     );
 
-  /// 设置菜单
-  void _showSettingsMenu(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.content_copy_rounded),
-              title: const Text('重复照片'),
-              subtitle: const Text('查找并清理重复的照片'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => const PhotoDuplicatesPage(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings_rounded),
-              title: const Text('媒体库设置'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => const MediaLibraryPage(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_rounded),
-              title: const Text('连接源管理'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => const SourcesPage(),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// iOS 26 悬浮按钮组
   Widget _buildFloatingButtons(
     BuildContext context,
@@ -1707,13 +1685,66 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
           ),
         ],
-        GlassGroupIconButton(
+        GlassGroupPopupMenuButton<String>(
           icon: Icons.more_vert_rounded,
-          onPressed: () => _showSettingsMenu(context),
           tooltip: '更多',
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'duplicates',
+              child: ListTile(
+                leading: Icon(Icons.content_copy_rounded),
+                title: Text('重复照片'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'library',
+              child: ListTile(
+                leading: Icon(Icons.settings_rounded),
+                title: Text('媒体库设置'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'sources',
+              child: ListTile(
+                leading: Icon(Icons.cloud_rounded),
+                title: Text('连接源管理'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+          onSelected: (value) => _handlePhotoMenuSelection(context, value),
         ),
       ],
     );
+  }
+
+  /// 处理相册菜单选择
+  void _handlePhotoMenuSelection(BuildContext context, String value) {
+    switch (value) {
+      case 'duplicates':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const PhotoDuplicatesPage(),
+          ),
+        );
+      case 'library':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const MediaLibraryPage(),
+          ),
+        );
+      case 'sources':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const SourcesPage(),
+          ),
+        );
+    }
   }
 
   /// iOS 26 悬浮搜索栏

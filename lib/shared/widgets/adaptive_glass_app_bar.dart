@@ -1000,6 +1000,66 @@ class GlassGroupIconButton extends StatelessWidget {
   }
 }
 
+/// 玻璃风格 PopupMenu 按钮
+///
+/// 与 GlassGroupIconButton 样式一致，但点击后显示紧跟按钮的弹出菜单
+/// 而不是底部弹框
+class GlassGroupPopupMenuButton<T> extends StatelessWidget {
+  const GlassGroupPopupMenuButton({
+    required this.itemBuilder,
+    this.icon = Icons.more_vert_rounded,
+    this.onSelected,
+    this.tooltip,
+    this.size = 20,
+    this.color,
+    this.offset = const Offset(0, 8),
+    super.key,
+  });
+
+  /// 菜单图标
+  final IconData icon;
+
+  /// 菜单项构建器
+  final List<PopupMenuEntry<T>> Function(BuildContext context) itemBuilder;
+
+  /// 选中回调
+  final void Function(T value)? onSelected;
+
+  /// 提示文本
+  final String? tooltip;
+
+  /// 图标大小
+  final double size;
+
+  /// 图标颜色
+  final Color? color;
+
+  /// 菜单偏移量
+  final Offset offset;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = color ?? (isDark ? Colors.white : Colors.black87);
+
+    return PopupMenuButton<T>(
+      itemBuilder: itemBuilder,
+      onSelected: onSelected,
+      offset: offset,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      tooltip: tooltip,
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        child: Icon(icon, size: size, color: iconColor),
+      ),
+    );
+  }
+}
+
 /// iOS 26 Liquid Glass 页面布局
 ///
 /// 实现 iOS 26 风格的悬浮导航：

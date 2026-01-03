@@ -60,5 +60,23 @@ post_install do |installer|
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'DEBUG=1']
       end
     end
+
+    # 禁用 audiotags - libaudiotags.a 与 macOS 26.1 SDK 不兼容
+    # 使用 FFmpeg 作为后备方案处理音频元数据
+    if target.name == 'audiotags'
+      target.build_configurations.each do |config|
+        # 清空库搜索路径和链接设置
+        config.build_settings['LIBRARY_SEARCH_PATHS'] = []
+        config.build_settings['OTHER_LDFLAGS'] = []
+        # 跳过编译源文件
+        config.build_settings['EXCLUDED_SOURCE_FILE_NAMES'] = ['*']
+      end
+      # 移除所有构建阶段
+      target.build_phases.each do |phase|
+        if phase.respond_to?(:files)
+          phase.files.clear
+        end
+      end
+    end
   end
 end

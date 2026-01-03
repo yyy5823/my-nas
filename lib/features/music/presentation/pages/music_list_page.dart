@@ -1957,10 +1957,39 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
               onPressed: () => showMusicQueueSheet(context),
               tooltip: '播放队列',
             ),
-            GlassGroupIconButton(
+            GlassGroupPopupMenuButton<String>(
               icon: Icons.more_vert_rounded,
-              onPressed: () => _showSettingsMenu(context),
               tooltip: '更多',
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'layout',
+                  child: ListTile(
+                    leading: Icon(Icons.dashboard_customize_rounded),
+                    title: Text('首页布局'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'library',
+                  child: ListTile(
+                    leading: Icon(Icons.settings_rounded),
+                    title: Text('媒体库设置'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'sources',
+                  child: ListTile(
+                    leading: Icon(Icons.cloud_rounded),
+                    title: Text('连接源管理'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+              onSelected: (value) => _handleMusicMenuSelection(context, value),
             ),
           ],
         ),
@@ -2006,53 +2035,6 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       ],
     );
 
-  void _showSettingsMenu(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.dashboard_customize_rounded),
-              title: const Text('首页布局'),
-              subtitle: const Text('自定义首页内容展示顺序'),
-              onTap: () {
-                Navigator.pop(context);
-                showHomeLayoutSheet(context);
-              },
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.settings_rounded),
-              title: const Text('媒体库设置'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => const MediaLibraryPage(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_rounded),
-              title: const Text('连接源管理'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => const SourcesPage(),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// iOS 26 悬浮按钮组
   Widget _buildFloatingButtons(
     BuildContext context,
@@ -2072,13 +2054,62 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           onPressed: () => showMusicQueueSheet(context),
           tooltip: '播放队列',
         ),
-        GlassGroupIconButton(
+        GlassGroupPopupMenuButton<String>(
           icon: Icons.more_vert_rounded,
-          onPressed: () => _showSettingsMenu(context),
           tooltip: '更多',
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'layout',
+              child: ListTile(
+                leading: Icon(Icons.dashboard_customize_rounded),
+                title: Text('首页布局'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'library',
+              child: ListTile(
+                leading: Icon(Icons.settings_rounded),
+                title: Text('媒体库设置'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'sources',
+              child: ListTile(
+                leading: Icon(Icons.cloud_rounded),
+                title: Text('连接源管理'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+          onSelected: (value) => _handleMusicMenuSelection(context, value),
         ),
       ],
     );
+  }
+
+  /// 处理音乐菜单选择
+  void _handleMusicMenuSelection(BuildContext context, String value) {
+    switch (value) {
+      case 'layout':
+        showHomeLayoutSheet(context);
+      case 'library':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const MediaLibraryPage(),
+          ),
+        );
+      case 'sources':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const SourcesPage(),
+          ),
+        );
+    }
   }
 
   /// iOS 26 悬浮搜索栏

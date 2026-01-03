@@ -1900,13 +1900,66 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           onPressed: () => VideoCategorySettingsSheet.show(context),
           tooltip: '分类设置',
         ),
-        GlassGroupIconButton(
+        GlassGroupPopupMenuButton<String>(
           icon: Icons.more_vert_rounded,
-          onPressed: () => _showSettingsMenu(context),
           tooltip: '更多',
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'library',
+              child: ListTile(
+                leading: Icon(Icons.settings_rounded),
+                title: Text('媒体库设置'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'sources',
+              child: ListTile(
+                leading: Icon(Icons.cloud_rounded),
+                title: Text('连接源管理'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'duplicates',
+              child: ListTile(
+                leading: Icon(Icons.content_copy_rounded),
+                title: Text('查找重复'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+          onSelected: (value) => _handleMenuSelection(context, value),
         ),
       ],
     );
+  }
+
+  /// 处理菜单选择
+  void _handleMenuSelection(BuildContext context, String value) {
+    switch (value) {
+      case 'library':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const MediaLibraryPage(),
+          ),
+        );
+      case 'sources':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const SourcesPage(),
+          ),
+        );
+      case 'duplicates':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const VideoDuplicatesPage(),
+          ),
+        );
+    }
   }
 
   /// iOS 26 悬浮搜索栏
@@ -2241,10 +2294,39 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               onPressed: () => VideoCategorySettingsSheet.show(context),
               tooltip: '分类设置',
             ),
-            GlassGroupIconButton(
+            GlassGroupPopupMenuButton<String>(
               icon: Icons.more_vert_rounded,
-              onPressed: () => _showSettingsMenu(context),
               tooltip: '更多',
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'library',
+                  child: ListTile(
+                    leading: Icon(Icons.settings_rounded),
+                    title: Text('媒体库设置'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'sources',
+                  child: ListTile(
+                    leading: Icon(Icons.cloud_rounded),
+                    title: Text('连接源管理'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'duplicates',
+                  child: ListTile(
+                    leading: Icon(Icons.content_copy_rounded),
+                    title: Text('查找重复'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+              onSelected: (value) => _handleMenuSelection(context, value),
             ),
           ],
         ),
@@ -2376,57 +2458,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       ),
     ],
   );
-
-  /// 设置菜单
-  void _showSettingsMenu(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.settings_rounded),
-              title: const Text('媒体库设置'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => const MediaLibraryPage(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_rounded),
-              title: const Text('连接源管理'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => const SourcesPage(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.content_copy_rounded),
-              title: const Text('查找重复'),
-              subtitle: const Text('检测重复的视频文件'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => const VideoDuplicatesPage(),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildLoadingState(
     BuildContext context,

@@ -6,9 +6,10 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_writer.dart';
 import 'package:path/path.dart' as p;
 
-// iOS 上 audiotags 有链接问题，暂时禁用
+// iOS/macOS 上 audiotags 有链接问题，暂时禁用
 // 参见: https://github.com/erikas-taroza/audiotags/issues/21
-bool get _disableAudiotags => Platform.isIOS;
+// macOS: libaudiotags.a 与 macOS 26.1 SDK 不兼容，链接失败
+bool get _disableAudiotags => Platform.isIOS || Platform.isMacOS;
 
 /// 基于 audiotags (lofty-rs) 的元数据写入实现
 ///
