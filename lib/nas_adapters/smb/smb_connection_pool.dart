@@ -8,14 +8,14 @@ import 'package:smb_connect/smb_connect.dart';
 class HeartbeatConfig {
   const HeartbeatConfig({
     this.enabled = true,
-    this.interval = const Duration(minutes: 2),
+    this.interval = const Duration(seconds: 30), // 更频繁的心跳，防止连接超时
     this.timeout = const Duration(seconds: 10),
   });
 
   /// 是否启用心跳
   final bool enabled;
 
-  /// 心跳间隔
+  /// 心跳间隔（默认 30 秒，确保连接保持活跃）
   final Duration interval;
 
   /// 心跳超时时间

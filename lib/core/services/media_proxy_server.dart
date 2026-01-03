@@ -219,13 +219,60 @@ class MediaProxyServer {
     }
 
     // 获取文件流并传输
+    // 使用 StreamSubscription 以便更好地控制错误处理
+    // 当 SMB 连接断开时，可以立即停止写入而不会触发 HttpException
     try {
       final stream = await fileSystem.getFileStream(fileInfo.filePath, range: range);
-      await request.response.addStream(stream);
-      await request.response.close();
+
+      final completer = Completer<void>();
+      var hasError = false;
+
+      final subscription = stream.listen(
+        (data) {
+          if (hasError) return; // 已经发生错误，忽略后续数据
+          try {
+            request.response.add(data);
+          } catch (e, st) {
+            hasError = true;
+            AppError.ignore(e, st, 'MediaProxyServer: 写入响应失败，可能客户端已断开');
+            if (!completer.isCompleted) {
+              completer.complete(); // 正常完成，不触发错误处理
+            }
+          }
+        },
+        onError: (Object e, StackTrace st) {
+          hasError = true;
+          // 上报流传输错误（可能是 SMB 连接断开、读取失败等）
+          AppError.handle(e, st, 'MediaProxyServer.streamTransfer', {
+            'path': fileInfo.filePath,
+            'sourceId': fileInfo.sourceId,
+            'rangeStart': range?.start,
+            'rangeEnd': range?.end,
+          });
+          if (!completer.isCompleted) {
+            completer.complete(); // 正常完成，避免再次抛出异常
+          }
+        },
+        onDone: () {
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        },
+        cancelOnError: true,
+      );
+
+      await completer.future;
+      await subscription.cancel(); // 确保取消订阅
+      
+      try {
+        await request.response.close();
+      // ignore: avoid_catches_without_on_clauses
+      } catch (_) {
+        // 响应可能已经关闭或客户端断开
+      }
     } on Exception catch (e, st) {
-      // 上报流传输错误（可能是连接断开、读取失败等）
-      AppError.handle(e, st, 'MediaProxyServer.streamTransfer', {
+      // 获取流失败（连接不可用等）
+      AppError.handle(e, st, 'MediaProxyServer.getFileStream', {
         'path': fileInfo.filePath,
         'sourceId': fileInfo.sourceId,
         'rangeStart': range?.start,
