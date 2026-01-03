@@ -41,6 +41,7 @@ import 'package:my_nas/features/video/presentation/providers/video_detail_provid
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/category_browse_cards.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
+import 'package:my_nas/features/video/presentation/widgets/live_stream_section.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_category_settings_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -3297,6 +3298,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 enabledPaths,
               ),
             ),
+          ),
+        ];
+
+      case VideoHomeCategory.liveStreaming:
+        // 直播区块
+        return [
+          SliverToBoxAdapter(
+            child: LiveStreamSection(isDark: isDark),
           ),
         ];
     }

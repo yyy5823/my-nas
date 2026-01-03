@@ -53,6 +53,9 @@ enum VideoHomeCategory {
 
   /// 浏览电视剧地区（卡片式分类入口）
   browseTvRegions,
+
+  /// 直播
+  liveStreaming,
 }
 
 /// 分类类型的扩展方法
@@ -94,6 +97,8 @@ extension VideoHomeCategoryExtension on VideoHomeCategory {
         return '剧集-类型';
       case VideoHomeCategory.browseTvRegions:
         return '剧集-地区';
+      case VideoHomeCategory.liveStreaming:
+        return '直播';
     }
   }
 
@@ -148,6 +153,8 @@ extension VideoHomeCategoryExtension on VideoHomeCategory {
       case VideoHomeCategory.byTvRegion:
       case VideoHomeCategory.browseTvRegions:
         return 'flag';
+      case VideoHomeCategory.liveStreaming:
+        return 'live_tv';
     }
   }
 
@@ -394,6 +401,11 @@ class VideoCategorySettings {
             category: VideoHomeCategory.browseTvRegions,
             order: 12,
             visible: false,
+          ),
+          // 直播区块（默认显示，如果有配置直播源）
+          VideoCategorySectionConfig(
+            category: VideoHomeCategory.liveStreaming,
+            order: 13,
           ),
         ],
       );

@@ -3,13 +3,13 @@ import UIKit
 
 /// iOS 26 风格自定义玻璃弹出菜单
 ///
-/// 使用 UIVisualEffectView 创建与 iOS 26 上下文菜单相同外观的自定义弹出菜单
-/// 特性：
-/// - iOS 26+ 使用 UIGlassEffect 实现真正的 Liquid Glass 效果
+/// 完全符合 iOS 26 设计规范的上下文菜单实现：
+/// - iOS 26+ 使用 UIGlassEffect 实现 Liquid Glass 效果
 /// - iOS 13-25 使用 UIBlurEffect 回退
-/// - 平滑的弹出和关闭动画
-/// - 支持菜单项图标
-/// - 支持破坏性操作红色标记
+/// - 点击按钮后按钮消失，菜单在右上角区域展示
+/// - 支持拖动滑动选择（类似导航栏左右滑动）
+/// - 椭圆形高亮选中区域
+/// - 文字对齐（有图标和无图标的菜单项）
 
 // MARK: - Plugin Registration
 
@@ -64,6 +64,8 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
         pendingResult = result
         hasReturnedResult = false
 
+        NSLog("🍿 GlassPopupMenuPlugin: showMenu at (\(x), \(y)) with \(items.count) items")
+
         DispatchQueue.main.async { [weak self] in
             self?.presentMenu(at: CGPoint(x: x, y: y), items: items, isDark: isDark)
         }
@@ -71,9 +73,13 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
 
     private func presentMenu(at point: CGPoint, items: [[String: Any]], isDark: Bool) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
+            NSLog("🍿 GlassPopupMenuPlugin: ERROR - No window scene found")
             pendingResult?(FlutterError(code: "NO_WINDOW", message: "No window scene found", details: nil))
             return
         }
+
+        // 检查是否有任何菜单项带图标
+        let hasAnyIcon = items.contains { ($0["icon"] as? String) != nil }
 
         var menuItems: [PopupMenuItem] = []
         for (index, item) in items.enumerated() {
@@ -88,6 +94,8 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
                 value: value,
                 isDestructive: isDestructive
             ))
+
+            NSLog("🍿 GlassPopupMenuPlugin: Item \(index): \(title) -> \(value)")
         }
 
         let menuWindow = UIWindow(windowScene: windowScene)
@@ -95,9 +103,11 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
             menuItems: menuItems,
             anchorPoint: point,
             isDark: isDark,
+            hasAnyIcon: hasAnyIcon,
             onSelect: { [weak self] value in
                 guard let self = self, !self.hasReturnedResult else { return }
                 self.hasReturnedResult = true
+                NSLog("🍿 GlassPopupMenuPlugin: Selected value: \(value)")
                 self.pendingResult?(value)
                 self.pendingResult = nil
                 self.dismissMenuWindow()
@@ -105,6 +115,7 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
             onDismiss: { [weak self] in
                 guard let self = self, !self.hasReturnedResult else { return }
                 self.hasReturnedResult = true
+                NSLog("🍿 GlassPopupMenuPlugin: Menu dismissed without selection")
                 self.pendingResult?(nil)
                 self.pendingResult = nil
                 self.dismissMenuWindow()
@@ -122,7 +133,6 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
 
     private func dismissMenuWindow() {
         guard let window = menuWindow else { return }
-
         window.isHidden = true
         menuWindow = nil
     }
@@ -141,23 +151,30 @@ class GlassMenuViewController: UIViewController {
     private let menuItems: [PopupMenuItem]
     private let anchorPoint: CGPoint
     private let isDark: Bool
+    private let hasAnyIcon: Bool
     private let onSelect: (String) -> Void
     private let onDismiss: () -> Void
 
     private var menuContainerView: UIView!
     private var glassBackgroundView: UIVisualEffectView!
+    private var scrollView: UIScrollView!
     private var menuStackView: UIStackView!
+    private var itemViews: [UIView] = []
+    private var currentHighlightedIndex: Int = -1
 
     // 菜单尺寸常量
-    private let menuWidth: CGFloat = 220
+    private let menuWidth: CGFloat = 200
     private let menuItemHeight: CGFloat = 44
     private let menuCornerRadius: CGFloat = 14
-    private let menuPadding: CGFloat = 8
+    private let menuPadding: CGFloat = 6
+    private let highlightCornerRadius: CGFloat = 8
+    private let iconWidth: CGFloat = 24
 
-    init(menuItems: [PopupMenuItem], anchorPoint: CGPoint, isDark: Bool, onSelect: @escaping (String) -> Void, onDismiss: @escaping () -> Void) {
+    init(menuItems: [PopupMenuItem], anchorPoint: CGPoint, isDark: Bool, hasAnyIcon: Bool, onSelect: @escaping (String) -> Void, onDismiss: @escaping () -> Void) {
         self.menuItems = menuItems
         self.anchorPoint = anchorPoint
         self.isDark = isDark
+        self.hasAnyIcon = hasAnyIcon
         self.onSelect = onSelect
         self.onDismiss = onDismiss
         super.init(nibName: nil, bundle: nil)
@@ -176,6 +193,7 @@ class GlassMenuViewController: UIViewController {
         setupBackgroundDismiss()
         setupMenuContainer()
         setupGlassBackground()
+        setupScrollView()
         setupMenuItems()
         positionMenu()
     }
@@ -196,20 +214,18 @@ class GlassMenuViewController: UIViewController {
         menuContainerView.backgroundColor = .clear
         menuContainerView.layer.cornerRadius = menuCornerRadius
         menuContainerView.layer.cornerCurve = .continuous
-        menuContainerView.clipsToBounds = true
 
-        // 添加阴影到容器的父视图
+        // 添加阴影
         menuContainerView.layer.shadowColor = UIColor.black.cgColor
         menuContainerView.layer.shadowOffset = CGSize(width: 0, height: 8)
         menuContainerView.layer.shadowRadius = 24
-        menuContainerView.layer.shadowOpacity = isDark ? 0.4 : 0.2
+        menuContainerView.layer.shadowOpacity = isDark ? 0.5 : 0.25
         menuContainerView.layer.masksToBounds = false
 
         view.addSubview(menuContainerView)
     }
 
     private func setupGlassBackground() {
-        // 创建玻璃效果
         if #available(iOS 26.0, *) {
             let glassEffect = UIGlassEffect()
             glassBackgroundView = UIVisualEffectView(effect: glassEffect)
@@ -234,187 +250,174 @@ class GlassMenuViewController: UIViewController {
         ])
     }
 
+    private func setupScrollView() {
+        scrollView = UIScrollView()
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.delaysContentTouches = false
+        scrollView.canCancelContentTouches = true
+
+        glassBackgroundView.contentView.addSubview(scrollView)
+
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: glassBackgroundView.contentView.topAnchor, constant: menuPadding),
+            scrollView.bottomAnchor.constraint(equalTo: glassBackgroundView.contentView.bottomAnchor, constant: -menuPadding),
+            scrollView.leadingAnchor.constraint(equalTo: glassBackgroundView.contentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: glassBackgroundView.contentView.trailingAnchor)
+        ])
+
+        // 添加拖动手势用于滑动选择
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGesture.delegate = self
+        scrollView.addGestureRecognizer(panGesture)
+    }
+
     private func setupMenuItems() {
         menuStackView = UIStackView()
         menuStackView.axis = .vertical
         menuStackView.alignment = .fill
         menuStackView.distribution = .fill
-        menuStackView.spacing = 0
+        menuStackView.spacing = 2
 
         for (index, item) in menuItems.enumerated() {
-            let itemButton = createMenuItemButton(item: item, index: index)
-            menuStackView.addArrangedSubview(itemButton)
-
-            // 添加分隔线（除了最后一项）
-            if index < menuItems.count - 1 {
-                let separator = createSeparator()
-                menuStackView.addArrangedSubview(separator)
-            }
+            let itemView = createMenuItemView(item: item, index: index)
+            itemViews.append(itemView)
+            menuStackView.addArrangedSubview(itemView)
         }
 
-        glassBackgroundView.contentView.addSubview(menuStackView)
+        scrollView.addSubview(menuStackView)
 
         menuStackView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            menuStackView.topAnchor.constraint(equalTo: glassBackgroundView.contentView.topAnchor, constant: menuPadding),
-            menuStackView.bottomAnchor.constraint(equalTo: glassBackgroundView.contentView.bottomAnchor, constant: -menuPadding),
-            menuStackView.leadingAnchor.constraint(equalTo: glassBackgroundView.contentView.leadingAnchor),
-            menuStackView.trailingAnchor.constraint(equalTo: glassBackgroundView.contentView.trailingAnchor)
+            menuStackView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            menuStackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            menuStackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            menuStackView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            menuStackView.widthAnchor.constraint(equalTo: scrollView.widthAnchor)
         ])
     }
 
-    private func createMenuItemButton(item: PopupMenuItem, index: Int) -> UIView {
-        // 创建容器视图
+    private func createMenuItemView(item: PopupMenuItem, index: Int) -> UIView {
         let containerView = UIView()
         containerView.backgroundColor = .clear
         containerView.tag = index
         containerView.translatesAutoresizingMaskIntoConstraints = false
         containerView.heightAnchor.constraint(equalToConstant: menuItemHeight).isActive = true
 
-        // 创建水平堆栈视图
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.alignment = .center
-        stackView.spacing = 12
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(stackView)
-
-        NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
-            stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
-            stackView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
-        ])
-
-        // 添加图标
-        if let iconName = item.icon {
-            let symbolConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-            let imageView = UIImageView(image: UIImage(systemName: iconName, withConfiguration: symbolConfig))
-            imageView.tintColor = item.isDestructive ? .systemRed : (isDark ? .white : .label)
-            imageView.contentMode = .scaleAspectFit
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            imageView.widthAnchor.constraint(equalToConstant: 20).isActive = true
-            stackView.addArrangedSubview(imageView)
-        }
-
-        // 添加标题
-        let titleLabel = UILabel()
-        titleLabel.text = item.title
-        titleLabel.font = UIFont.systemFont(ofSize: 15, weight: .regular)
-        titleLabel.textColor = item.isDestructive ? .systemRed : (isDark ? .white : .label)
-        stackView.addArrangedSubview(titleLabel)
-
-        // 添加高亮背景视图
+        // 椭圆形高亮背景
         let highlightView = UIView()
         highlightView.backgroundColor = .clear
-        highlightView.translatesAutoresizingMaskIntoConstraints = false
-        containerView.insertSubview(highlightView, at: 0)
+        highlightView.layer.cornerRadius = highlightCornerRadius
+        highlightView.layer.cornerCurve = .continuous
+        highlightView.tag = 1000 + index
+        containerView.addSubview(highlightView)
 
+        highlightView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            highlightView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            highlightView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            highlightView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            highlightView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
+            highlightView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 2),
+            highlightView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -2),
+            highlightView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: menuPadding),
+            highlightView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -menuPadding)
         ])
+
+        // 内容堆栈视图
+        let contentStack = UIStackView()
+        contentStack.axis = .horizontal
+        contentStack.alignment = .center
+        contentStack.spacing = 10
+        containerView.addSubview(contentStack)
+
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            contentStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 14),
+            contentStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -14),
+            contentStack.centerYAnchor.constraint(equalTo: containerView.centerYAnchor)
+        ])
+
+        // 图标区域（固定宽度以对齐文字）
+        if hasAnyIcon {
+            if let iconName = item.icon {
+                let symbolConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+                let imageView = UIImageView(image: UIImage(systemName: iconName, withConfiguration: symbolConfig))
+                imageView.tintColor = item.isDestructive ? .systemRed : (isDark ? .white : .label)
+                imageView.contentMode = .center
+                imageView.translatesAutoresizingMaskIntoConstraints = false
+                imageView.widthAnchor.constraint(equalToConstant: iconWidth).isActive = true
+                contentStack.addArrangedSubview(imageView)
+            } else {
+                // 占位符保持对齐
+                let spacer = UIView()
+                spacer.translatesAutoresizingMaskIntoConstraints = false
+                spacer.widthAnchor.constraint(equalToConstant: iconWidth).isActive = true
+                contentStack.addArrangedSubview(spacer)
+            }
+        }
+
+        // 标题
+        let titleLabel = UILabel()
+        titleLabel.text = item.title
+        titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .regular)
+        titleLabel.textColor = item.isDestructive ? .systemRed : (isDark ? .white : .label)
+        contentStack.addArrangedSubview(titleLabel)
 
         // 添加点击手势
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(menuItemTapped(_:)))
         containerView.addGestureRecognizer(tapGesture)
         containerView.isUserInteractionEnabled = true
 
-        // 添加长按手势用于高亮效果
-        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(menuItemPressed(_:)))
-        longPressGesture.minimumPressDuration = 0
-        longPressGesture.cancelsTouchesInView = false
-        containerView.addGestureRecognizer(longPressGesture)
-
-        // 保存高亮视图引用
-        highlightView.tag = 1000 + index
-
         return containerView
-    }
-
-    @objc private func menuItemPressed(_ gesture: UILongPressGestureRecognizer) {
-        guard let containerView = gesture.view else { return }
-        let index = containerView.tag
-        let highlightView = containerView.viewWithTag(1000 + index)
-
-        let highlightColor = isDark
-            ? UIColor.white.withAlphaComponent(0.1)
-            : UIColor.black.withAlphaComponent(0.05)
-
-        switch gesture.state {
-        case .began:
-            UIView.animate(withDuration: 0.1) {
-                highlightView?.backgroundColor = highlightColor
-            }
-        case .ended, .cancelled, .failed:
-            UIView.animate(withDuration: 0.1) {
-                highlightView?.backgroundColor = .clear
-            }
-        default:
-            break
-        }
-    }
-
-    private func createSeparator() -> UIView {
-        let separator = UIView()
-        separator.backgroundColor = isDark
-            ? UIColor.white.withAlphaComponent(0.1)
-            : UIColor.black.withAlphaComponent(0.08)
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        separator.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
-        return separator
     }
 
     private func positionMenu() {
         let screenBounds = view.bounds
-        let menuHeight = CGFloat(menuItems.count) * menuItemHeight + CGFloat(menuItems.count - 1) * 0.5 + menuPadding * 2
+        let safeArea = view.safeAreaInsets
+        let maxMenuHeight = screenBounds.height - safeArea.top - safeArea.bottom - 32
+        let contentHeight = CGFloat(menuItems.count) * menuItemHeight + CGFloat(menuItems.count - 1) * 2 + menuPadding * 2
+        let menuHeight = min(contentHeight, maxMenuHeight)
 
-        // 计算菜单位置，确保不超出屏幕
-        var menuX = anchorPoint.x - menuWidth + 20  // 右对齐到锚点
-        var menuY = anchorPoint.y + 8  // 在锚点下方
-
-        // 确保不超出左边界
-        if menuX < 16 {
-            menuX = 16
-        }
+        // iOS 26 风格：菜单在按钮位置展示（右对齐到锚点）
+        var menuX = anchorPoint.x - menuWidth / 2  // 以锚点为中心
+        var menuY = anchorPoint.y  // 从锚点位置开始
 
         // 确保不超出右边界
         if menuX + menuWidth > screenBounds.width - 16 {
             menuX = screenBounds.width - menuWidth - 16
         }
 
-        // 如果菜单会超出底部，则显示在锚点上方
-        if menuY + menuHeight > screenBounds.height - 16 {
-            menuY = anchorPoint.y - menuHeight - 8
+        // 确保不超出左边界
+        if menuX < 16 {
+            menuX = 16
+        }
+
+        // 确保不超出底部
+        if menuY + menuHeight > screenBounds.height - safeArea.bottom - 16 {
+            menuY = anchorPoint.y - menuHeight  // 显示在锚点上方
         }
 
         // 确保不超出顶部
-        if menuY < 16 {
-            menuY = 16
+        if menuY < safeArea.top + 16 {
+            menuY = safeArea.top + 16
         }
 
         menuContainerView.frame = CGRect(x: menuX, y: menuY, width: menuWidth, height: menuHeight)
+
+        // 设置滚动视图内容大小
+        scrollView.contentSize = CGSize(width: menuWidth, height: contentHeight - menuPadding * 2)
     }
 
     private func animateIn() {
-        // 初始状态：缩小并透明
         menuContainerView.alpha = 0
-        menuContainerView.transform = CGAffineTransform(scaleX: 0.92, y: 0.92)
+        menuContainerView.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
 
-        // 设置锚点为菜单顶部右侧（因为菜单通常从右上角按钮展开）
-        let anchorX = (anchorPoint.x - menuContainerView.frame.minX) / menuContainerView.bounds.width
-        menuContainerView.layer.anchorPoint = CGPoint(x: min(1, max(0, anchorX)), y: 0)
-
-        // 重新定位以补偿锚点变化
+        // 锚点设置为菜单顶部中心
+        menuContainerView.layer.anchorPoint = CGPoint(x: 0.5, y: 0)
         positionMenu()
 
-        // iOS 26 风格弹簧动画
         UIView.animate(
-            withDuration: 0.35,
+            withDuration: 0.3,
             delay: 0,
-            usingSpringWithDamping: 0.8,
+            usingSpringWithDamping: 0.75,
             initialSpringVelocity: 0.5,
             options: [.curveEaseOut],
             animations: {
@@ -439,24 +442,116 @@ class GlassMenuViewController: UIViewController {
         )
     }
 
+    private func highlightItem(at index: Int) {
+        guard index != currentHighlightedIndex else { return }
+
+        // 取消之前的高亮
+        if currentHighlightedIndex >= 0 && currentHighlightedIndex < itemViews.count {
+            let prevContainer = itemViews[currentHighlightedIndex]
+            if let prevHighlight = prevContainer.viewWithTag(1000 + currentHighlightedIndex) {
+                UIView.animate(withDuration: 0.15) {
+                    prevHighlight.backgroundColor = .clear
+                }
+            }
+        }
+
+        currentHighlightedIndex = index
+
+        // 添加新高亮
+        if index >= 0 && index < itemViews.count {
+            let container = itemViews[index]
+            if let highlightView = container.viewWithTag(1000 + index) {
+                let highlightColor = isDark
+                    ? UIColor.white.withAlphaComponent(0.15)
+                    : UIColor.black.withAlphaComponent(0.08)
+                UIView.animate(withDuration: 0.15) {
+                    highlightView.backgroundColor = highlightColor
+                }
+            }
+        }
+    }
+
+    private func clearHighlight() {
+        if currentHighlightedIndex >= 0 && currentHighlightedIndex < itemViews.count {
+            let container = itemViews[currentHighlightedIndex]
+            if let highlightView = container.viewWithTag(1000 + currentHighlightedIndex) {
+                UIView.animate(withDuration: 0.15) {
+                    highlightView.backgroundColor = .clear
+                }
+            }
+        }
+        currentHighlightedIndex = -1
+    }
+
+    private func indexForPoint(_ point: CGPoint) -> Int {
+        let localPoint = scrollView.convert(point, from: view)
+        let adjustedY = localPoint.y + scrollView.contentOffset.y
+
+        for (index, itemView) in itemViews.enumerated() {
+            let frame = itemView.frame
+            if adjustedY >= frame.minY && adjustedY < frame.maxY {
+                return index
+            }
+        }
+        return -1
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let location = gesture.location(in: view)
+
+        switch gesture.state {
+        case .began, .changed:
+            let index = indexForPoint(location)
+            if menuContainerView.frame.contains(location) {
+                highlightItem(at: index)
+            } else {
+                clearHighlight()
+            }
+        case .ended:
+            if currentHighlightedIndex >= 0 && currentHighlightedIndex < menuItems.count {
+                let item = menuItems[currentHighlightedIndex]
+                selectItem(at: currentHighlightedIndex, item: item)
+            } else {
+                clearHighlight()
+            }
+        case .cancelled, .failed:
+            clearHighlight()
+        default:
+            break
+        }
+    }
+
     @objc private func menuItemTapped(_ gesture: UITapGestureRecognizer) {
-        guard let containerView = gesture.view else { return }
+        guard let containerView = gesture.view else {
+            NSLog("🍿 GlassPopupMenuPlugin: menuItemTapped - no view")
+            return
+        }
+
         let index = containerView.tag
-        guard index < menuItems.count else { return }
+        guard index >= 0 && index < menuItems.count else {
+            NSLog("🍿 GlassPopupMenuPlugin: menuItemTapped - invalid index \(index)")
+            return
+        }
 
         let item = menuItems[index]
+        NSLog("🍿 GlassPopupMenuPlugin: menuItemTapped - index \(index), value: \(item.value)")
+        selectItem(at: index, item: item)
+    }
 
-        // 添加简短的视觉反馈
-        UIView.animate(withDuration: 0.1, animations: {
-            containerView.alpha = 0.5
-        }) { _ in
-            self.animateOut { [weak self] in
+    private func selectItem(at index: Int, item: PopupMenuItem) {
+        // 高亮选中项
+        highlightItem(at: index)
+
+        // 短暂延迟后关闭
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.animateOut {
                 self?.onSelect(item.value)
             }
         }
     }
 
     @objc private func backgroundTapped() {
+        NSLog("🍿 GlassPopupMenuPlugin: backgroundTapped")
         animateOut { [weak self] in
             self?.onDismiss()
         }
@@ -467,8 +562,12 @@ class GlassMenuViewController: UIViewController {
 
 extension GlassMenuViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        // 只有点击在菜单外部时才响应
         let location = touch.location(in: menuContainerView)
-        return !menuContainerView.bounds.contains(location)
+        let isOutside = !menuContainerView.bounds.contains(location)
+        return isOutside
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return true
     }
 }

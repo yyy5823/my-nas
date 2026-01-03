@@ -1191,8 +1191,8 @@ class GlassGroupDynamicButton extends StatelessWidget {
 /// 玻璃风格 PopupMenu 按钮
 ///
 /// 与 GlassGroupIconButton 样式一致，但点击后显示紧跟按钮的弹出菜单
-/// 使用 BackdropFilter 实现毛玻璃效果
-class GlassGroupPopupMenuButton<T> extends StatelessWidget {
+/// iOS 26 风格：点击后按钮消失，菜单在按钮位置展示
+class GlassGroupPopupMenuButton<T> extends StatefulWidget {
   const GlassGroupPopupMenuButton({
     required this.itemBuilder,
     this.icon = Icons.more_vert_rounded,
@@ -1226,51 +1226,79 @@ class GlassGroupPopupMenuButton<T> extends StatelessWidget {
   final Offset offset;
 
   @override
+  State<GlassGroupPopupMenuButton<T>> createState() =>
+      _GlassGroupPopupMenuButtonState<T>();
+}
+
+class _GlassGroupPopupMenuButtonState<T>
+    extends State<GlassGroupPopupMenuButton<T>> {
+  bool _isMenuOpen = false;
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final iconColor = color ?? (isDark ? Colors.white : Colors.black87);
+    final iconColor =
+        widget.color ?? (isDark ? Colors.white : Colors.black87);
 
-    return GestureDetector(
-      onTap: () => _showGlassMenu(context),
-      child: Tooltip(
-        message: tooltip ?? '',
-        child: Container(
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          child: Icon(icon, size: size, color: iconColor),
+    // iOS 26 风格：菜单打开时隐藏按钮
+    return Opacity(
+      opacity: _isMenuOpen ? 0.0 : 1.0,
+      child: GestureDetector(
+        onTap: () => _showGlassMenu(context),
+        child: Tooltip(
+          message: widget.tooltip ?? '',
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            child: Icon(widget.icon, size: widget.size, color: iconColor),
+          ),
         ),
       ),
     );
   }
 
-  void _showGlassMenu(BuildContext context) {
+  Future<void> _showGlassMenu(BuildContext context) async {
+    if (_isMenuOpen) return;
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final button = context.findRenderObject()! as RenderBox;
-    final overlay = Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
 
     // 计算按钮位置
     final position = RelativeRect.fromRect(
       Rect.fromPoints(
         button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero),
+            ancestor: overlay),
       ),
       Offset.zero & overlay.size,
     );
 
     // 构建菜单项
-    final items = itemBuilder(context);
+    final items = widget.itemBuilder(context);
 
-    showGlassPopupMenu<T>(
-      context: context,
-      position: position,
-      items: items,
-      isDark: isDark,
-    ).then((value) {
-      if (value != null && onSelected != null) {
-        onSelected!(value);
+    // 标记菜单打开
+    setState(() => _isMenuOpen = true);
+
+    try {
+      final value = await showGlassPopupMenu<T>(
+        context: context,
+        position: position,
+        items: items,
+        isDark: isDark,
+      );
+
+      if (value != null && widget.onSelected != null) {
+        widget.onSelected!(value);
       }
-    });
+    } finally {
+      // 确保菜单关闭后恢复按钮显示
+      if (mounted) {
+        setState(() => _isMenuOpen = false);
+      }
+    }
   }
 }
 
