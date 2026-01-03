@@ -69,11 +69,45 @@ class ErrorReportService {
     // 初始化设置服务
     await ErrorReportSettingsService.instance.initialize();
     await DeviceInfoHelper.instance.initialize();
-    // 异步连接，不阻塞应用启动
-    AppError.fireAndForget(
-      _connectWithTimeout(),
-      action: 'ErrorReportService.connectOnInit',
-    );
+
+    // 只有在启用日志上报时才连接 RabbitMQ
+    if (enabled) {
+      // 异步连接，不阻塞应用启动
+      AppError.fireAndForget(
+        _connectWithTimeout(),
+        action: 'ErrorReportService.connectOnInit',
+      );
+    } else {
+      if (kDebugMode) {
+        logger.d('[ErrorReportService] Reporting disabled, skipping connection');
+      }
+    }
+  }
+
+  /// 手动连接（用于设置页面开启时调用）
+  Future<void> connect() async {
+    if (!enabled) {
+      if (kDebugMode) {
+        logger.d('[ErrorReportService] Cannot connect: reporting is disabled');
+      }
+      return;
+    }
+    await _connectWithTimeout();
+  }
+
+  /// 手动断开连接（用于设置页面关闭时调用）
+  Future<void> disconnect() async {
+    _reconnectTimer?.cancel();
+    _reconnectAttempts = 0;
+    await _client?.close();
+    _isConnected = false;
+    _isConnecting = false;
+    _client = null;
+    _channel = null;
+    _exchange = null;
+    if (kDebugMode) {
+      logger.d('[ErrorReportService] Disconnected from RabbitMQ');
+    }
   }
 
   // 连接超时时间
@@ -101,6 +135,14 @@ class ErrorReportService {
 
   /// 连接到 RabbitMQ
   Future<void> _connect() async {
+    // 如果禁用了日志上报，不进行连接
+    if (!enabled) {
+      if (kDebugMode) {
+        logger.d('[ErrorReportService] Reporting disabled, skipping connect');
+      }
+      return;
+    }
+
     if (_isConnected || _isConnecting) return;
     _isConnecting = true;
 
@@ -143,6 +185,14 @@ class ErrorReportService {
 
   /// 安排重连
   void _scheduleReconnect() {
+    // 如果禁用了日志上报，不进行重连
+    if (!enabled) {
+      if (kDebugMode) {
+        logger.d('[ErrorReportService] Reporting disabled, skipping reconnect');
+      }
+      return;
+    }
+
     if (_reconnectAttempts >= _maxReconnectAttempts) {
       if (kDebugMode) {
         logger.w('[ErrorReportService] Max reconnect attempts reached');
@@ -224,6 +274,9 @@ class ErrorReportService {
 
   /// 发送错误报告（非阻塞）
   Future<void> _sendReport(ErrorReportModel report) async {
+    // 如果禁用了日志上报，直接返回
+    if (!enabled) return;
+
     if (!_isConnected) {
       _addToPendingQueue(report);
       // 异步尝试连接，不阻塞

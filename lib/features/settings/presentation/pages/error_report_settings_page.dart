@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/services/error_report/error_report_service.dart';
 import 'package:my_nas/core/services/error_report/error_report_settings.dart';
 import 'package:my_nas/core/services/error_report/error_report_settings_service.dart';
 
@@ -25,10 +26,22 @@ class _ErrorReportSettingsPageState extends State<ErrorReportSettingsPage> {
   }
 
   Future<void> _updateSettings(ErrorReportSettings newSettings) async {
+    final wasEnabled = _settings.enabled;
+    final isNowEnabled = newSettings.enabled;
+
     setState(() {
       _settings = newSettings;
     });
     await ErrorReportSettingsService.instance.updateSettings(newSettings);
+
+    // 处理开关状态变化时的连接/断开
+    if (!wasEnabled && isNowEnabled) {
+      // 从关闭变为开启：触发连接
+      await ErrorReportService.instance.connect();
+    } else if (wasEnabled && !isNowEnabled) {
+      // 从开启变为关闭：断开连接
+      await ErrorReportService.instance.disconnect();
+    }
   }
 
   @override
