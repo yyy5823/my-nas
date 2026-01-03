@@ -118,7 +118,11 @@ dependencies:
   scrollable_positioned_list: ^0.3.8  # For efficient scrolling in reader
   archive: ^4.0.7  # ZIP/CBZ archive handling (upgraded for lottie compatibility)
   audio_metadata_reader: ^1.4.2
-  audiotags: ^1.4.5  # 音频元数据读写 (基于 Rust lofty-rs) - iOS 上禁用，使用 FFmpeg 后备
+  # audiotags: 使用本地修复版本
+  # 原因: libaudiotags.a 与 macOS 26.1 SDK 不兼容，iOS 也有链接问题
+  # 解决方案: macOS/iOS 上禁用 Rust 库，使用 FFmpeg 后备
+  audiotags:
+    path: packages/audiotags_fixed
   image: ^4.3.0
   flutter_native_splash: ^2.4.4
   sqflite_common_ffi: ^2.4.0

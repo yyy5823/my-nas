@@ -1003,7 +1003,7 @@ class GlassGroupIconButton extends StatelessWidget {
 /// 玻璃风格 PopupMenu 按钮
 ///
 /// 与 GlassGroupIconButton 样式一致，但点击后显示紧跟按钮的弹出菜单
-/// 而不是底部弹框
+/// 使用 BackdropFilter 实现毛玻璃效果
 class GlassGroupPopupMenuButton<T> extends StatelessWidget {
   const GlassGroupPopupMenuButton({
     required this.itemBuilder,
@@ -1042,19 +1042,336 @@ class GlassGroupPopupMenuButton<T> extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final iconColor = color ?? (isDark ? Colors.white : Colors.black87);
 
-    return PopupMenuButton<T>(
-      itemBuilder: itemBuilder,
-      onSelected: onSelected,
-      offset: offset,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+    return GestureDetector(
+      onTap: () => _showGlassMenu(context),
+      child: Tooltip(
+        message: tooltip ?? '',
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          child: Icon(icon, size: size, color: iconColor),
+        ),
       ),
-      tooltip: tooltip,
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        child: Icon(icon, size: size, color: iconColor),
+    );
+  }
+
+  void _showGlassMenu(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final button = context.findRenderObject()! as RenderBox;
+    final overlay = Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+
+    // 计算按钮位置
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    // 构建菜单项
+    final items = itemBuilder(context);
+
+    showGlassPopupMenu<T>(
+      context: context,
+      position: position,
+      items: items,
+      isDark: isDark,
+    ).then((value) {
+      if (value != null && onSelected != null) {
+        onSelected!(value);
+      }
+    });
+  }
+}
+
+/// 显示玻璃风格弹出菜单
+///
+/// 使用 BackdropFilter 实现毛玻璃效果
+Future<T?> showGlassPopupMenu<T>({
+  required BuildContext context,
+  required RelativeRect position,
+  required List<PopupMenuEntry<T>> items,
+  bool isDark = false,
+  double elevation = 8,
+  double blurSigma = 20,
+}) {
+  return Navigator.of(context).push<T>(
+    _GlassPopupMenuRoute<T>(
+      position: position,
+      items: items,
+      isDark: isDark,
+      elevation: elevation,
+      blurSigma: blurSigma,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    ),
+  );
+}
+
+/// 玻璃风格弹出菜单路由
+class _GlassPopupMenuRoute<T> extends PopupRoute<T> {
+  _GlassPopupMenuRoute({
+    required this.position,
+    required this.items,
+    required this.isDark,
+    required this.elevation,
+    required this.blurSigma,
+    required this.barrierLabel,
+  });
+
+  final RelativeRect position;
+  final List<PopupMenuEntry<T>> items;
+  final bool isDark;
+  final double elevation;
+  final double blurSigma;
+
+  @override
+  final String barrierLabel;
+
+  @override
+  Color? get barrierColor => Colors.transparent;
+
+  @override
+  bool get barrierDismissible => true;
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 200);
+
+  @override
+  Animation<double> createAnimation() {
+    return CurvedAnimation(
+      parent: super.createAnimation(),
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+  }
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    return MediaQuery.removePadding(
+      context: context,
+      removeTop: true,
+      removeBottom: true,
+      removeLeft: true,
+      removeRight: true,
+      child: Builder(
+        builder: (context) {
+          return CustomSingleChildLayout(
+            delegate: _GlassPopupMenuRouteLayout(
+              position,
+              Directionality.of(context),
+            ),
+            child: _GlassPopupMenu<T>(
+              route: this,
+              animation: animation,
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 玻璃风格弹出菜单布局
+class _GlassPopupMenuRouteLayout extends SingleChildLayoutDelegate {
+  _GlassPopupMenuRouteLayout(this.position, this.textDirection);
+
+  final RelativeRect position;
+  final TextDirection textDirection;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    return BoxConstraints.loose(
+      constraints.biggest - const Offset(16, 16) as Size,
+    );
+  }
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    // 默认在按钮下方右对齐
+    double x = size.width - position.right - childSize.width;
+    double y = size.height - position.bottom + 8;
+
+    // 确保不超出屏幕边界
+    if (x < 8) x = 8;
+    if (x + childSize.width > size.width - 8) {
+      x = size.width - childSize.width - 8;
+    }
+    if (y + childSize.height > size.height - 8) {
+      // 如果下方空间不够，显示在按钮上方
+      y = position.top - childSize.height - 8;
+    }
+    if (y < 8) y = 8;
+
+    return Offset(x, y);
+  }
+
+  @override
+  bool shouldRelayout(_GlassPopupMenuRouteLayout oldDelegate) {
+    return position != oldDelegate.position ||
+        textDirection != oldDelegate.textDirection;
+  }
+}
+
+/// 玻璃风格弹出菜单组件
+class _GlassPopupMenu<T> extends StatelessWidget {
+  const _GlassPopupMenu({
+    required this.route,
+    required this.animation,
+  });
+
+  final _GlassPopupMenuRoute<T> route;
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = route.isDark;
+
+    // 背景颜色 - 半透明
+    final backgroundColor = isDark
+        ? Colors.black.withValues(alpha: 0.6)
+        : Colors.white.withValues(alpha: 0.7);
+
+    // 边框颜色
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.15)
+        : Colors.black.withValues(alpha: 0.08);
+
+    return FadeTransition(
+      opacity: animation,
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.9, end: 1.0).animate(animation),
+        alignment: Alignment.topRight,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: route.blurSigma,
+              sigmaY: route.blurSigma,
+            ),
+            child: Container(
+              constraints: const BoxConstraints(
+                minWidth: 180,
+                maxWidth: 280,
+              ),
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: borderColor, width: 0.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: IntrinsicWidth(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _buildMenuItems(context),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildMenuItems(BuildContext context) {
+    final List<Widget> children = [];
+
+    for (int i = 0; i < route.items.length; i++) {
+      final item = route.items[i];
+
+      if (item is PopupMenuDivider) {
+        children.add(
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: route.isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.08),
+          ),
+        );
+      } else if (item is PopupMenuItem<T>) {
+        children.add(
+          _GlassMenuItem<T>(
+            value: item.value,
+            isDark: route.isDark,
+            onTap: () {
+              Navigator.of(context).pop(item.value);
+            },
+            child: item.child ?? const SizedBox.shrink(),
+          ),
+        );
+      }
+    }
+
+    return children;
+  }
+}
+
+/// 玻璃风格菜单项
+class _GlassMenuItem<T> extends StatefulWidget {
+  const _GlassMenuItem({
+    required this.child,
+    required this.isDark,
+    required this.onTap,
+    this.value,
+  });
+
+  final Widget child;
+  final bool isDark;
+  final VoidCallback onTap;
+  final T? value;
+
+  @override
+  State<_GlassMenuItem<T>> createState() => _GlassMenuItemState<T>();
+}
+
+class _GlassMenuItemState<T> extends State<_GlassMenuItem<T>> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final hoverColor = widget.isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.05);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _isHovered ? hoverColor : Colors.transparent,
+          ),
+          child: DefaultTextStyle(
+            style: TextStyle(
+              color: widget.isDark ? Colors.white : Colors.black87,
+              fontSize: 15,
+            ),
+            child: IconTheme(
+              data: IconThemeData(
+                color: widget.isDark ? Colors.white70 : Colors.black54,
+                size: 22,
+              ),
+              child: widget.child,
+            ),
+          ),
+        ),
       ),
     );
   }

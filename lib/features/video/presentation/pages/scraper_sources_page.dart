@@ -19,6 +19,7 @@ class ScraperSourcesPage extends ConsumerStatefulWidget {
 
 class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
   String? _testingSourceId;
+  bool _isReorderMode = false;
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +32,18 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
         title: const Text('视频刮削源'),
         centerTitle: false,
         backgroundColor: isDark ? AppColors.darkSurface : null,
+        actions: [
+          // 排序模式切换按钮
+          IconButton(
+            icon: Icon(_isReorderMode ? Icons.done : Icons.reorder),
+            onPressed: () {
+              setState(() {
+                _isReorderMode = !_isReorderMode;
+              });
+            },
+            tooltip: _isReorderMode ? '完成排序' : '调整顺序',
+          ),
+        ],
       ),
       body: sourcesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -58,34 +71,79 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
     // 构建排序后的类型列表
     final sortedTypes = _getSortedTypes(sources);
 
-    return ReorderableListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: sortedTypes.length,
-      buildDefaultDragHandles: false,
-      onReorder: (oldIndex, newIndex) => _handleReorder(sources, sortedTypes, oldIndex, newIndex),
-      proxyDecorator: (child, index, animation) => Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(16),
-        child: child,
-      ),
-      itemBuilder: (context, index) {
-        final type = sortedTypes[index];
-        final source = sources.where((s) => s.type == type).firstOrNull;
+    if (_isReorderMode) {
+      return _buildReorderableList(sources, sortedTypes, isDark);
+    }
 
-        return _ScraperTypeCard(
-          key: ValueKey(type),
-          index: index,
-          type: type,
-          source: source,
-          isDark: isDark,
-          isTesting: source != null && _testingSourceId == source.id,
-          onTap: () => _handleTap(type, source),
-          onToggle: (enabled) => _handleToggle(type, source, enabled),
-          onTest: source != null ? () => _testConnection(source) : null,
-        );
-      },
-    );
+    return _buildNormalList(sources, sortedTypes, isDark);
   }
+
+  /// 构建普通列表（非排序模式）
+  Widget _buildNormalList(
+    List<ScraperSourceEntity> sources,
+    List<ScraperType> sortedTypes,
+    bool isDark,
+  ) => ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: sortedTypes.length,
+        itemBuilder: (context, index) {
+          final type = sortedTypes[index];
+          final source = sources.where((s) => s.type == type).firstOrNull;
+
+          return _ScraperTypeCard(
+            key: ValueKey(type),
+            index: index,
+            type: type,
+            source: source,
+            isDark: isDark,
+            isTesting: source != null && _testingSourceId == source.id,
+            isReorderMode: false,
+            onTap: () => _handleTap(type, source),
+            onToggle: (enabled) => _handleToggle(type, source, enabled),
+            onTest: source != null ? () => _testConnection(source) : null,
+          );
+        },
+      );
+
+  /// 构建可排序列表（排序模式）
+  Widget _buildReorderableList(
+    List<ScraperSourceEntity> sources,
+    List<ScraperType> sortedTypes,
+    bool isDark,
+  ) => ReorderableListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: sortedTypes.length,
+        onReorder: (oldIndex, newIndex) => _handleReorder(sources, sortedTypes, oldIndex, newIndex),
+        proxyDecorator: (child, index, animation) => AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) {
+            final elevation = Tween<double>(begin: 0, end: 8).evaluate(animation);
+            return Material(
+              elevation: elevation,
+              borderRadius: BorderRadius.circular(16),
+              child: child,
+            );
+          },
+          child: child,
+        ),
+        itemBuilder: (context, index) {
+          final type = sortedTypes[index];
+          final source = sources.where((s) => s.type == type).firstOrNull;
+
+          return _ScraperTypeCard(
+            key: ValueKey(type),
+            index: index,
+            type: type,
+            source: source,
+            isDark: isDark,
+            isTesting: source != null && _testingSourceId == source.id,
+            isReorderMode: true,
+            onTap: () => _handleTap(type, source),
+            onToggle: (enabled) => _handleToggle(type, source, enabled),
+            onTest: source != null ? () => _testConnection(source) : null,
+          );
+        },
+      );
 
   List<ScraperType> _getSortedTypes(List<ScraperSourceEntity> sources) {
     final configuredTypes = sources.map((s) => s.type).toList();
@@ -257,6 +315,7 @@ class _ScraperTypeCard extends StatelessWidget {
     required this.source,
     required this.isDark,
     required this.isTesting,
+    required this.isReorderMode,
     required this.onTap,
     required this.onToggle,
     required this.onTest,
@@ -267,6 +326,7 @@ class _ScraperTypeCard extends StatelessWidget {
   final ScraperSourceEntity? source;
   final bool isDark;
   final bool isTesting;
+  final bool isReorderMode;
   final VoidCallback onTap;
   final void Function(bool) onToggle;
   final VoidCallback? onTest;
@@ -279,111 +339,121 @@ class _ScraperTypeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return ReorderableDelayedDragStartListener(
-      index: index,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        child: Material(
-          color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        elevation: 1,
+        shadowColor: type.themeColor.withValues(alpha: 0.3),
+        child: InkWell(
+          onTap: _needsConfig && !isReorderMode ? onTap : null,
           borderRadius: BorderRadius.circular(16),
-          elevation: 1,
-          shadowColor: type.themeColor.withValues(alpha: 0.3),
-          child: InkWell(
-            onTap: _needsConfig ? onTap : null,
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  // 图标
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: _isEnabled
-                          ? type.themeColor.withValues(alpha: 0.15)
-                          : (isDark ? Colors.grey[800] : Colors.grey[200]),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                // 排序模式下显示拖动手柄
+                if (isReorderMode) ...[
+                  ReorderableDragStartListener(
+                    index: index,
                     child: Icon(
-                      type.icon,
-                      size: 24,
-                      color: _isEnabled
-                          ? type.themeColor
-                          : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                      Icons.drag_handle,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(width: 12),
+                ],
 
-                  // 名称和描述
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              type.displayName,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: _isEnabled
-                                    ? null
-                                    : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                // 图标
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: _isEnabled
+                        ? type.themeColor.withValues(alpha: 0.15)
+                        : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    type.icon,
+                    size: 24,
+                    color: _isEnabled
+                        ? type.themeColor
+                        : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // 名称和描述
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            type.displayName,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: _isEnabled
+                                  ? null
+                                  : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                            ),
+                          ),
+                          if (_isConfigured) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppColors.success.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                '已配置',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.success,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
-                            if (_isConfigured) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: AppColors.success.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  '已配置',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: AppColors.success,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
                           ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _getDescription(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: isDark ? Colors.grey[500] : Colors.grey[600],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _getDescription(),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: isDark ? Colors.grey[500] : Colors.grey[600],
-                          ),
-                        ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 配置按钮（如果需要配置，排序模式下不显示）
+                if (_needsConfig && !isReorderMode)
+                  IconButton(
+                    onPressed: onTap,
+                    icon: Icon(
+                      Icons.settings_outlined,
+                      color: isDark ? Colors.grey[500] : Colors.grey[400],
+                      size: 22,
                     ),
+                    tooltip: '配置',
+                    visualDensity: VisualDensity.compact,
                   ),
 
-                  // 配置按钮（如果需要配置）
-                  if (_needsConfig)
-                    IconButton(
-                      onPressed: onTap,
-                      icon: Icon(
-                        Icons.settings_outlined,
-                        color: isDark ? Colors.grey[500] : Colors.grey[400],
-                        size: 22,
-                      ),
-                      tooltip: '配置',
-                      visualDensity: VisualDensity.compact,
-                    ),
-
-                  // 启用开关
+                // 启用开关（排序模式下不显示）
+                if (!isReorderMode)
                   Switch(
                     value: _isEnabled,
                     onChanged: onToggle,
                     activeTrackColor: type.themeColor.withValues(alpha: 0.5),
                     activeThumbColor: type.themeColor,
                   ),
-                ],
-              ),
+              ],
             ),
           ),
         ),
