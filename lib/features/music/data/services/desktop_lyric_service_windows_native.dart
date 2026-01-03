@@ -34,34 +34,52 @@ final class _TRACKMOUSEEVENT extends Struct {
   external int dwHoverTime;
 }
 
-// TrackMouseEvent 函数
-final _trackMouseEvent = DynamicLibrary.open('user32.dll').lookupFunction<
-    Int32 Function(Pointer<_TRACKMOUSEEVENT>),
-    int Function(Pointer<_TRACKMOUSEEVENT>)>('TrackMouseEvent');
+/// Win32 FFI 函数封装类（延迟初始化）
+class _Win32Functions {
+  _Win32Functions._();
+  static final _Win32Functions instance = _Win32Functions._();
 
-// CreateFont 函数
-final _createFont = DynamicLibrary.open('gdi32.dll').lookupFunction<
-    IntPtr Function(
-        Int32, Int32, Int32, Int32, Int32, Uint32, Uint32, Uint32, Uint32,
-        Uint32, Uint32, Uint32, Uint32, Pointer<Utf16>),
-    int Function(
-        int, int, int, int, int, int, int, int, int,
-        int, int, int, int, Pointer<Utf16>)>('CreateFontW');
+  DynamicLibrary? _user32;
+  DynamicLibrary? _gdi32;
 
-// GetTextExtentPoint32 函数
-final _getTextExtentPoint32 = DynamicLibrary.open('gdi32.dll').lookupFunction<
-    Int32 Function(IntPtr, Pointer<Utf16>, Int32, Pointer<SIZE>),
-    int Function(int, Pointer<Utf16>, int, Pointer<SIZE>)>('GetTextExtentPoint32W');
+  DynamicLibrary get user32 => _user32 ??= DynamicLibrary.open('user32.dll');
+  DynamicLibrary get gdi32 => _gdi32 ??= DynamicLibrary.open('gdi32.dll');
 
-// CreateRoundRectRgn 函数
-final _createRoundRectRgn = DynamicLibrary.open('gdi32.dll').lookupFunction<
-    IntPtr Function(Int32, Int32, Int32, Int32, Int32, Int32),
-    int Function(int, int, int, int, int, int)>('CreateRoundRectRgn');
+  // 缓存的函数指针
+  int Function(Pointer<_TRACKMOUSEEVENT>)? _trackMouseEvent;
+  int Function(int, int, int, int, int, int, int, int, int, int, int, int, int, Pointer<Utf16>)? _createFont;
+  int Function(int, Pointer<Utf16>, int, Pointer<SIZE>)? _getTextExtentPoint32;
+  int Function(int, int, int, int, int, int)? _createRoundRectRgn;
+  int Function(int, int)? _selectClipRgn;
 
-// SelectClipRgn 函数
-final _selectClipRgn = DynamicLibrary.open('gdi32.dll').lookupFunction<
-    Int32 Function(IntPtr, IntPtr),
-    int Function(int, int)>('SelectClipRgn');
+  int Function(Pointer<_TRACKMOUSEEVENT>) get trackMouseEvent =>
+      _trackMouseEvent ??= user32.lookupFunction<
+          Int32 Function(Pointer<_TRACKMOUSEEVENT>),
+          int Function(Pointer<_TRACKMOUSEEVENT>)>('TrackMouseEvent');
+
+  int Function(int, int, int, int, int, int, int, int, int, int, int, int, int, Pointer<Utf16>) get createFont =>
+      _createFont ??= gdi32.lookupFunction<
+          IntPtr Function(Int32, Int32, Int32, Int32, Int32, Uint32, Uint32, Uint32, Uint32, Uint32, Uint32, Uint32, Uint32, Pointer<Utf16>),
+          int Function(int, int, int, int, int, int, int, int, int, int, int, int, int, Pointer<Utf16>)>('CreateFontW');
+
+  int Function(int, Pointer<Utf16>, int, Pointer<SIZE>) get getTextExtentPoint32 =>
+      _getTextExtentPoint32 ??= gdi32.lookupFunction<
+          Int32 Function(IntPtr, Pointer<Utf16>, Int32, Pointer<SIZE>),
+          int Function(int, Pointer<Utf16>, int, Pointer<SIZE>)>('GetTextExtentPoint32W');
+
+  int Function(int, int, int, int, int, int) get createRoundRectRgn =>
+      _createRoundRectRgn ??= gdi32.lookupFunction<
+          IntPtr Function(Int32, Int32, Int32, Int32, Int32, Int32),
+          int Function(int, int, int, int, int, int)>('CreateRoundRectRgn');
+
+  int Function(int, int) get selectClipRgn =>
+      _selectClipRgn ??= gdi32.lookupFunction<
+          Int32 Function(IntPtr, IntPtr),
+          int Function(int, int)>('SelectClipRgn');
+}
+
+// 便捷访问
+_Win32Functions get _win32 => _Win32Functions.instance;
 
 /// Windows 原生桌面歌词服务实现
 /// 使用 Win32 API 创建透明悬浮窗口
@@ -137,7 +155,7 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
           tme.ref.dwFlags = _TME_LEAVE;
           tme.ref.hwndTrack = hwnd;
           tme.ref.dwHoverTime = 0;
-          _trackMouseEvent(tme);
+          _win32.trackMouseEvent(tme);
           calloc.free(tme);
         }
         return 0;
@@ -227,12 +245,20 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
 
     await AppError.guard(
       () async {
-        if (_hwnd == 0) {
-          _createWindow();
+        try {
+          if (_hwnd == 0) {
+            _createWindow();
+          }
+          if (_hwnd != 0) {
+            ShowWindow(_hwnd, SW_SHOWNOACTIVATE);
+            _isVisible = true;
+            _startRefreshTimer();
+          }
+        } catch (e) {
+          // FFI 调用失败时不崩溃
+          _isVisible = false;
+          rethrow;
         }
-        ShowWindow(_hwnd, SW_SHOWNOACTIVATE);
-        _isVisible = true;
-        _startRefreshTimer();
       },
       action: 'showDesktopLyricWindowsNative',
     );
@@ -297,8 +323,12 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
     // 每 50ms 刷新一次以获得流畅的卡拉OK效果
     _refreshTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (_isVisible && _hwnd != 0) {
-        _invalidateWindow();
-        _processMessages();
+        try {
+          _invalidateWindow();
+          _processMessages();
+        } catch (e) {
+          // 忽略绘制错误，防止崩溃
+        }
       }
     });
   }
@@ -313,41 +343,58 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
   }
 
   void _onPaint(int hwnd) {
+    if (hwnd == 0) return;
+
     final ps = calloc<PAINTSTRUCT>();
     final hdc = BeginPaint(hwnd, ps);
 
-    final rect = calloc<RECT>();
-    GetClientRect(hwnd, rect);
-    final width = rect.ref.right - rect.ref.left;
-    final height = rect.ref.bottom - rect.ref.top;
-
-    // 创建双缓冲
-    final memDC = CreateCompatibleDC(hdc);
-    final memBitmap = CreateCompatibleBitmap(hdc, width, height);
-    final oldBitmap = SelectObject(memDC, memBitmap);
-
-    // 绘制背景
-    _drawBackground(memDC, width, height);
-
-    // 绘制歌词
-    _drawLyrics(memDC, width, height);
-
-    // 绘制控制按钮（仅在悬停时）
-    if (_isHovering) {
-      _drawControls(memDC, width, height);
+    if (hdc == 0) {
+      calloc.free(ps);
+      return;
     }
 
-    // 复制到窗口
-    BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
+    try {
+      final rect = calloc<RECT>();
+      GetClientRect(hwnd, rect);
+      final width = rect.ref.right - rect.ref.left;
+      final height = rect.ref.bottom - rect.ref.top;
 
-    // 清理
-    SelectObject(memDC, oldBitmap);
-    DeleteObject(memBitmap);
-    DeleteDC(memDC);
+      if (width <= 0 || height <= 0) {
+        calloc.free(rect);
+        EndPaint(hwnd, ps);
+        calloc.free(ps);
+        return;
+      }
 
-    calloc.free(rect);
-    EndPaint(hwnd, ps);
-    calloc.free(ps);
+      // 创建双缓冲
+      final memDC = CreateCompatibleDC(hdc);
+      final memBitmap = CreateCompatibleBitmap(hdc, width, height);
+      final oldBitmap = SelectObject(memDC, memBitmap);
+
+      // 绘制背景
+      _drawBackground(memDC, width, height);
+
+      // 绘制歌词
+      _drawLyrics(memDC, width, height);
+
+      // 绘制控制按钮（仅在悬停时）
+      if (_isHovering) {
+        _drawControls(memDC, width, height);
+      }
+
+      // 复制到窗口
+      BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
+
+      // 清理
+      SelectObject(memDC, oldBitmap);
+      DeleteObject(memBitmap);
+      DeleteDC(memDC);
+
+      calloc.free(rect);
+    } finally {
+      EndPaint(hwnd, ps);
+      calloc.free(ps);
+    }
   }
 
   void _drawBackground(int hdc, int width, int height) {
@@ -363,8 +410,8 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
     rect.ref.bottom = height;
 
     // 创建圆角矩形区域
-    final rgn = _createRoundRectRgn(0, 0, width, height, 20, 20);
-    _selectClipRgn(hdc, rgn);
+    final rgn = _win32.createRoundRectRgn(0, 0, width, height, 20, 20);
+    _win32.selectClipRgn(hdc, rgn);
 
     FillRect(hdc, rect, brush);
 
@@ -416,7 +463,7 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
 
     // 创建字体
     final fontName = 'Microsoft YaHei'.toNativeUtf16();
-    final hFont = _createFont(
+    final hFont = _win32.createFont(
       fontSize, 0, 0, 0,
       _FW_BOLD,
       FALSE, FALSE, FALSE,
@@ -448,9 +495,9 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
     clipRect.ref.bottom = y + fontSize + 5;
 
     final clipRgn = CreateRectRgn(clipRect.ref.left, clipRect.ref.top, clipRect.ref.right, clipRect.ref.bottom);
-    _selectClipRgn(hdc, clipRgn);
+    _win32.selectClipRgn(hdc, clipRgn);
     TextOut(hdc, x, y, textPtr, text.length);
-    _selectClipRgn(hdc, NULL);
+    _win32.selectClipRgn(hdc, NULL);
 
     DeleteObject(clipRgn);
     calloc.free(clipRect);
@@ -462,7 +509,7 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
 
   void _drawCenteredText(int hdc, int width, int y, String text, int fontSize, bool bold) {
     final fontName = 'Microsoft YaHei'.toNativeUtf16();
-    final hFont = _createFont(
+    final hFont = _win32.createFont(
       fontSize, 0, 0, 0,
       bold ? _FW_BOLD : _FW_NORMAL,
       FALSE, FALSE, FALSE,
@@ -493,7 +540,7 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
 
   int _measureText(int hdc, String text, int fontSize) {
     final fontName = 'Microsoft YaHei'.toNativeUtf16();
-    final hFont = _createFont(
+    final hFont = _win32.createFont(
       fontSize, 0, 0, 0,
       _FW_BOLD,
       FALSE, FALSE, FALSE,
@@ -510,7 +557,7 @@ class DesktopLyricServiceWindowsNativeImpl implements DesktopLyricService {
 
     final size = calloc<SIZE>();
     final textPtr = text.toNativeUtf16();
-    _getTextExtentPoint32(hdc, textPtr, text.length, size);
+    _win32.getTextExtentPoint32(hdc, textPtr, text.length, size);
     final width = size.ref.cx;
 
     calloc.free(textPtr);
