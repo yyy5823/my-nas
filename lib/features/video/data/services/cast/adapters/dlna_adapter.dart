@@ -39,7 +39,7 @@ class DlnaAdapter {
   bool get isCasting => _currentDevice != null;
 
   /// 开始设备发现
-  Future<void> startDiscovery({Duration timeout = const Duration(seconds: 10)}) async {
+  Future<void> startDiscovery({Duration timeout = const Duration(seconds: 15)}) async {
     if (_isSearching) {
       logger.i('DLNA 设备搜索已在进行中');
       return;
@@ -57,19 +57,22 @@ class DlnaAdapter {
       _deviceManager = await _manager!.start();
 
       // 监听设备发现
+      // 注意：dlna_dart 库的 DeviceManager 会累积设备，这里合并更新而非清空
       _deviceSubscription = _deviceManager!.devices.stream.listen((deviceMap) {
-        _dlnaDevices.clear();
-
         for (final entry in deviceMap.entries) {
           final device = entry.value;
           // 只关注渲染器（可以接收视频的设备）
           if (device.info.deviceType.contains('MediaRenderer')) {
-            logger.i('发现 DLNA 设备: ${device.info.friendlyName}');
+            final isNew = !_dlnaDevices.containsKey(device.info.URLBase);
+            if (isNew) {
+              logger.i('发现新 DLNA 设备: ${device.info.friendlyName} @ ${device.info.URLBase}');
+            }
             // 使用 URLBase 作为 key，与 CastDevice.id 保持一致
             _dlnaDevices[device.info.URLBase] = device;
           }
         }
 
+        logger.d('DLNA 设备总数: ${_dlnaDevices.length}');
         // 发送更新
         _deviceController.add(_convertToCastDevices());
       });
@@ -77,6 +80,7 @@ class DlnaAdapter {
       // 设置超时
       Timer(timeout, () {
         if (_isSearching) {
+          logger.i('DLNA 设备搜索超时，共发现 ${_dlnaDevices.length} 个设备');
           stopDiscovery();
         }
       });

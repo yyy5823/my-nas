@@ -1072,7 +1072,7 @@ class GlassGroupIconButton extends StatelessWidget {
     required this.icon,
     this.onPressed,
     this.tooltip,
-    this.size = 20,
+    this.size = 18,
     this.color,
     super.key,
   });
@@ -1198,7 +1198,7 @@ class GlassGroupPopupMenuButton<T> extends StatelessWidget {
     this.icon = Icons.more_vert_rounded,
     this.onSelected,
     this.tooltip,
-    this.size = 20,
+    this.size = 18,
     this.color,
     this.offset = const Offset(0, 8),
     super.key,
@@ -1696,7 +1696,7 @@ class _GlassMenuItemState<T> extends State<_GlassMenuItem<T>> {
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           decoration: BoxDecoration(
             color: _isHovered ? hoverColor : Colors.transparent,
           ),
@@ -1704,11 +1704,12 @@ class _GlassMenuItemState<T> extends State<_GlassMenuItem<T>> {
             style: TextStyle(
               color: widget.isDark ? Colors.white : Colors.black87,
               fontSize: 15,
+              fontWeight: FontWeight.w400,
             ),
             child: IconTheme(
               data: IconThemeData(
                 color: widget.isDark ? Colors.white70 : Colors.black54,
-                size: 22,
+                size: 18,
               ),
               child: widget.child,
             ),

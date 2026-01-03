@@ -107,21 +107,16 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         stackView.axis = .horizontal
         stackView.alignment = .center
         stackView.distribution = .equalSpacing
-        stackView.spacing = CGFloat(spacing)
+        // iOS 26 风格：使用 8pt 间距代替分隔线
+        stackView.spacing = CGFloat(max(spacing, 8.0))
 
         super.init()
 
-        // 创建按钮
+        // 创建按钮 - iOS 26 风格不使用分隔线
         for (index, item) in items.enumerated() {
             let button = createButton(item: item, size: buttonSize, index: index)
             buttons.append(button)
             stackView.addArrangedSubview(button)
-
-            // 添加分隔线（除了最后一个）
-            if index < items.count - 1 {
-                let separator = createSeparator()
-                stackView.addArrangedSubview(separator)
-            }
         }
 
         // 设置视图层级
@@ -240,11 +235,7 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
     }
 
     @objc private func buttonTapped(_ sender: UIButton) {
-        // 触觉反馈
-        let feedback = UIImpactFeedbackGenerator(style: .light)
-        feedback.impactOccurred()
-
-        // 通知 Flutter
+        // 通知 Flutter（不使用触觉反馈）
         methodChannel?.invokeMethod("onButtonTap", arguments: sender.tag)
     }
 

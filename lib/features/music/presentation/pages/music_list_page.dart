@@ -4838,9 +4838,55 @@ class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
+    final bgColor = isDark ? AppColors.darkBackground : Colors.grey[50];
 
+    // iOS 26 玻璃模式
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Stack(
+          children: [
+            Column(
+              children: [
+                // 顶部区域（使用渐变背景）
+                _buildGlassHeader(context, isDark, safeTop),
+                // 播放控制
+                _buildPlayControls(context, isDark),
+                // 歌曲列表
+                Expanded(
+                  child: widget.tracks.isEmpty
+                      ? _buildEmptyState(isDark)
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: EdgeInsets.only(bottom: context.scrollBottomPadding),
+                          itemCount: widget.tracks.length,
+                          itemBuilder: (context, index) => _ModernMusicTile(
+                            track: widget.tracks[index],
+                            index: index,
+                            isDark: isDark,
+                            allTracks: widget.tracks,
+                          ),
+                        ),
+                ),
+                const MiniPlayer(),
+              ],
+            ),
+            // 悬浮返回按钮
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              child: const GlassFloatingBackButton(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+      backgroundColor: bgColor,
       body: Column(
         children: [
           // 顶部区域
@@ -4869,6 +4915,83 @@ class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage> {
       ),
     );
   }
+
+  /// 玻璃模式下的头部（无返回按钮，返回按钮悬浮在外层）
+  Widget _buildGlassHeader(BuildContext context, bool isDark, double safeTop) => DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            widget.color.withValues(alpha: isDark ? 0.3 : 0.15),
+            isDark ? AppColors.darkBackground : Colors.grey[50]!,
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, safeTop + 56, 16, 16),
+        child: Row(
+          children: [
+            // 图标/封面
+            widget.coverWidget ??
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        widget.color,
+                        widget.color.withValues(alpha: 0.6),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.color.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    color: Colors.white,
+                    size: 36,
+                  ),
+                ),
+            const SizedBox(width: 16),
+            // 标题信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.title,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.subtitle,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
 
   Widget _buildHeader(BuildContext context, bool isDark) => DecoratedBox(
       decoration: BoxDecoration(

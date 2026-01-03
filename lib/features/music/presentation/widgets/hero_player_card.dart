@@ -18,6 +18,7 @@ import 'package:my_nas/features/music/presentation/widgets/animated_components.d
 /// - 唱片旋转动画
 /// - 呼吸光晕效果
 /// - 内置进度条
+/// - 播放控制按钮
 class HeroPlayerCard extends ConsumerWidget {
   const HeroPlayerCard({
     required this.isDark,
@@ -136,8 +137,8 @@ class HeroPlayerCard extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // 快捷按钮组
-                    _buildActionButtons(isPlaying: false),
+                    // 播放控制按钮组 - 欢迎状态只显示随机播放
+                    _buildWelcomeActions(context),
                   ],
                 ),
               ),
@@ -215,8 +216,8 @@ class HeroPlayerCard extends ConsumerWidget {
                       // 进度条
                       _buildProgressBar(ref, playerState),
                       const SizedBox(height: 12),
-                      // 快捷按钮组
-                      _buildActionButtons(isPlaying: playerState.isPlaying),
+                      // 播放控制按钮组
+                      _buildPlaybackControls(context, ref, playerState),
                     ],
                   ),
                 ),
@@ -429,8 +430,8 @@ class HeroPlayerCard extends ConsumerWidget {
     );
   }
 
-  /// 快捷按钮组
-  Widget _buildActionButtons({required bool isPlaying}) => Row(
+  /// 欢迎状态下的操作按钮（随机播放）
+  Widget _buildWelcomeActions(BuildContext context) => Row(
       children: [
         // 随机播放
         if (onShuffleTap != null)
@@ -438,19 +439,100 @@ class HeroPlayerCard extends ConsumerWidget {
             icon: Icons.shuffle_rounded,
             label: '随机播放',
             onTap: onShuffleTap!,
-            isPrimary: false,
-          ),
-        const SizedBox(width: 10),
-        // 播放全部
-        if (onPlayAllTap != null)
-          _buildActionButton(
-            icon: Icons.play_arrow_rounded,
-            label: '播放全部',
-            onTap: onPlayAllTap!,
             isPrimary: true,
           ),
       ],
     );
+
+  /// 播放控制按钮组
+  Widget _buildPlaybackControls(
+    BuildContext context,
+    WidgetRef ref,
+    MusicPlayerState playerState,
+  ) {
+    final playerNotifier = ref.read(musicPlayerControllerProvider.notifier);
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // 随机播放按钮（左侧）
+        if (onShuffleTap != null) ...[
+          _buildControlButton(
+            icon: Icons.shuffle_rounded,
+            onTap: onShuffleTap!,
+            size: 32,
+          ),
+          const SizedBox(width: 12),
+        ],
+        // 上一首
+        _buildControlButton(
+          icon: Icons.skip_previous_rounded,
+          onTap: playerNotifier.playPrevious,
+          size: 36,
+        ),
+        const SizedBox(width: 8),
+        // 播放/暂停
+        _buildPlayPauseButton(
+          isPlaying: playerState.isPlaying,
+          onTap: playerNotifier.playOrPause,
+        ),
+        const SizedBox(width: 8),
+        // 下一首
+        _buildControlButton(
+          icon: Icons.skip_next_rounded,
+          onTap: playerNotifier.playNext,
+          size: 36,
+        ),
+      ],
+    );
+  }
+
+  /// 播放/暂停按钮（大号）
+  Widget _buildPlayPauseButton({
+    required bool isPlaying,
+    required VoidCallback onTap,
+  }) => AnimatedPressable(
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(
+            isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            color: AppColors.primary,
+            size: 28,
+          ),
+        ),
+      );
+
+  /// 控制按钮（上一首/下一首等）
+  Widget _buildControlButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    double size = 32,
+  }) => AnimatedPressable(
+        onTap: onTap,
+        child: Container(
+          width: size,
+          height: size,
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            color: Colors.white.withValues(alpha: 0.9),
+            size: size * 0.75,
+          ),
+        ),
+      );
 
   Widget _buildActionButton({
     required IconData icon,

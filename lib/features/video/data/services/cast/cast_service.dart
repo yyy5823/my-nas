@@ -88,7 +88,7 @@ class CastService {
   }
 
   /// 开始设备发现
-  Future<void> startDiscovery({Duration timeout = const Duration(seconds: 10)}) async {
+  Future<void> startDiscovery({Duration timeout = const Duration(seconds: 15)}) async {
     logger.i('开始设备发现');
 
     // 并行启动 DLNA 和 AirPlay 搜索

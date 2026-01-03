@@ -89,7 +89,7 @@ class CastNotifier extends StateNotifier<CastState> {
   }
 
   /// 开始设备发现
-  Future<void> startDiscovery({Duration timeout = const Duration(seconds: 10)}) async {
+  Future<void> startDiscovery({Duration timeout = const Duration(seconds: 15)}) async {
     if (state.isDiscovering) return;
 
     state = state.copyWith(isDiscovering: true, clearError: true);
