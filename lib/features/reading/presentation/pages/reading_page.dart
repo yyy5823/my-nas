@@ -8,6 +8,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/note/presentation/pages/note_list_page.dart';
+import 'package:my_nas/features/note/presentation/widgets/note_tree_widget.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
@@ -62,7 +63,29 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentTab = ref.watch(readingTabProvider);
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 玻璃模式：悬浮布局
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容区域
+            _buildReadingContentWithLargeTitle(context, isDark, currentTab, safeTop),
+            // 悬浮按钮组（右上角）
+            Positioned(
+              top: safeTop + 8,
+              right: 16,
+              child: _buildFloatingButtons(context, isDark, currentTab),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：传统布局
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
       body: Column(
@@ -90,6 +113,210 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         ],
       ),
     );
+  }
+
+  /// iOS 26 悬浮按钮组
+  Widget _buildFloatingButtons(BuildContext context, bool isDark, int currentTab) =>
+    GlassButtonGroup(
+      children: [
+        _buildTypeSwitcherGlassButton(context, isDark, currentTab),
+      ],
+    );
+
+  /// 玻璃模式下的类型切换按钮（放入 GlassButtonGroup）
+  Widget _buildTypeSwitcherGlassButton(BuildContext context, bool isDark, int currentTab) =>
+    PopupMenuButton<int>(
+      offset: const Offset(0, 40),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      padding: EdgeInsets.zero,
+      itemBuilder: (context) => ReadingContentType.values.asMap().entries.map((entry) {
+        final index = entry.key;
+        final type = entry.value;
+        final isSelected = index == currentTab;
+
+        return PopupMenuItem<int>(
+          value: index,
+          child: Row(
+            children: [
+              Icon(
+                type.icon,
+                size: 20,
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600]),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                type.label,
+                style: TextStyle(
+                  color: isSelected
+                      ? AppColors.primary
+                      : (isDark ? AppColors.darkOnSurface : Colors.black87),
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+              if (isSelected) ...[
+                const Spacer(),
+                Icon(
+                  Icons.check_rounded,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+      onSelected: _onTabChanged,
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              ReadingContentType.values[currentTab].icon,
+              size: 20,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+            Icon(
+              Icons.arrow_drop_down_rounded,
+              size: 16,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+          ],
+        ),
+      ),
+    );
+
+  /// iOS 26 带大标题的阅读内容
+  Widget _buildReadingContentWithLargeTitle(
+    BuildContext context,
+    bool isDark,
+    int currentTab,
+    double safeTop,
+  ) => Column(
+      children: [
+        // 顶部安全区域 + 悬浮按钮区域留白
+        SizedBox(height: safeTop + 52),
+        // 大标题区域
+        _buildLargeTitleSliver(context, isDark, currentTab),
+        // 内容区域
+        Expanded(
+          child: PageView(
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
+            onPageChanged: (index) {
+              ref.read(readingTabProvider.notifier).state = index;
+            },
+            children: const [
+              BookListContent(),
+              ComicListContent(),
+              NoteListContent(),
+            ],
+          ),
+        ),
+      ],
+    );
+
+  /// iOS 26 大标题区域
+  Widget _buildLargeTitleSliver(BuildContext context, bool isDark, int currentTab) {
+    // 获取各类数据统计
+    final bookState = ref.watch(bookListProvider);
+    final comicState = ref.watch(comicListProvider);
+    final noteState = ref.watch(notePageProvider);
+
+    final bookCount = bookState is BookListLoaded ? bookState.totalCount : 0;
+    final comicCount = comicState is ComicListLoaded ? comicState.comics.length : 0;
+    final noteCount = noteState is NotePageLoaded ? _countNotes(noteState.treeNodes) : 0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 大标题
+          Text(
+            _getGreeting(),
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 统计信息
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _buildStatChip(
+                icon: Icons.menu_book_rounded,
+                label: '$bookCount 图书',
+                color: Colors.amber[700]!,
+                isDark: isDark,
+                isActive: currentTab == 0,
+              ),
+              _buildStatChip(
+                icon: Icons.collections_bookmark_rounded,
+                label: '$comicCount 漫画',
+                color: Colors.orange[600]!,
+                isDark: isDark,
+                isActive: currentTab == 1,
+              ),
+              _buildStatChip(
+                icon: Icons.note_alt_rounded,
+                label: '$noteCount 笔记',
+                color: Colors.green[600]!,
+                isDark: isDark,
+                isActive: currentTab == 2,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 统计信息小标签
+  Widget _buildStatChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isDark,
+    bool isActive = false,
+  }) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: isActive ? color : (isDark ? Colors.grey[500] : Colors.grey[400])),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+            color: isActive
+                ? (isDark ? Colors.white : Colors.black87)
+                : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+
+  /// 计算笔记数量（只计算文件，不计算文件夹）
+  int _countNotes(List<NoteTreeNode> nodes) {
+    var count = 0;
+    for (final node in nodes) {
+      if (node.type == NoteTreeNodeType.file) {
+        count++;
+      }
+      if (node.children.isNotEmpty) {
+        count += _countNotes(node.children);
+      }
+    }
+    return count;
   }
 
   Widget _buildAppBar(BuildContext context, bool isDark, int currentTab) {

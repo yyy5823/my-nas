@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -1322,7 +1323,63 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(photoListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 Liquid Glass 风格：悬浮布局
+    if (uiStyle.isGlass) {
+      // 多选模式需要 PhotoListLoaded 状态
+      final loadedState = state is PhotoListLoaded ? state : null;
+      final isSelectMode = loadedState?.isSelectMode ?? false;
+
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容（包含大标题）
+            switch (state) {
+              PhotoListLoading(
+                :final progress,
+                :final currentFolder,
+                :final fromCache,
+                :final partialPhotos,
+                :final scannedCount,
+              ) =>
+                _buildLoadingState(
+                  context,
+                  progress,
+                  currentFolder,
+                  fromCache,
+                  partialPhotos,
+                  scannedCount,
+                  isDark,
+                ),
+              PhotoListNotConnected() => _buildNotConnectedPrompt(context, isDark),
+              PhotoListError(:final message) => AppErrorWidget(
+                  message: message,
+                  onRetry: () => ref.read(photoListProvider.notifier).loadPhotos(),
+                ),
+              final PhotoListLoaded loaded => loaded.filteredPhotos.isEmpty
+                  ? _buildEmptyState(context, ref, isDark)
+                  : _buildPhotoContentWithLargeTitle(context, ref, loaded, isDark, safeTop),
+            },
+            // 悬浮按钮组（右上角）- 多选模式时显示多选头部
+            Positioned(
+              top: safeTop + 8,
+              left: isSelectMode ? 16 : null,
+              right: 16,
+              child: isSelectMode && loadedState != null
+                  ? _buildFloatingSelectModeHeader(context, ref, isDark, loadedState)
+                  : (_showSearch
+                      ? _buildFloatingSearchBar(context, ref, isDark)
+                      : _buildFloatingButtons(context, ref, isDark, state)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：传统布局
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
       body: Column(
@@ -1618,6 +1675,339 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// iOS 26 悬浮按钮组
+  Widget _buildFloatingButtons(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    PhotoListState state,
+  ) {
+    return GlassButtonGroup(
+      children: [
+        GlassGroupIconButton(
+          icon: Icons.search_rounded,
+          onPressed: () => setState(() => _showSearch = true),
+          tooltip: '搜索',
+        ),
+        if (state is PhotoListLoaded) ...[
+          GlassGroupIconButton(
+            icon: Icons.check_circle_outline_rounded,
+            onPressed: () => ref.read(photoListProvider.notifier).enterSelectMode(),
+            tooltip: '多选',
+          ),
+          GlassGroupIconButton(
+            icon: state.viewMode == PhotoViewMode.grid
+                ? Icons.view_timeline_rounded
+                : Icons.grid_view_rounded,
+            onPressed: () => ref.read(photoListProvider.notifier).toggleViewMode(),
+            tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
+          ),
+        ],
+        GlassGroupIconButton(
+          icon: Icons.more_vert_rounded,
+          onPressed: () => _showSettingsMenu(context),
+          tooltip: '更多',
+        ),
+      ],
+    );
+  }
+
+  /// iOS 26 悬浮搜索栏
+  Widget _buildFloatingSearchBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 搜索输入框（使用玻璃效果）
+        ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              width: 220,
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.08),
+                  width: 0.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: 16,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '搜索照片...',
+                        hintStyle: TextStyle(
+                          color: isDark ? Colors.white38 : Colors.black38,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (query) {
+                        ref.read(photoListProvider.notifier).setSearchQuery(query);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // 关闭按钮
+        GlassButtonGroup(
+          children: [
+            GlassGroupIconButton(
+              icon: Icons.close_rounded,
+              onPressed: () {
+                setState(() => _showSearch = false);
+                _searchController.clear();
+                ref.read(photoListProvider.notifier).setSearchQuery('');
+              },
+              tooltip: '关闭搜索',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// iOS 26 悬浮多选模式头部
+  Widget _buildFloatingSelectModeHeader(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    PhotoListLoaded state,
+  ) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.black.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.black.withValues(alpha: 0.08),
+              width: 0.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: () => ref.read(photoListProvider.notifier).exitSelectMode(),
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 20,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32),
+                tooltip: '取消',
+              ),
+              const SizedBox(width: 4),
+              Text(
+                state.selectedPaths.isEmpty
+                    ? '选择照片'
+                    : '已选择 ${state.selectedPaths.length} 张',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: state.selectedPaths.length == state.displayPhotos.length
+                    ? () => ref.read(photoListProvider.notifier).clearSelection()
+                    : () => ref.read(photoListProvider.notifier).selectAll(),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  state.selectedPaths.length == state.displayPhotos.length ? '取消全选' : '全选',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.success,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// iOS 26 带大标题的照片内容
+  Widget _buildPhotoContentWithLargeTitle(
+    BuildContext context,
+    WidgetRef ref,
+    PhotoListLoaded state,
+    bool isDark,
+    double safeTop,
+  ) {
+    return Column(
+      children: [
+        // 时间筛选栏（有筛选时显示，或在时间线模式下显示）- 需要在大标题下方
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => ref.read(photoListProvider.notifier).forceRefresh(),
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                // 顶部安全区域留白 + 悬浮按钮区域
+                SliverPadding(padding: EdgeInsets.only(top: safeTop + 52)),
+                // 大标题区域（iOS 26 风格）
+                _buildLargeTitleSliver(context, state, isDark),
+                // 时间筛选栏
+                if (state.filterYear != null || state.viewMode == PhotoViewMode.timeline)
+                  SliverToBoxAdapter(
+                    child: _buildTimelineFilterBar(context, ref, state, isDark),
+                  ),
+                // 照片内容
+                if (state.viewMode == PhotoViewMode.grid)
+                  _buildGridView(context, ref, state, isDark)
+                else
+                  _buildTimelineView(context, ref, state, isDark),
+                // 底部留白 - 支持悬浮导航栏
+                SliverPadding(padding: EdgeInsets.only(bottom: context.scrollBottomPadding)),
+              ],
+            ),
+          ),
+        ),
+        // 多选模式底部操作栏
+        if (state.isSelectMode && state.selectedPaths.isNotEmpty)
+          _buildSelectionActionBar(context, ref, state, isDark),
+      ],
+    );
+  }
+
+  /// iOS 26 大标题 Sliver
+  Widget _buildLargeTitleSliver(
+    BuildContext context,
+    PhotoListLoaded state,
+    bool isDark,
+  ) {
+    final photoCount = state.displayPhotos.length;
+    final localCount = state.displayPhotos.where(state.isLocalPhoto).length;
+    final remoteCount = photoCount - localCount;
+
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 大标题
+            Text(
+              _getGreeting(),
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 统计信息
+            if (photoCount > 0)
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  _buildStatChip(
+                    icon: Icons.photo_library_rounded,
+                    label: '$photoCount 照片',
+                    color: AppColors.success,
+                    isDark: isDark,
+                  ),
+                  if (localCount > 0)
+                    _buildStatChip(
+                      icon: Icons.phone_iphone_rounded,
+                      label: '$localCount 本机',
+                      color: AppColors.primary,
+                      isDark: isDark,
+                    ),
+                  if (remoteCount > 0)
+                    _buildStatChip(
+                      icon: Icons.cloud_rounded,
+                      label: '$remoteCount NAS',
+                      color: AppColors.accent,
+                      isDark: isDark,
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 统计标签
+  Widget _buildStatChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.2 : 0.12),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

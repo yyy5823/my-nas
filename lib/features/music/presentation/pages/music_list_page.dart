@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -1743,7 +1744,71 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(musicListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 Liquid Glass 风格：悬浮布局
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容（包含大标题）
+            Column(
+              children: [
+                Expanded(
+                  child: switch (state) {
+                    MusicListLoading(
+                      :final progress,
+                      :final currentFolder,
+                      :final fromCache,
+                      :final partialTracks,
+                      :final scannedCount,
+                    ) =>
+                      _buildLoadingState(
+                        context,
+                        progress,
+                        currentFolder,
+                        fromCache,
+                        partialTracks,
+                        scannedCount,
+                        isDark,
+                      ),
+                    MusicListNotConnected() => const MediaSetupWidget(
+                        mediaType: MediaType.music,
+                        icon: Icons.library_music_outlined,
+                      ),
+                    MusicListError(:final message) => AppErrorWidget(
+                        message: message,
+                        onRetry: () => ref.read(musicListProvider.notifier).loadMusic(),
+                      ),
+                    MusicListLoaded(:final filteredTracks) when filteredTracks.isEmpty =>
+                      _buildEmptyState(context, ref, isDark),
+                    final MusicListLoaded loaded =>
+                      _buildMusicContentWithLargeTitle(context, ref, loaded, isDark, safeTop),
+                  },
+                ),
+                // MiniPlayer 在 glass 模式下也需要显示（搜索模式或非 loaded 状态）
+                if (state case MusicListLoaded(:final searchQuery) when searchQuery.isNotEmpty)
+                  const MiniPlayer()
+                else if (state is! MusicListLoaded)
+                  const MiniPlayer(),
+              ],
+            ),
+            // 悬浮按钮组（右上角）
+            Positioned(
+              top: safeTop + 8,
+              right: 16,
+              child: _showSearch
+                  ? _buildFloatingSearchBar(context, ref, isDark)
+                  : _buildFloatingButtons(context, ref, isDark, state),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：传统布局
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
       body: Column(
@@ -1984,6 +2049,354 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// iOS 26 悬浮按钮组
+  Widget _buildFloatingButtons(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    MusicListState state,
+  ) {
+    return GlassButtonGroup(
+      children: [
+        GlassGroupIconButton(
+          icon: Icons.search_rounded,
+          onPressed: () => setState(() => _showSearch = true),
+          tooltip: '搜索',
+        ),
+        GlassGroupIconButton(
+          icon: Icons.queue_music_rounded,
+          onPressed: () => showMusicQueueSheet(context),
+          tooltip: '播放队列',
+        ),
+        GlassGroupIconButton(
+          icon: Icons.more_vert_rounded,
+          onPressed: () => _showSettingsMenu(context),
+          tooltip: '更多',
+        ),
+      ],
+    );
+  }
+
+  /// iOS 26 悬浮搜索栏
+  Widget _buildFloatingSearchBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 搜索输入框（使用玻璃效果）
+        ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              width: 220,
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.08),
+                  width: 0.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: 16,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '搜索歌曲、艺术家...',
+                        hintStyle: TextStyle(
+                          color: isDark ? Colors.white38 : Colors.black38,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (query) {
+                        ref.read(musicListProvider.notifier).setSearchQuery(query);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // 关闭按钮
+        GlassButtonGroup(
+          children: [
+            GlassGroupIconButton(
+              icon: Icons.close_rounded,
+              onPressed: () {
+                setState(() => _showSearch = false);
+                _searchController.clear();
+                ref.read(musicListProvider.notifier).setSearchQuery('');
+              },
+              tooltip: '关闭搜索',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// iOS 26 带大标题的音乐内容
+  Widget _buildMusicContentWithLargeTitle(
+    BuildContext context,
+    WidgetRef ref,
+    MusicListLoaded state,
+    bool isDark,
+    double safeTop,
+  ) {
+    // 如果有搜索，显示搜索结果
+    if (state.searchQuery.isNotEmpty) {
+      return _buildSearchResults(context, ref, state, isDark);
+    }
+
+    // 获取收藏和历史状态
+    final favoritesState = ref.watch(musicFavoritesProvider);
+    final historyState = ref.watch(musicHistoryProvider);
+
+    // 转换收藏为 MusicFileWithSource
+    final favoriteTracks = favoritesState.favorites
+        .where((fav) => state.trackByFilePath.containsKey(fav.musicPath))
+        .map((fav) {
+          final m = state.trackByFilePath[fav.musicPath]!;
+          return MusicFileWithSource(
+            file: FileItem(
+              name: m.fileName,
+              path: m.filePath,
+              size: m.size ?? 0,
+              isDirectory: false,
+              modifiedTime: m.modifiedTime,
+            ),
+            sourceId: m.sourceId,
+            title: m.title,
+            artist: m.artist,
+            album: m.album,
+            duration: m.duration,
+            year: m.year,
+            genre: m.genre,
+            coverPath: m.coverPath,
+            metadataExtracted: true,
+          );
+        })
+        .toList();
+
+    // 转换历史为 MusicFileWithSource
+    final recentTracks = historyState.history
+        .take(20)
+        .where((h) => state.trackByFilePath.containsKey(h.musicPath))
+        .map((h) {
+          final m = state.trackByFilePath[h.musicPath]!;
+          String? effectiveCoverPath = m.coverPath;
+          String? effectiveCoverUrl;
+
+          if (effectiveCoverPath == null || effectiveCoverPath.isEmpty) {
+            if (h.coverUrl != null && h.coverUrl!.isNotEmpty) {
+              if (h.coverUrl!.startsWith('file://')) {
+                effectiveCoverPath = h.coverUrl!.replaceFirst('file://', '');
+              } else {
+                effectiveCoverUrl = h.coverUrl;
+              }
+            }
+          }
+
+          return MusicFileWithSource(
+            file: FileItem(
+              name: m.fileName,
+              path: m.filePath,
+              size: m.size ?? 0,
+              isDirectory: false,
+              modifiedTime: m.modifiedTime,
+            ),
+            sourceId: m.sourceId,
+            title: m.title,
+            artist: m.artist,
+            album: m.album,
+            duration: m.duration,
+            year: m.year,
+            genre: m.genre,
+            coverPath: effectiveCoverPath,
+            coverUrl: effectiveCoverUrl,
+            metadataExtracted: true,
+          );
+        })
+        .toList();
+
+    // 获取歌单数量
+    final playlistState = ref.watch(playlistProvider);
+    final playlistCount = playlistState.playlists.length;
+
+    return CustomScrollView(
+      slivers: [
+        // 顶部安全区域留白 + 悬浮按钮区域
+        SliverPadding(padding: EdgeInsets.only(top: safeTop + 52)),
+        // 大标题区域（iOS 26 风格）
+        _buildLargeTitleSliver(context, state, isDark),
+        // 内容区域
+        SliverToBoxAdapter(
+          child: MusicHomeContent(
+            tracks: state.tracks,
+            recentTracks: recentTracks,
+            favoriteTracks: favoriteTracks,
+            totalCount: state.totalCount,
+            artistCount: state.artistCount,
+            albumCount: state.albumCount,
+            genreCount: state.genreCount,
+            yearCount: state.yearCount,
+            folderCount: state.folderCount,
+            playlistCount: playlistCount,
+            favoritesCount: favoritesState.favorites.length,
+            recentCount: historyState.history.length,
+            onTrackTap: (track, allTracks) => _playTrack(context, ref, track, allTracks),
+            onCategoryTap: (category) => _navigateToCategory(context, category, state),
+            onShuffleTap: () => _shufflePlay(context, ref, state.tracks),
+          ),
+        ),
+        // 底部留白
+        SliverPadding(padding: EdgeInsets.only(bottom: context.scrollBottomPadding)),
+      ],
+    );
+  }
+
+  /// iOS 26 大标题 Sliver
+  Widget _buildLargeTitleSliver(
+    BuildContext context,
+    MusicListLoaded state,
+    bool isDark,
+  ) {
+    final trackCount = state.totalCount;
+    final artistCount = state.artistCount;
+    final albumCount = state.albumCount;
+    final isLoadingMetadata = state.isLoadingMetadata;
+    final metadataProcessed = state.metadataProcessed;
+    final metadataTotal = state.metadataTotal;
+
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 大标题
+            Text(
+              _getGreeting(),
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 统计信息
+            if (trackCount > 0 || isLoadingMetadata)
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  _buildStatChip(
+                    icon: Icons.music_note_rounded,
+                    label: '$trackCount 首歌曲',
+                    isDark: isDark,
+                  ),
+                  if (artistCount > 0)
+                    _buildStatChip(
+                      icon: Icons.person_rounded,
+                      label: '$artistCount 艺术家',
+                      isDark: isDark,
+                    ),
+                  if (albumCount > 0)
+                    _buildStatChip(
+                      icon: Icons.album_rounded,
+                      label: '$albumCount 专辑',
+                      isDark: isDark,
+                    ),
+                  if (isLoadingMetadata)
+                    _buildStatChip(
+                      icon: Icons.sync_rounded,
+                      label: metadataTotal > 0
+                          ? '元数据 $metadataProcessed/$metadataTotal'
+                          : '正在加载...',
+                      isDark: isDark,
+                      isLoading: true,
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 统计信息小标签
+  Widget _buildStatChip({
+    required IconData icon,
+    required String label,
+    required bool isDark,
+    bool isLoading = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isLoading)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: isDark ? Colors.deepOrange[300] : Colors.deepOrange,
+              ),
+            )
+          else
+            Icon(
+              icon,
+              size: 14,
+              color: isDark ? Colors.white60 : Colors.black54,
+            ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+          ),
+        ],
       ),
     );
   }

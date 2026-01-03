@@ -6,6 +6,10 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_writer.dart';
 import 'package:path/path.dart' as p;
 
+// iOS 上 audiotags 有链接问题，暂时禁用
+// 参见: https://github.com/erikas-taroza/audiotags/issues/21
+bool get _disableAudiotags => Platform.isIOS;
+
 /// 基于 audiotags (lofty-rs) 的元数据写入实现
 ///
 /// 支持格式：
@@ -83,6 +87,11 @@ class AudiotagsMetadataWriter implements MusicMetadataWriter {
 
   @override
   Future<bool> writeMetadata(String filePath, WritableMetadata metadata) async {
+    // iOS 上暂时禁用 audiotags，使用 FFmpeg 后备
+    if (_disableAudiotags) {
+      return false;
+    }
+
     final ext = p.extension(filePath).toLowerCase();
 
     if (!isFormatSupported(ext)) {
@@ -144,6 +153,11 @@ class AudiotagsMetadataWriter implements MusicMetadataWriter {
     Uint8List coverData, {
     String mimeType = 'image/jpeg',
   }) async {
+    // iOS 上暂时禁用 audiotags
+    if (_disableAudiotags) {
+      return false;
+    }
+
     final ext = p.extension(filePath).toLowerCase();
 
     if (!isFormatSupported(ext)) {
@@ -200,6 +214,11 @@ class AudiotagsMetadataWriter implements MusicMetadataWriter {
 
   @override
   Future<bool> removeAllMetadata(String filePath) async {
+    // iOS 上暂时禁用 audiotags
+    if (_disableAudiotags) {
+      return false;
+    }
+
     final ext = p.extension(filePath).toLowerCase();
 
     if (!isFormatSupported(ext)) {
@@ -222,6 +241,11 @@ class AudiotagsMetadataWriter implements MusicMetadataWriter {
 
   /// 读取现有元数据
   Future<WritableMetadata?> readMetadata(String filePath) async {
+    // iOS 上暂时禁用 audiotags
+    if (_disableAudiotags) {
+      return null;
+    }
+
     final ext = p.extension(filePath).toLowerCase();
 
     if (!isFormatSupported(ext)) {
