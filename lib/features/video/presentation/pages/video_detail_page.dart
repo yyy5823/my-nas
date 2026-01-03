@@ -31,6 +31,8 @@ import 'package:my_nas/features/video/presentation/widgets/recommendations_secti
 import 'package:my_nas/features/video/presentation/widgets/subtitle_download_dialog.dart';
 import 'package:my_nas/features/video/presentation/widgets/unified_episode_selector.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
 /// 视频详情页面
 class VideoDetailPage extends ConsumerStatefulWidget {
@@ -1179,8 +1181,32 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     return '$bytes B';
   }
 
-  Widget _buildBackButton(BuildContext context, bool isDark) => Positioned(
-      top: MediaQuery.of(context).padding.top + 8,
+  Widget _buildBackButton(BuildContext context, bool isDark) {
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    // iOS 26 玻璃模式：使用悬浮玻璃返回按钮
+    if (uiStyle.isGlass) {
+      return Positioned(
+        top: safeTop + 8,
+        left: 16,
+        child: GestureDetector(
+          onLongPress: () {
+            // 长按：返回到视频库主页
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          },
+          onSecondaryTap: () {
+            // 右键：返回到视频库主页
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          },
+          child: const GlassFloatingBackButton(),
+        ),
+      );
+    }
+
+    // 经典模式：半透明圆形按钮
+    return Positioned(
+      top: safeTop + 8,
       left: 8,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -1189,11 +1215,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
         child: GestureDetector(
           onLongPress: () {
-            // 长按：返回到视频库主页（弹出所有详情页）
+            // 长按：返回到视频库主页
             Navigator.of(context).popUntil((route) => route.isFirst);
           },
           onSecondaryTap: () {
-            // 右键：返回到视频库主页（与长按相同）
+            // 右键：返回到视频库主页
             Navigator.of(context).popUntil((route) => route.isFirst);
           },
           child: IconButton(
@@ -1204,6 +1230,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
       ),
     );
+  }
 
   /// 构建质量选择器
   ///
@@ -1613,8 +1640,151 @@ class MovieCollectionListPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
     final sortedParts = collection.sortedParts;
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 玻璃模式：Stack 布局 + 悬浮玻璃返回按钮
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容
+            CustomScrollView(
+              slivers: [
+                // Hero 背景图区域
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 220,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (collection.backdropUrl.isNotEmpty)
+                          Image.network(
+                            collection.backdropUrl,
+                            fit: BoxFit.cover,
+                          )
+                        else
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[300],
+                            ),
+                          ),
+                        // 渐变遮罩
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.7),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // 底部标题
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 16,
+                          child: Text(
+                            collection.name,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(
+                                  offset: Offset(0, 1),
+                                  blurRadius: 4,
+                                  color: Colors.black54,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // 系列简介
+                if (collection.overview.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        collection.overview,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // 电影数量
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      '共 ${sortedParts.length} 部电影',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 电影网格
+                SliverPadding(
+                  padding: const EdgeInsets.all(16),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 160,
+                      childAspectRatio: 0.55,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 16,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final part = sortedParts[index];
+                        final isCurrentMovie = part.id == currentMovieId;
+
+                        return _CollectionMovieGridItem(
+                          part: part,
+                          isCurrentMovie: isCurrentMovie,
+                          sourceId: sourceId,
+                          isDark: isDark,
+                        );
+                      },
+                      childCount: sortedParts.length,
+                    ),
+                  ),
+                ),
+
+                // 底部留白
+                const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
+              ],
+            ),
+
+            // 悬浮返回按钮
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              child: const GlassFloatingBackButton(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：使用 SliverAppBar
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
       body: CustomScrollView(

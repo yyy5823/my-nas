@@ -96,27 +96,7 @@ class DesktopLyricController: NSObject, NSWindowDelegate {
         containerView.wantsLayer = true
         containerView.autoresizingMask = [.width, .height]
 
-        // 1. 先添加半透明背景色（最底层）
-        let backgroundView = NSView(frame: containerView.bounds)
-        backgroundView.wantsLayer = true
-        backgroundView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
-        backgroundView.layer?.cornerRadius = 16
-        backgroundView.layer?.masksToBounds = true
-        backgroundView.autoresizingMask = [.width, .height]
-        containerView.addSubview(backgroundView)
-
-        // 2. 添加毛玻璃效果（在背景色上方）
-        let visualEffectView = NSVisualEffectView(frame: containerView.bounds)
-        visualEffectView.material = .hudWindow
-        visualEffectView.blendingMode = .withinWindow
-        visualEffectView.state = .active
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 16
-        visualEffectView.layer?.masksToBounds = true
-        visualEffectView.autoresizingMask = [.width, .height]
-        containerView.addSubview(visualEffectView)
-
-        // 3. 添加内容视图（在毛玻璃上方）
+        // 直接添加内容视图（完全透明背景，只显示文字）
         contentView = DesktopLyricView(frame: containerView.bounds, settings: settings)
         contentView?.autoresizingMask = [.width, .height]
         contentView?.onClose = { [weak self] in
@@ -213,8 +193,8 @@ class DesktopLyricView: NSView {
 
     private func setupUI() {
         wantsLayer = true
-        layer?.cornerRadius = 16
-        layer?.masksToBounds = true
+        // 完全透明背景
+        layer?.backgroundColor = NSColor.clear.cgColor
 
         // 当前歌词（使用高亮色）
         currentLyricLabel = createLabel(fontSize: settings.fontSize, bold: true, color: settings.highlightColor)
@@ -299,11 +279,11 @@ class DesktopLyricView: NSView {
         label.maximumNumberOfLines = 1
         label.cell?.truncatesLastVisibleLine = true
 
-        // 添加阴影
+        // 添加更强的阴影以确保在任何背景上可见
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.5)
-        shadow.shadowOffset = NSSize(width: 0, height: -2)
-        shadow.shadowBlurRadius = 4
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.9)
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.shadowBlurRadius = 8
         label.shadow = shadow
 
         return label

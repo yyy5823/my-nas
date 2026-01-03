@@ -12,6 +12,8 @@ import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart'
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
 /// TMDB 预览页面 - 用于展示本地不存在的 TMDB 内容
 class TmdbPreviewPage extends ConsumerStatefulWidget {
@@ -86,11 +88,180 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
     final backdropUrl = widget.backdropUrl ?? _getBackdropUrl();
     final posterUrl = widget.posterUrl ?? _getPosterUrl();
+    final safeTop = MediaQuery.of(context).padding.top;
+    final bgColor = isDark ? const Color(0xFF0D0D0D) : Colors.grey[50];
 
+    // iOS 26 玻璃模式
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Stack(
+                children: [
+                  // 主内容
+                  CustomScrollView(
+                    slivers: [
+                      // 顶部背景区域
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 300,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (backdropUrl != null && backdropUrl.isNotEmpty)
+                                AdaptiveImage(
+                                  imageUrl: backdropUrl,
+                                  fit: BoxFit.cover,
+                                ),
+                              Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      bgColor!,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // 内容
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // 海报
+                                  if (posterUrl != null && posterUrl.isNotEmpty)
+                                    Container(
+                                      width: 100,
+                                      height: 150,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.3),
+                                            blurRadius: 8,
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: AdaptiveImage(
+                                          imageUrl: posterUrl,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(width: 16),
+                                  // 标题和信息
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _getTitle(),
+                                          style: TextStyle(
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.bold,
+                                            color: isDark ? Colors.white : Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        _buildMetaInfo(isDark),
+                                        const SizedBox(height: 12),
+                                        // 本地不可用标签
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.warning.withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(color: AppColors.warning.withValues(alpha: 0.5)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.cloud_outlined, size: 16, color: AppColors.warning),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                '本地不可用',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppColors.warning,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        // PT 站搜索按钮和 NASTool 订阅按钮
+                                        _buildActionButtons(isDark),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+                              // 简介
+                              if (_getOverview().isNotEmpty) ...[
+                                Text(
+                                  '简介',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _getOverview(),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: isDark ? Colors.grey[300] : Colors.grey[700],
+                                    height: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                              ],
+                              // 推荐内容
+                              if (_recommendedItems.isNotEmpty)
+                                _buildMediaSection('推荐内容', _recommendedItems, isDark),
+                              // 相似内容
+                              if (_similarItems.isNotEmpty)
+                                _buildMediaSection('相似内容', _similarItems, isDark),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 悬浮返回按钮
+                  Positioned(
+                    top: safeTop + 8,
+                    left: 16,
+                    child: const GlassFloatingBackButton(),
+                  ),
+                ],
+              ),
+      );
+    }
+
+    // 经典模式
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+      backgroundColor: bgColor,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : CustomScrollView(
@@ -99,7 +270,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                 SliverAppBar(
                   expandedHeight: 300,
                   pinned: true,
-                  backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+                  backgroundColor: bgColor,
                   flexibleSpace: FlexibleSpaceBar(
                     background: Stack(
                       fit: StackFit.expand,
@@ -116,7 +287,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                               end: Alignment.bottomCenter,
                               colors: [
                                 Colors.transparent,
-                                (isDark ? const Color(0xFF0D0D0D) : Colors.grey[50]!),
+                                bgColor!,
                               ],
                             ),
                           ),

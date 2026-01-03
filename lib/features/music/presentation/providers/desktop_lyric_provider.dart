@@ -64,6 +64,9 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
   /// 是否因最小化而显示桌面歌词（用于恢复时判断是否需要隐藏）
   bool _shownByMinimize = false;
 
+  /// 是否从桌面歌词控制按钮触发的暂停（此时不应隐藏歌词窗口）
+  bool _pausedFromDesktopLyric = false;
+
   /// 是否支持桌面歌词
   bool get isSupported => Platform.isWindows || Platform.isMacOS;
 
@@ -212,11 +215,15 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
     if (_service == null) return;
 
     // 情况1：用户启用了桌面歌词功能 (enabled=true)
-    // 播放时显示，停止时隐藏
+    // 播放时显示，停止时隐藏（但从桌面歌词暂停时不隐藏）
     if (state.settings.enabled) {
       if (isPlaying && !state.isVisible) {
         _showByPlaying();
       } else if (!isPlaying && state.isVisible) {
+        // 如果是从桌面歌词控制暂停的，不隐藏
+        if (_pausedFromDesktopLyric) {
+          return;
+        }
         _hideByPlaying();
       }
       return;
@@ -227,6 +234,10 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
       if (isPlaying && !state.isVisible) {
         _showByPlaying();
       } else if (!isPlaying && state.isVisible && _shownByMinimize) {
+        // 如果是从桌面歌词控制暂停的，不隐藏
+        if (_pausedFromDesktopLyric) {
+          return;
+        }
         // 停止播放时隐藏（仅当是自动显示的情况）
         _hideByPlaying();
       }
@@ -377,7 +388,12 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
     final playerNotifier = _ref.read(musicPlayerControllerProvider.notifier);
     switch (action) {
       case 'play':
+        // 从桌面歌词恢复播放，清除标记
+        _pausedFromDesktopLyric = false;
+        playerNotifier.playOrPause();
       case 'pause':
+        // 从桌面歌词暂停，设置标记防止隐藏歌词窗口
+        _pausedFromDesktopLyric = true;
         playerNotifier.playOrPause();
       case 'previous':
         playerNotifier.playPrevious();
@@ -427,6 +443,7 @@ class DesktopLyricNotifier extends StateNotifier<DesktopLyricState>
         await _service!.hide();
         state = state.copyWith(isVisible: false);
         _shownByMinimize = false; // 手动隐藏，重置标记
+        _pausedFromDesktopLyric = false; // 清除暂停标记
 
         final newSettings = state.settings.copyWith(enabled: false);
         state = state.copyWith(settings: newSettings);

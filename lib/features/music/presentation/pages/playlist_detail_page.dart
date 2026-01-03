@@ -14,6 +14,8 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
 /// 歌单详情页面
 class PlaylistDetailPage extends ConsumerStatefulWidget {
@@ -216,9 +218,151 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentMusic = ref.watch(currentMusicProvider);
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
+    final bgColor = isDark ? AppColors.darkBackground : Colors.grey[50];
 
+    // iOS 26 玻璃模式
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Stack(
+          children: [
+            CustomScrollView(
+              slivers: [
+                // 顶部留白
+                SliverToBoxAdapter(
+                  child: SizedBox(height: safeTop + 56),
+                ),
+                // 歌单信息头部
+                SliverToBoxAdapter(
+                  child: _buildHeader(isDark),
+                ),
+                // 歌曲列表
+                if (_isLoading)
+                  const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_error != null)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.error_outline_rounded,
+                            size: 48,
+                            color: AppColors.error,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _error!,
+                            style: TextStyle(
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextButton(
+                            onPressed: _loadTracks,
+                            child: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (_tracks.isEmpty)
+                  SliverFillRemaining(
+                    child: _buildEmptyView(isDark),
+                  )
+                else
+                  SliverPadding(
+                    padding: EdgeInsets.only(
+                      bottom: currentMusic != null ? 80 : 16,
+                    ),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _buildTrackTile(
+                          _tracks[index],
+                          index,
+                          isDark,
+                        ),
+                        childCount: _tracks.length,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            // 悬浮顶栏
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              right: 16,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // 左侧：返回按钮 + 标题
+                  GlassFloatingBackButton(title: widget.playlist.name),
+                  // 右侧：更多菜单
+                  GlassButtonGroup(
+                    children: [
+                      GlassGroupPopupMenuButton<String>(
+                        icon: Icons.more_vert_rounded,
+                        tooltip: '更多',
+                        onSelected: _handleMenuAction,
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'rename',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit_rounded, size: 20),
+                                SizedBox(width: 12),
+                                Text('重命名'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'clear',
+                            child: Row(
+                              children: [
+                                Icon(Icons.clear_all_rounded, size: 20),
+                                SizedBox(width: 12),
+                                Text('清空歌单'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_rounded, size: 20, color: AppColors.error),
+                                const SizedBox(width: 12),
+                                Text('删除歌单', style: TextStyle(color: AppColors.error)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // 迷你播放器
+            if (currentMusic != null)
+              const Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: MiniPlayer(),
+              ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+      backgroundColor: bgColor,
       body: Stack(
         children: [
           CustomScrollView(

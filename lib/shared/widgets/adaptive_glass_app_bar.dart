@@ -2257,6 +2257,348 @@ class _GlassSearchBarState extends State<GlassSearchBar>
   }
 }
 
+/// iOS 26 风格悬浮返回按钮
+///
+/// 用于详情页面左上角的返回按钮，悬浮在内容之上
+/// 特性：
+/// - 圆形玻璃背景
+/// - iOS 26+: 使用原生 UIGlassEffect
+/// - iOS < 26 / 其他平台: 使用 Flutter BackdropFilter
+/// - 支持自定义图标
+/// - 支持标题（可选）
+///
+/// 使用示例：
+/// ```dart
+/// GlassFloatingBackButton(
+///   onPressed: () => Navigator.pop(context),
+/// )
+/// ```
+class GlassFloatingBackButton extends ConsumerWidget {
+  const GlassFloatingBackButton({
+    this.onPressed,
+    this.icon = Icons.arrow_back_ios_new_rounded,
+    this.iconSize = 18,
+    this.title,
+    this.color,
+    this.showBackground = true,
+    super.key,
+  });
+
+  /// 点击回调（默认 Navigator.pop）
+  final VoidCallback? onPressed;
+
+  /// 图标
+  final IconData icon;
+
+  /// 图标大小
+  final double iconSize;
+
+  /// 可选标题（显示在图标右侧）
+  final String? title;
+
+  /// 图标颜色（默认根据主题自动选择）
+  final Color? color;
+
+  /// 是否显示玻璃背景
+  final bool showBackground;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uiStyle = ref.watch(uiStyleProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = color ?? (isDark ? Colors.white : Colors.black87);
+
+    final onTap = onPressed ?? () => Navigator.of(context).maybePop();
+
+    // 经典模式：简单的 IconButton
+    if (!uiStyle.isGlass) {
+      if (title != null) {
+        return TextButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon, size: iconSize, color: iconColor),
+          label: Text(
+            title!,
+            style: TextStyle(
+              color: iconColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        );
+      }
+      return IconButton(
+        onPressed: onTap,
+        icon: Icon(icon, size: iconSize, color: iconColor),
+        tooltip: '返回',
+      );
+    }
+
+    // 玻璃模式
+    if (!showBackground) {
+      // 无背景模式：仅图标
+      return GestureDetector(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: iconSize, color: iconColor),
+            if (title != null) ...[
+              const SizedBox(width: 4),
+              Text(
+                title!,
+                style: TextStyle(
+                  color: iconColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // 有标题时使用胶囊形状
+    if (title != null) {
+      return GlassButtonGroup(
+        children: [
+          GestureDetector(
+            onTap: onTap,
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: iconSize, color: iconColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    title!,
+                    style: TextStyle(
+                      color: iconColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 仅图标时使用圆形
+    return GlassButtonGroup(
+      children: [
+        GlassGroupIconButton(
+          icon: icon,
+          size: iconSize,
+          color: color,
+          onPressed: onTap,
+          tooltip: '返回',
+        ),
+      ],
+    );
+  }
+}
+
+/// iOS 26 风格玻璃导航栏
+///
+/// 用于详情页和列表页顶部，实现悬浮玻璃导航效果
+/// 特性：
+/// - 左侧返回按钮（可选）
+/// - 中间标题（可选）
+/// - 右侧操作按钮组（可选）
+/// - 完全透明背景，悬浮于内容之上
+///
+/// 使用示例：
+/// ```dart
+/// GlassNavigationBar(
+///   leading: GlassFloatingBackButton(),
+///   title: '电影详情',
+///   trailing: GlassButtonGroup(children: [...]),
+/// )
+/// ```
+class GlassNavigationBar extends ConsumerWidget {
+  const GlassNavigationBar({
+    this.leading,
+    this.title,
+    this.titleWidget,
+    this.trailing,
+    this.height = 44,
+    this.horizontalPadding = 16,
+    super.key,
+  });
+
+  /// 左侧组件（通常是 GlassFloatingBackButton）
+  final Widget? leading;
+
+  /// 标题文本
+  final String? title;
+
+  /// 标题组件（优先于 title）
+  final Widget? titleWidget;
+
+  /// 右侧组件（通常是 GlassButtonGroup）
+  final Widget? trailing;
+
+  /// 导航栏高度（不含安全区域）
+  final double height;
+
+  /// 水平内边距
+  final double horizontalPadding;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        height: safeTop + height,
+        padding: EdgeInsets.only(top: safeTop),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: Row(
+            children: [
+              // 左侧
+              if (leading != null) leading!,
+              // 中间标题
+              if (titleWidget != null || title != null)
+                Expanded(
+                  child: titleWidget ??
+                      Text(
+                        title!,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                )
+              else
+                const Spacer(),
+              // 右侧
+              if (trailing != null) trailing!,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// iOS 26 风格玻璃详情页顶栏
+///
+/// 专门用于详情页（如电影详情、剧集详情），提供：
+/// - 左侧返回按钮（圆形玻璃背景）
+/// - 右侧操作按钮组
+/// - 完全透明，悬浮于内容之上
+/// - 内容可滚动到按钮下方
+///
+/// 通常配合 Scaffold.extendBodyBehindAppBar 使用
+class GlassDetailPageHeader extends ConsumerWidget {
+  const GlassDetailPageHeader({
+    this.onBack,
+    this.actions,
+    this.actionButtons,
+    super.key,
+  });
+
+  /// 返回按钮回调（默认 Navigator.pop）
+  final VoidCallback? onBack;
+
+  /// 右侧操作按钮列表（GlassGroupIconButton）
+  final List<Widget>? actions;
+
+  /// 右侧按钮组组件（优先于 actions）
+  final Widget? actionButtons;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    return Positioned(
+      top: safeTop + 8,
+      left: 16,
+      right: 16,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // 左侧返回按钮
+          GlassFloatingBackButton(onPressed: onBack),
+          // 右侧操作按钮
+          if (actionButtons != null)
+            actionButtons!
+          else if (actions != null && actions!.isNotEmpty)
+            GlassButtonGroup(children: actions!),
+        ],
+      ),
+    );
+  }
+}
+
+/// iOS 26 风格玻璃列表页顶栏
+///
+/// 用于列表页（如"查看全部"页面），提供：
+/// - 左侧返回按钮
+/// - 中间标题
+/// - 右侧操作按钮组（可选）
+/// - 悬浮于内容之上
+class GlassListPageHeader extends ConsumerWidget {
+  const GlassListPageHeader({
+    required this.title,
+    this.onBack,
+    this.subtitle,
+    this.actions,
+    super.key,
+  });
+
+  /// 页面标题
+  final String title;
+
+  /// 副标题（可选）
+  final String? subtitle;
+
+  /// 返回按钮回调
+  final VoidCallback? onBack;
+
+  /// 右侧操作按钮
+  final List<Widget>? actions;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    return Positioned(
+      top: safeTop + 8,
+      left: 16,
+      right: 16,
+      child: Row(
+        children: [
+          // 左侧返回按钮（带标题）
+          GlassFloatingBackButton(
+            onPressed: onBack,
+            title: title,
+          ),
+          const Spacer(),
+          // 右侧操作按钮
+          if (actions != null && actions!.isNotEmpty)
+            GlassButtonGroup(children: actions!),
+        ],
+      ),
+    );
+  }
+}
+
 /// iOS 26 风格玻璃搜索栏（悬浮版）
 ///
 /// 用于浮动在内容上方的搜索栏，通常与 GlassButtonGroup 配合使用
@@ -2309,4 +2651,155 @@ class GlassFloatingSearchBar extends StatelessWidget {
         ),
       ],
     );
+}
+
+/// iOS 26 自适应列表页 Scaffold
+///
+/// 自动处理经典模式和玻璃模式的 AppBar 显示：
+/// - 经典模式：使用标准 AppBar
+/// - 玻璃模式：使用 Stack 布局，内容延伸到顶部，悬浮玻璃按钮
+///
+/// 使用示例：
+/// ```dart
+/// AdaptiveListScaffold(
+///   title: '全部电影',
+///   subtitle: '123 部',
+///   onBack: () => Navigator.pop(context),
+///   actions: [
+///     GlassGroupIconButton(icon: Icons.sort, onPressed: _showSort),
+///     GlassGroupIconButton(icon: Icons.filter_alt, onPressed: _showFilter),
+///   ],
+///   body: GridView.builder(...),
+/// )
+/// ```
+class AdaptiveListScaffold extends ConsumerWidget {
+  const AdaptiveListScaffold({
+    required this.title,
+    required this.body,
+    this.subtitle,
+    this.onBack,
+    this.actions,
+    this.classicAppBarActions,
+    this.floatingContent,
+    this.backgroundColor,
+    this.classicAppBarBackgroundColor,
+    super.key,
+  });
+
+  /// 页面标题
+  final String title;
+
+  /// 副标题（如数量）
+  final String? subtitle;
+
+  /// 返回按钮回调
+  final VoidCallback? onBack;
+
+  /// 右侧操作按钮（玻璃模式下显示为 GlassButtonGroup 的子项）
+  final List<Widget>? actions;
+
+  /// 经典模式的 AppBar actions（如果与玻璃模式不同）
+  final List<Widget>? classicAppBarActions;
+
+  /// 页面内容
+  final Widget body;
+
+  /// 悬浮内容（如筛选标签，显示在顶栏下方）
+  final Widget? floatingContent;
+
+  /// 背景颜色
+  final Color? backgroundColor;
+
+  /// 经典模式 AppBar 背景颜色
+  final Color? classicAppBarBackgroundColor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uiStyle = ref.watch(uiStyleProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    final bgColor = backgroundColor ??
+        (isDark ? AppColors.darkBackground : Colors.grey[50]);
+
+    // iOS 26 玻璃模式：Stack 布局
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Stack(
+          children: [
+            // 主内容（顶部留出安全区 + 顶栏空间）
+            Positioned.fill(
+              child: Column(
+                children: [
+                  // 顶部留白（安全区 + 顶栏 + 间距）
+                  SizedBox(height: safeTop + 56),
+                  // 悬浮内容
+                  if (floatingContent != null) floatingContent!,
+                  // 主内容
+                  Expanded(child: body),
+                ],
+              ),
+            ),
+            // 悬浮顶栏
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              right: 16,
+              child: Row(
+                children: [
+                  // 左侧返回按钮 + 标题
+                  Expanded(
+                    child: GlassFloatingBackButton(
+                      onPressed: onBack,
+                      title: subtitle != null ? '$title ($subtitle)' : title,
+                    ),
+                  ),
+                  // 右侧操作按钮
+                  if (actions != null && actions!.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    GlassButtonGroup(children: actions!),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：标准 AppBar
+    final displayTitle = subtitle != null ? '$title ($subtitle)' : title;
+    final appBarBgColor = classicAppBarBackgroundColor ??
+        (isDark ? AppColors.darkSurface : Colors.white);
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        backgroundColor: appBarBgColor,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          onPressed: onBack ?? () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          displayTitle,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        actions: classicAppBarActions ?? actions,
+      ),
+      body: Column(
+        children: [
+          if (floatingContent != null) floatingContent!,
+          Expanded(child: body),
+        ],
+      ),
+    );
+  }
 }
