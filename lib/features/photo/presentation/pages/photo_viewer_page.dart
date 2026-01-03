@@ -414,6 +414,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         path: photo.path,
         fileSystem: fileSystem,
         fit: BoxFit.contain,
+        preferFullQuality: true, // 预览模式加载原图，不使用缩略图
         placeholder: Center(
           child: CircularProgressIndicator(
             color: Colors.white.withValues(alpha: 0.7),
@@ -969,60 +970,102 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 
     if (!context.mounted) return;
 
-    // 创建取消令牌
+    // 创建取消令牌和进度通知器
     final cancelToken = CancelToken();
     final progressNotifier = ValueNotifier<double>(0);
+    var isDialogOpen = true;
 
-    // 显示下载进度对话框
-    final dialogCompleter = Completer<void>();
-
-    await showDialog<void>(
+    // 显示下载进度对话框（不阻塞）
+    // ignore: unawaited_futures
+    showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => PopScope(
         canPop: false,
-        child: AlertDialog(
-          backgroundColor: Colors.grey[900],
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: progressNotifier,
-                builder: (_, progress, _) => Column(
-                  children: [
-                    CircularProgressIndicator(
-                      value: progress > 0 ? progress : null,
-                      color: Colors.white,
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.grey[850],
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 进度指示器
+                ValueListenableBuilder<double>(
+                  valueListenable: progressNotifier,
+                  builder: (context, progress, _) => SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: progress > 0 ? progress : null,
+                          strokeWidth: 3,
+                          color: Colors.white,
+                          backgroundColor: Colors.white24,
+                        ),
+                        if (progress > 0)
+                          Text(
+                            '${(progress * 100).toInt()}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      progress > 0
-                          ? '${saveService.isMobile ? "保存中" : "下载中"} ${(progress * 100).toInt()}%'
-                          : '正在连接...',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () {
-                  // 取消下载
-                  cancelToken.cancel('用户取消');
-                  if (!dialogCompleter.isCompleted) {
-                    dialogCompleter.complete();
-                  }
-                  Navigator.of(dialogContext).pop();
-                },
-                child: const Text('取消'),
-              ),
-            ],
+                const SizedBox(height: 20),
+                // 状态文字
+                ValueListenableBuilder<double>(
+                  valueListenable: progressNotifier,
+                  builder: (context, progress, _) => Text(
+                    progress > 0
+                        ? (saveService.isMobile ? '正在保存到相册...' : '正在下载...')
+                        : '正在连接...',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // 取消按钮
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      cancelToken.cancel('用户取消');
+                      if (isDialogOpen) {
+                        isDialogOpen = false;
+                        Navigator.of(dialogContext).pop();
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white70,
+                      side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('取消'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
 
-    // 使用智能下载：自动根据 URL 类型选择下载方式
+    // 执行下载
     final result = await saveService.smartDownloadPhoto(
       url: url,
       path: photo.path,
@@ -1036,12 +1079,10 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       },
     );
 
-    // 关闭进度对话框（如果还没关闭）
-    if (context.mounted && !dialogCompleter.isCompleted) {
-      dialogCompleter.complete();
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
+    // 关闭进度对话框
+    if (context.mounted && isDialogOpen) {
+      isDialogOpen = false;
+      Navigator.of(context).pop();
     }
 
     // 显示结果（取消时不显示）
@@ -1094,52 +1135,96 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     final saveService = PhotoSaveService();
     final cancelToken = CancelToken();
     final progressNotifier = ValueNotifier<double>(0);
-    final dialogCompleter = Completer<void>();
+    var isDialogOpen = false;
 
     // 本地文件不需要显示进度（直接分享）
     final isLocalFile = url.startsWith('file://');
 
     if (!isLocalFile) {
-      await showDialog<void>(
+      isDialogOpen = true;
+      // 显示进度对话框（不阻塞）
+      // ignore: unawaited_futures
+      showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => PopScope(
           canPop: false,
-          child: AlertDialog(
-            backgroundColor: Colors.grey[900],
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ValueListenableBuilder<double>(
-                  valueListenable: progressNotifier,
-                  builder: (_, progress, _) => Column(
-                    children: [
-                      CircularProgressIndicator(
-                        value: progress > 0 ? progress : null,
-                        color: Colors.white,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.grey[850],
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 进度指示器
+                  ValueListenableBuilder<double>(
+                    valueListenable: progressNotifier,
+                    builder: (context, progress, _) => SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            value: progress > 0 ? progress : null,
+                            strokeWidth: 3,
+                            color: Colors.white,
+                            backgroundColor: Colors.white24,
+                          ),
+                          if (progress > 0)
+                            Text(
+                              '${(progress * 100).toInt()}%',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                        ],
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        progress > 0
-                            ? '准备分享 ${(progress * 100).toInt()}%'
-                            : '正在准备...',
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () {
-                    cancelToken.cancel('用户取消');
-                    if (!dialogCompleter.isCompleted) {
-                      dialogCompleter.complete();
-                    }
-                    Navigator.of(dialogContext).pop();
-                  },
-                  child: const Text('取消'),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                  // 状态文字
+                  ValueListenableBuilder<double>(
+                    valueListenable: progressNotifier,
+                    builder: (context, progress, _) => Text(
+                      progress > 0 ? '正在准备分享...' : '正在连接...',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  // 取消按钮
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        cancelToken.cancel('用户取消');
+                        if (isDialogOpen) {
+                          isDialogOpen = false;
+                          Navigator.of(dialogContext).pop();
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1161,11 +1246,9 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     );
 
     // 关闭进度对话框（如果显示了的话）
-    if (!isLocalFile && context.mounted && !dialogCompleter.isCompleted) {
-      dialogCompleter.complete();
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
+    if (isDialogOpen && context.mounted) {
+      isDialogOpen = false;
+      Navigator.of(context).pop();
     }
 
     // 显示结果（取消时不显示）

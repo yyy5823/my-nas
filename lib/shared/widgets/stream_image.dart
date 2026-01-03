@@ -35,6 +35,7 @@ class StreamImage extends StatefulWidget {
     this.maxScale,
     this.initialScale,
     this.backgroundColor,
+    this.preferFullQuality = false,
   });
 
   /// HTTP URL（如果可用）
@@ -85,6 +86,15 @@ class StreamImage extends StatefulWidget {
 
   /// 背景颜色（仅在 enableZoom 为 true 时有效）
   final Color? backgroundColor;
+
+  /// 是否优先加载原图（跳过缩略图）
+  ///
+  /// 用于照片预览等需要高质量显示的场景
+  /// 当为 true 时，加载策略变为：
+  /// 1. 如果有 URL → 通过 URL 流加载
+  /// 2. 否则 → 通过 getFileStream 加载原文件
+  /// 跳过 getThumbnailData 缩略图
+  final bool preferFullQuality;
 
   // 内存缓存（LRU 策略）
   static final Map<String, Uint8List> _memoryCache = {};
@@ -291,16 +301,19 @@ class _StreamImageState extends State<StreamImage> {
       try {
         Uint8List? imageData;
 
-        // 1. 优先使用 getThumbnailData（本地相册缩略图，最快）
-        if (widget.path != null) {
-          try {
-            imageData = await widget.fileSystem!.getThumbnailData(widget.path!);
-          } on Exception {
-            // ignore - 继续尝试其他方式
+        // 如果 preferFullQuality = true，跳过缩略图，直接加载原图
+        if (!widget.preferFullQuality) {
+          // 1. 优先使用 getThumbnailData（本地相册缩略图，最快）
+          if (widget.path != null) {
+            try {
+              imageData = await widget.fileSystem!.getThumbnailData(widget.path!);
+            } on Exception {
+              // ignore - 继续尝试其他方式
+            }
           }
         }
 
-        // 2. 如果 getThumbnailData 返回 null，尝试 URL 流
+        // 2. 尝试 URL 流（优先，因为可能有更好的缓存和压缩）
         if (imageData == null && _hasValidHttpUrl) {
           try {
             final stream = await widget.fileSystem!.getUrlStream(widget.url!);
@@ -317,7 +330,7 @@ class _StreamImageState extends State<StreamImage> {
           }
         }
 
-        // 3. 最后使用文件流（最慢，加载完整文件）
+        // 3. 最后使用文件流（加载完整原文件）
         if (imageData == null) {
           if (widget.path == null) {
             throw Exception('无法加载图片：没有可用的 URL 或路径');
