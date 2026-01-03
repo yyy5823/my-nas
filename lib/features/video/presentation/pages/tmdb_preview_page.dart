@@ -12,6 +12,7 @@ import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart'
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
@@ -36,7 +37,8 @@ class TmdbPreviewPage extends ConsumerStatefulWidget {
   ConsumerState<TmdbPreviewPage> createState() => _TmdbPreviewPageState();
 }
 
-class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
+class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage>
+    with ConsumerTabBarVisibilityMixin {
   final TmdbService _tmdbService = TmdbService();
   bool _isLoading = true;
   Object? _detail; // TmdbMovieDetail or TmdbTvDetail
@@ -46,6 +48,8 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
   @override
   void initState() {
     super.initState();
+    // 详情页隐藏底部导航栏
+    hideTabBar();
     _loadData();
   }
 

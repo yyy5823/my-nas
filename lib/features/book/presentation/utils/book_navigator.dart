@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/data/services/manga_detector.dart';
@@ -8,8 +9,10 @@ import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/ebook_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/epub_comic_reader_page.dart';
+import 'package:my_nas/features/book/presentation/pages/native_ebook_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
+import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 
 /// 图书导航工具
 ///
@@ -130,19 +133,38 @@ class BookNavigator {
   }
 
   /// 根据格式选择阅读器
-  Future<void> _openByFormat(BuildContext context, BookItem book) async {
+  Future<void> _openByFormat(
+    BuildContext context,
+    BookItem book, {
+    WidgetRef? ref,
+  }) async {
     if (!context.mounted) return;
 
     switch (book.format) {
       case BookFormat.epub:
       case BookFormat.mobi:
       case BookFormat.azw3:
-        await Navigator.push<void>(
-          context,
-          MaterialPageRoute(
-            builder: (context) => EbookReaderPage(book: book),
-          ),
-        );
+        // 根据设置选择阅读器引擎
+        final engine = ref?.read(bookReaderSettingsProvider).epubEngine
+            ?? EpubReaderEngine.foliate;
+
+        if (engine == EpubReaderEngine.native) {
+          // 使用原生 Flutter 阅读器
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => NativeEbookReaderPage(book: book),
+            ),
+          );
+        } else {
+          // 使用 WebView (Foliate) 阅读器
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EbookReaderPage(book: book),
+            ),
+          );
+        }
       case BookFormat.pdf:
         await Navigator.push<void>(
           context,

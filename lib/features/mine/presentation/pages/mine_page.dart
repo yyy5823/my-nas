@@ -19,6 +19,7 @@ import 'package:my_nas/features/settings/presentation/pages/error_report_setting
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
+import 'package:my_nas/features/book/presentation/pages/book_settings_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/service_sources_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -136,6 +137,20 @@ class MinePage extends ConsumerWidget {
                   uiStyle,
                   children: [
                     _MusicScraperSourcesTile(isDark: isDark),
+                  ],
+                ),
+
+                const SizedBox(height: AppSpacing.lg),
+
+                // 图书设置
+                _buildSectionHeader(context, '图书', Icons.auto_stories_rounded, isDark),
+                const SizedBox(height: AppSpacing.sm),
+                _buildSettingsCard(
+                  context,
+                  isDark,
+                  uiStyle,
+                  children: [
+                    _BookSettingsTile(isDark: isDark),
                   ],
                 ),
 
@@ -2549,4 +2564,80 @@ class _LanguageSettingsSheet extends ConsumerWidget {
           ),
         ),
       );
+}
+
+/// 图书设置入口组件
+class _BookSettingsTile extends StatelessWidget {
+  const _BookSettingsTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const BookSettingsPage()),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.auto_stories_rounded,
+                  color: Colors.amber,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '阅读器设置',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '选择阅读引擎、翻页方式等',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : AppColors.lightOnSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant
+                    : AppColors.lightOnSurfaceVariant,
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

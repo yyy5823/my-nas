@@ -14,6 +14,7 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
@@ -38,7 +39,8 @@ class PlaylistDetailPage extends ConsumerStatefulWidget {
   ConsumerState<PlaylistDetailPage> createState() => _PlaylistDetailPageState();
 }
 
-class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
+class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage>
+    with ConsumerTabBarVisibilityMixin {
   List<MusicItem> _tracks = [];
   bool _isLoading = true;
   String? _error;
@@ -46,6 +48,8 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   @override
   void initState() {
     super.initState();
+    // 详情页隐藏底部导航栏
+    hideTabBar();
     _loadTracks();
   }
 

@@ -211,7 +211,8 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       _cachedUiStyle = uiStyle;
 
       if (useNativeTabBar && !wasUsingNative) {
-        // 切换到玻璃风格：订阅原生事件并显示原生 Tab Bar
+        // 切换到玻璃风格：启用原生 Tab Bar，订阅原生事件
+        NativeTabBarService.instance.setNativeTabBarEnabled(true);
         _tabSelectedSubscription?.cancel();
         _tabSelectedSubscription =
             NativeTabBarService.instance.onTabSelected.listen(_handleNativeTabSelected);
@@ -222,7 +223,8 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
           NativeTabBarService.instance.setSelectedIndex(currentIndex);
         });
       } else if (!useNativeTabBar && wasUsingNative) {
-        // 切换到经典风格：取消订阅并隐藏原生 Tab Bar
+        // 切换到经典风格：禁用原生 Tab Bar，取消订阅
+        NativeTabBarService.instance.setNativeTabBarEnabled(false);
         _tabSelectedSubscription?.cancel();
         _tabSelectedSubscription = null;
 

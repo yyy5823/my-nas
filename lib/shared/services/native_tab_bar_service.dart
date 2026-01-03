@@ -36,6 +36,20 @@ class NativeTabBarService {
   /// 是否已初始化
   bool _isInitialized = false;
 
+  /// 是否启用原生 Tab Bar（仅在玻璃模式下启用）
+  /// 由 MainScaffold 在 UI 风格变化时更新
+  bool _isNativeTabBarEnabled = false;
+
+  /// 获取原生 Tab Bar 是否启用
+  bool get isNativeTabBarEnabled => _isNativeTabBarEnabled;
+
+  /// 设置原生 Tab Bar 启用状态
+  /// 由 MainScaffold 调用
+  void setNativeTabBarEnabled(bool enabled) {
+    _isNativeTabBarEnabled = enabled;
+    debugPrint('NativeTabBarService: Native tab bar enabled: $enabled');
+  }
+
   /// 初始化服务
   ///
   /// 在 app 启动时调用
@@ -133,9 +147,18 @@ class NativeTabBarService {
 
   /// 设置 Tab Bar 是否可见
   ///
-  /// 用于在 loading 页面隐藏 tab bar
+  /// 用于在全屏页面（如视频播放、图片查看）隐藏 tab bar
+  /// 注意：仅在原生 Tab Bar 启用时生效（玻璃模式）
+  /// 经典模式下此方法不会有任何效果
   Future<void> setTabBarVisible(bool visible) async {
     if (!_isIOS || _channel == null) return;
+
+    // 经典模式下不操作原生 Tab Bar
+    // 显示时需要检查是否启用，隐藏时总是允许（以防万一）
+    if (visible && !_isNativeTabBarEnabled) {
+      debugPrint('NativeTabBarService: Ignoring setTabBarVisible(true) - native tab bar not enabled');
+      return;
+    }
 
     await AppError.guard(
       () => _channel!.invokeMethod<void>('setTabBarVisible', visible),

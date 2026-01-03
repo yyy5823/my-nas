@@ -892,6 +892,7 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
   /// 为 PopupMenuButton 显示菜单
   void _showPopupMenuForButton<T>(GlassGroupPopupMenuButton<T> button) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.read(uiStyleProvider);
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
@@ -914,6 +915,7 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
       position: position,
       items: items,
       isDark: isDark,
+      isGlassMode: uiStyle.isGlass,
     ).then((value) {
       if (value != null && button.onSelected != null) {
         button.onSelected!(value);
@@ -1192,7 +1194,8 @@ class GlassGroupDynamicButton extends StatelessWidget {
 ///
 /// 与 GlassGroupIconButton 样式一致，但点击后显示紧跟按钮的弹出菜单
 /// iOS 26 风格：点击后按钮消失，菜单在按钮位置展示
-class GlassGroupPopupMenuButton<T> extends StatefulWidget {
+/// 经典模式：使用标准 Flutter 弹出菜单
+class GlassGroupPopupMenuButton<T> extends ConsumerStatefulWidget {
   const GlassGroupPopupMenuButton({
     required this.itemBuilder,
     this.icon = Icons.more_vert_rounded,
@@ -1226,23 +1229,27 @@ class GlassGroupPopupMenuButton<T> extends StatefulWidget {
   final Offset offset;
 
   @override
-  State<GlassGroupPopupMenuButton<T>> createState() =>
+  ConsumerState<GlassGroupPopupMenuButton<T>> createState() =>
       _GlassGroupPopupMenuButtonState<T>();
 }
 
 class _GlassGroupPopupMenuButtonState<T>
-    extends State<GlassGroupPopupMenuButton<T>> {
+    extends ConsumerState<GlassGroupPopupMenuButton<T>> {
   bool _isMenuOpen = false;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
     final iconColor =
         widget.color ?? (isDark ? Colors.white : Colors.black87);
 
-    // iOS 26 风格：菜单打开时隐藏按钮
+    // 玻璃模式 iOS 26 风格：菜单打开时隐藏按钮
+    // 经典模式：不隐藏按钮
+    final shouldHideWhenOpen = uiStyle.isGlass;
+
     return Opacity(
-      opacity: _isMenuOpen ? 0.0 : 1.0,
+      opacity: (shouldHideWhenOpen && _isMenuOpen) ? 0.0 : 1.0,
       child: GestureDetector(
         onTap: () => _showGlassMenu(context),
         child: Tooltip(
@@ -1262,6 +1269,7 @@ class _GlassGroupPopupMenuButtonState<T>
     if (_isMenuOpen) return;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.read(uiStyleProvider);
     final button = context.findRenderObject()! as RenderBox;
     final overlay =
         Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
@@ -1279,8 +1287,10 @@ class _GlassGroupPopupMenuButtonState<T>
     // 构建菜单项
     final items = widget.itemBuilder(context);
 
-    // 标记菜单打开
-    setState(() => _isMenuOpen = true);
+    // 玻璃模式才标记菜单打开（用于隐藏按钮）
+    if (uiStyle.isGlass) {
+      setState(() => _isMenuOpen = true);
+    }
 
     try {
       final value = await showGlassPopupMenu<T>(
@@ -1288,6 +1298,7 @@ class _GlassGroupPopupMenuButtonState<T>
         position: position,
         items: items,
         isDark: isDark,
+        isGlassMode: uiStyle.isGlass,
       );
 
       if (value != null && widget.onSelected != null) {
@@ -1295,7 +1306,7 @@ class _GlassGroupPopupMenuButtonState<T>
       }
     } finally {
       // 确保菜单关闭后恢复按钮显示
-      if (mounted) {
+      if (mounted && uiStyle.isGlass) {
         setState(() => _isMenuOpen = false);
       }
     }
@@ -1304,8 +1315,11 @@ class _GlassGroupPopupMenuButtonState<T>
 
 /// 显示玻璃风格弹出菜单
 ///
-/// iOS 26+: 使用原生 UIAlertController (Liquid Glass 自动效果)
-/// 其他平台: 使用 Flutter BackdropFilter 实现毛玻璃效果
+/// 根据 [isGlassMode] 参数决定显示样式：
+/// - 玻璃模式:
+///   - iOS 26+: 使用原生 UIAlertController (Liquid Glass 自动效果)
+///   - 其他平台: 使用 Flutter BackdropFilter 实现毛玻璃效果
+/// - 经典模式: 使用 Flutter 标准 PopupMenuButton 样式
 Future<T?> showGlassPopupMenu<T>({
   required BuildContext context,
   required RelativeRect position,
@@ -1313,7 +1327,19 @@ Future<T?> showGlassPopupMenu<T>({
   bool isDark = false,
   double elevation = 8,
   double blurSigma = 20,
+  bool isGlassMode = true,
 }) async {
+  // 经典模式：使用 Flutter 标准弹出菜单
+  if (!isGlassMode) {
+    return showMenu<T>(
+      context: context,
+      position: position,
+      items: items,
+      elevation: elevation,
+    );
+  }
+
+  // 玻璃模式
   // iOS 平台使用原生弹出菜单
   if (!kIsWeb && Platform.isIOS) {
     return _showNativeIOSPopupMenu<T>(
@@ -1324,7 +1350,7 @@ Future<T?> showGlassPopupMenu<T>({
     );
   }
 
-  // 其他平台使用 Flutter 实现
+  // 其他平台使用 Flutter 玻璃效果实现
   return Navigator.of(context).push<T>(
     _GlassPopupMenuRoute<T>(
       position: position,
