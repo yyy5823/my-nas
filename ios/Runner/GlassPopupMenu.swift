@@ -311,6 +311,7 @@ class GlassMenuViewController: UIViewController {
         highlightView.layer.cornerRadius = highlightCornerRadius
         highlightView.layer.cornerCurve = .continuous
         highlightView.tag = 1000 + index
+        highlightView.isUserInteractionEnabled = false  // 让触摸穿透到 containerView
         containerView.addSubview(highlightView)
 
         highlightView.translatesAutoresizingMaskIntoConstraints = false
@@ -326,6 +327,7 @@ class GlassMenuViewController: UIViewController {
         contentStack.axis = .horizontal
         contentStack.alignment = .center
         contentStack.spacing = 10
+        contentStack.isUserInteractionEnabled = false  // 让触摸穿透到 containerView
         containerView.addSubview(contentStack)
 
         contentStack.translatesAutoresizingMaskIntoConstraints = false
