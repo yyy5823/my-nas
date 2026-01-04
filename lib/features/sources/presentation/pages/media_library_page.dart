@@ -31,6 +31,7 @@ import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
 import 'package:my_nas/nas_adapters/local/local_adapter.dart';
 import 'package:my_nas/nas_adapters/mobile/services/file_import_service.dart';
 import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 class MediaLibraryPage extends ConsumerStatefulWidget {
   const MediaLibraryPage({super.key});
@@ -39,13 +40,15 @@ class MediaLibraryPage extends ConsumerStatefulWidget {
   ConsumerState<MediaLibraryPage> createState() => _MediaLibraryPageState();
 }
 
-class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
+class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage>
+    with ConsumerTabBarVisibilityMixin {
   bool _isPerformanceMode = false;
   StreamSubscription<bool>? _performanceModeSub;
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _isPerformanceMode = PerformanceModeService().isEnabled;
     _performanceModeSub = PerformanceModeService().stream.listen((enabled) {
       if (mounted) {

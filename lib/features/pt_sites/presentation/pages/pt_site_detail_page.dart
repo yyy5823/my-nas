@@ -9,6 +9,7 @@ import 'package:my_nas/features/pt_sites/presentation/widgets/pt_torrent_card.da
 import 'package:my_nas/features/pt_sites/presentation/widgets/send_to_downloader_sheet.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// PT 站点详情页
 class PTSiteDetailPage extends ConsumerStatefulWidget {
@@ -23,7 +24,8 @@ class PTSiteDetailPage extends ConsumerStatefulWidget {
   ConsumerState<PTSiteDetailPage> createState() => _PTSiteDetailPageState();
 }
 
-class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
+class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage>
+    with ConsumerTabBarVisibilityMixin {
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
   bool _isSearching = false;
@@ -32,6 +34,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _connect();

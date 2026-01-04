@@ -12,6 +12,7 @@ import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/transmission/presentation/pages/transmission_detail_page.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 通用服务源列表页面
 ///
@@ -40,8 +41,15 @@ class ServiceSourcesPage extends ConsumerStatefulWidget {
   ConsumerState<ServiceSourcesPage> createState() => _ServiceSourcesPageState();
 }
 
-class _ServiceSourcesPageState extends ConsumerState<ServiceSourcesPage> {
+class _ServiceSourcesPageState extends ConsumerState<ServiceSourcesPage>
+    with ConsumerTabBarVisibilityMixin {
   bool _isReorderMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    hideTabBar();
+  }
 
   @override
   Widget build(BuildContext context) {

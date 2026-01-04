@@ -23,8 +23,8 @@ import 'package:my_nas/features/book/presentation/pages/book_settings_page.dart'
 import 'package:my_nas/features/sources/presentation/pages/service_sources_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
-import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/pages/live_stream_settings_page.dart';
 import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
@@ -1557,7 +1557,10 @@ class _TransferCard extends ConsumerWidget {
                 : '暂无下载任务',
             color: AppColors.primary,
             isActive: downloadingCount > 0,
-            onTap: () => showTransferDownloads(context),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const TransferManagerPage(initialTab: 0)),
+            ),
           ),
           // 分隔线
           _buildDivider(),
@@ -1572,7 +1575,10 @@ class _TransferCard extends ConsumerWidget {
                 : '暂无上传任务',
             color: AppColors.accent,
             isActive: uploadingCount > 0,
-            onTap: () => showTransferUploads(context),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const TransferManagerPage(initialTab: 1)),
+            ),
           ),
           // 分隔线
           _buildDivider(),
@@ -1589,7 +1595,10 @@ class _TransferCard extends ConsumerWidget {
                     : '暂无缓存',
             color: Colors.teal,
             isActive: cachingCount > 0,
-            onTap: () => showTransferCache(context),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const TransferManagerPage(initialTab: 2)),
+            ),
           ),
         ],
       ),

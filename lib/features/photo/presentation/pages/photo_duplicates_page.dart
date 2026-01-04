@@ -10,6 +10,7 @@ import 'package:my_nas/features/photo/data/services/photo_hash_service.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 重复照片管理页面
@@ -20,7 +21,8 @@ class PhotoDuplicatesPage extends ConsumerStatefulWidget {
   ConsumerState<PhotoDuplicatesPage> createState() => _PhotoDuplicatesPageState();
 }
 
-class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
+class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage>
+    with ConsumerTabBarVisibilityMixin {
   final PhotoDatabaseService _db = PhotoDatabaseService();
   final PhotoHashService _hashService = PhotoHashService();
 
@@ -77,6 +79,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     // 仅加载数据，不自动开始扫描（需要用户手动点击）
     _loadDuplicates();
   }

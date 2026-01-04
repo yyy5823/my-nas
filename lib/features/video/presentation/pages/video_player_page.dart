@@ -29,6 +29,7 @@ import 'package:my_nas/features/video/presentation/widgets/video_controls.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_gesture_controller.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 
 class VideoPlayerPage extends ConsumerStatefulWidget {
@@ -89,8 +90,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
     super.initState();
     // 注册生命周期观察者
     WidgetsBinding.instance.addObserver(this);
-    // 隐藏原生 Tab Bar（iOS）
+    // 隐藏原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(false);
+    // 隐藏 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.hide();
     // 缓存 notifier 引用（在 widget 销毁前保存，避免异步操作后使用 ref）
     _playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
     _connections = ref.read(activeConnectionsProvider);
@@ -281,8 +284,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
     // 恢复系统 UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([]);
-    // 恢复原生 Tab Bar（iOS）
+    // 恢复原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(true);
+    // 恢复 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.show();
     super.dispose();
   }
 

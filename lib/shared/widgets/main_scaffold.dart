@@ -10,6 +10,7 @@ import 'package:my_nas/app/router/routes.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/services/update_service.dart';
@@ -169,6 +170,9 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     final enableGlass = PlatformGlassConfig.shouldEnableGlass(uiStyle);
     final useNativeTabBar = _shouldUseNativeTabBar(uiStyle);
 
+    // 监听底部导航栏可见性（经典风格使用）
+    final bottomNavVisible = ref.watch(bottomNavVisibleProvider);
+
     // 处理 UI 风格变化时的原生 Tab Bar 订阅
     _handleUiStyleChange(uiStyle, useNativeTabBar, currentIndex);
 
@@ -194,12 +198,15 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     }
 
     // 其他情况: 使用 Flutter 底部导航栏
+    // 根据 bottomNavVisible 决定是否显示
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
       // 玻璃模式下让内容延伸到导航栏下方
-      extendBody: enableGlass,
+      extendBody: enableGlass && bottomNavVisible,
       body: widget.child,
-      bottomNavigationBar: _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
+      bottomNavigationBar: bottomNavVisible
+          ? _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass)
+          : null,
     );
   }
 

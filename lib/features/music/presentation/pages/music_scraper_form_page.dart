@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/features/music/data/services/music_scraper_factory.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_form_config.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
@@ -27,7 +28,8 @@ class MusicScraperFormPage extends ConsumerStatefulWidget {
   ConsumerState<MusicScraperFormPage> createState() => _MusicScraperFormPageState();
 }
 
-class _MusicScraperFormPageState extends ConsumerState<MusicScraperFormPage> {
+class _MusicScraperFormPageState extends ConsumerState<MusicScraperFormPage>
+    with ConsumerTabBarVisibilityMixin {
   late final MusicScraperFormConfig _formConfig;
   late final GlobalKey<FormState> _formKey;
   late final Map<String, TextEditingController> _controllers;
@@ -40,6 +42,7 @@ class _MusicScraperFormPageState extends ConsumerState<MusicScraperFormPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _formConfig = MusicScraperFormConfig.forType(widget.type);
     _formKey = GlobalKey<FormState>();
     _controllers = {};

@@ -19,6 +19,7 @@ import 'package:my_nas/service_adapters/moviepilot/api/moviepilot_api.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
 import 'package:my_nas/service_adapters/transmission/api/transmission_api.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 表单模式
 enum SourceFormMode {
@@ -56,7 +57,8 @@ class SourceFormPage extends ConsumerStatefulWidget {
   ConsumerState<SourceFormPage> createState() => _SourceFormPageState();
 }
 
-class _SourceFormPageState extends ConsumerState<SourceFormPage> {
+class _SourceFormPageState extends ConsumerState<SourceFormPage>
+    with ConsumerTabBarVisibilityMixin {
   late final SourceFormConfig _formConfig;
   late final GlobalKey<FormState> _formKey;
   late final Map<String, dynamic> _formValues;
@@ -80,6 +82,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _formConfig = SourceFormConfig.forType(widget.sourceType);
     _formKey = GlobalKey<FormState>();
     _formValues = {};

@@ -11,6 +11,7 @@ import 'package:my_nas/features/video/domain/entities/scraper_result.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
 /// 手动刮削页面
@@ -28,7 +29,8 @@ class ManualScraperPage extends ConsumerStatefulWidget {
   ConsumerState<ManualScraperPage> createState() => _ManualScraperPageState();
 }
 
-class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
+class _ManualScraperPageState extends ConsumerState<ManualScraperPage>
+    with ConsumerTabBarVisibilityMixin {
   final VideoMetadataService _metadataService = VideoMetadataService();
   final ScraperManagerService _scraperManager = ScraperManagerService();
 
@@ -60,6 +62,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _initSearchFromFileName();
   }
 

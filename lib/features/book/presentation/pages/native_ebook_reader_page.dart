@@ -19,6 +19,7 @@ import 'package:my_nas/features/reading/presentation/widgets/page_flip_effect.da
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
@@ -197,7 +198,10 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(false);
+    // 隐藏 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.hide();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
     _loadProgress();
@@ -238,7 +242,10 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
     _saveProgressImmediately();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
+    // 恢复原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(true);
+    // 恢复 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.show();
     _pageController.dispose();
     super.dispose();
   }

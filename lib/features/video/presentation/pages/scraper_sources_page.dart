@@ -6,6 +6,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 刮削源管理页面
 /// - 点击需要配置的卡片弹出配置弹框
@@ -17,9 +18,16 @@ class ScraperSourcesPage extends ConsumerStatefulWidget {
   ConsumerState<ScraperSourcesPage> createState() => _ScraperSourcesPageState();
 }
 
-class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
+class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage>
+    with ConsumerTabBarVisibilityMixin {
   String? _testingSourceId;
   bool _isReorderMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    hideTabBar();
+  }
 
   @override
   Widget build(BuildContext context) {

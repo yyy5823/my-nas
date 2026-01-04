@@ -5,6 +5,7 @@ import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 import 'package:my_nas/features/transfer/presentation/widgets/cache_list_view.dart';
 import 'package:my_nas/features/transfer/presentation/widgets/transfer_task_tile.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 传输管理页面
 class TransferManagerPage extends ConsumerStatefulWidget {
@@ -18,12 +19,13 @@ class TransferManagerPage extends ConsumerStatefulWidget {
 }
 
 class _TransferManagerPageState extends ConsumerState<TransferManagerPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, ConsumerTabBarVisibilityMixin {
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _tabController = TabController(
       length: 3,
       vsync: this,

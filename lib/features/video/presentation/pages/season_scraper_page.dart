@@ -10,6 +10,7 @@ import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
 /// 整剧刮削页面
@@ -43,7 +44,8 @@ class SeasonScraperPage extends ConsumerStatefulWidget {
   ConsumerState<SeasonScraperPage> createState() => _SeasonScraperPageState();
 }
 
-class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
+class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage>
+    with ConsumerTabBarVisibilityMixin {
   final VideoMetadataService _metadataService = VideoMetadataService();
   final ScraperManagerService _scraperManager = ScraperManagerService();
 
@@ -74,6 +76,7 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _loadLocalEpisodes();
   }
 

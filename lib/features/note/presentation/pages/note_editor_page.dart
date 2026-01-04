@@ -10,6 +10,7 @@ import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
 import 'package:my_nas/features/note/domain/entities/note_item.dart';
 import 'package:my_nas/features/note/presentation/widgets/task_list_widget.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
 
@@ -178,13 +179,14 @@ class NoteEditorPage extends ConsumerStatefulWidget {
 }
 
 class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, ConsumerTabBarVisibilityMixin {
   late TabController _tabController;
   final TextEditingController _editController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _tabController = TabController(length: 3, vsync: this);
   }
 

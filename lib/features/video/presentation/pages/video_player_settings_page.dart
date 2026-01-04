@@ -10,6 +10,7 @@ import 'package:my_nas/features/video/domain/entities/hdr_capability.dart';
 import 'package:my_nas/features/video/domain/entities/video_quality.dart';
 import 'package:my_nas/features/video/presentation/providers/hdr_audio_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/quality_provider.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 视频播放器设置页面
 class VideoPlayerSettingsPage extends ConsumerWidget {
@@ -21,7 +22,8 @@ class VideoPlayerSettingsPage extends ConsumerWidget {
     final settings = ref.watch(qualitySettingsProvider);
     final hdrAudioSettings = ref.watch(hdrAudioSettingsProvider);
 
-    return Scaffold(
+    return HideBottomNavWrapper(
+      child: Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
       appBar: AppBar(
         backgroundColor: isDark ? AppColors.darkSurface : null,
@@ -257,6 +259,7 @@ class VideoPlayerSettingsPage extends ConsumerWidget {
           const SizedBox(height: AppSpacing.xxxl),
         ],
       ),
+    ),
     );
   }
 

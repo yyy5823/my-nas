@@ -773,6 +773,14 @@ class GlassButtonGroup extends ConsumerStatefulWidget {
 class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
   MethodChannel? _channel;
 
+  @override
+  void dispose() {
+    // 清理 method channel，防止在 dispose 后收到回调导致崩溃
+    _channel?.setMethodCallHandler(null);
+    _channel = null;
+    super.dispose();
+  }
+
   /// 从 children 中提取按钮配置
   List<Map<String, dynamic>> _extractButtonConfigs() {
     final configs = <Map<String, dynamic>>[];
@@ -926,6 +934,8 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
   void _setupChannel(int viewId) {
     _channel = MethodChannel('com.kkape.mynas/glass_button_group_$viewId');
     _channel?.setMethodCallHandler((call) async {
+      // 检查是否已 dispose，防止崩溃
+      if (!mounted) return;
       if (call.method == 'onButtonTap') {
         final index = call.arguments as int;
         _handleButtonTap(index);
@@ -954,6 +964,9 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
   }
 
   Widget _buildClassicButtonGroup(bool isDark) {
+    // 经典模式使用标准大小的图标
+    const classicIconSize = 22.0;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: widget.children.map((child) {
@@ -962,7 +975,7 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
             onPressed: child.onPressed,
             icon: Icon(
               child.icon,
-              size: child.size,
+              size: classicIconSize,
               color: child.color ?? (isDark ? Colors.white : Colors.black87),
             ),
             tooltip: child.tooltip,
@@ -975,7 +988,7 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
               children: [
                 Icon(
                   child.icon,
-                  size: child.size,
+                  size: classicIconSize,
                   color: child.color ?? (isDark ? Colors.white : Colors.black87),
                 ),
                 if (child.showDropdownIndicator)
@@ -989,11 +1002,51 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
             ),
             tooltip: child.tooltip,
           );
+        } else if (child is GlassGroupPopupMenuButton) {
+          // 经典模式的弹出菜单按钮
+          return IconButton(
+            onPressed: () => _showClassicPopupMenu(child, isDark),
+            icon: Icon(
+              child.icon,
+              size: classicIconSize,
+              color: child.color ?? (isDark ? Colors.white : Colors.black87),
+            ),
+            tooltip: child.tooltip,
+          );
         }
-        // GlassGroupPopupMenuButton 和其他 widget 直接返回
         return child;
       }).toList(),
     );
+  }
+
+  /// 经典模式下显示标准弹出菜单
+  void _showClassicPopupMenu<T>(GlassGroupPopupMenuButton<T> button, bool isDark) {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        renderBox.localToGlobal(Offset.zero, ancestor: overlay),
+        renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    final items = button.itemBuilder(context);
+
+    // 经典模式：使用标准 Flutter 弹出菜单，按钮不消失
+    showMenu<T>(
+      context: context,
+      position: position,
+      items: items,
+    ).then((value) {
+      if (value != null && button.onSelected != null) {
+        button.onSelected!(value);
+      }
+    });
   }
 
   Widget _buildNativeGlassButtonGroup(bool isDark) {
@@ -1240,16 +1293,12 @@ class _GlassGroupPopupMenuButtonState<T>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final uiStyle = ref.watch(uiStyleProvider);
     final iconColor =
         widget.color ?? (isDark ? Colors.white : Colors.black87);
 
-    // 玻璃模式 iOS 26 风格：菜单打开时隐藏按钮
-    // 经典模式：不隐藏按钮
-    final shouldHideWhenOpen = uiStyle.isGlass;
-
+    // 玻璃模式：菜单打开时隐藏按钮（_isMenuOpen 只在玻璃模式下为 true）
     return Opacity(
-      opacity: (shouldHideWhenOpen && _isMenuOpen) ? 0.0 : 1.0,
+      opacity: _isMenuOpen ? 0.0 : 1.0,
       child: GestureDetector(
         onTap: () => _showGlassMenu(context),
         child: Tooltip(
@@ -1270,11 +1319,25 @@ class _GlassGroupPopupMenuButtonState<T>
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final uiStyle = ref.read(uiStyleProvider);
+
+    // 经典模式：直接显示标准菜单，按钮不消失
+    if (!uiStyle.isGlass) {
+      _showClassicMenu(context, isDark);
+      return;
+    }
+
+    // 玻璃模式：先隐藏按钮，等待一帧后再显示菜单
+    setState(() => _isMenuOpen = true);
+
+    // 等待一帧确保按钮已隐藏
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+    if (!mounted) return;
+
     final button = context.findRenderObject()! as RenderBox;
     final overlay =
         Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
 
-    // 计算按钮位置
+    // 计算按钮位置（按钮已隐藏，但位置信息还在）
     final position = RelativeRect.fromRect(
       Rect.fromPoints(
         button.localToGlobal(Offset.zero, ancestor: overlay),
@@ -1287,18 +1350,13 @@ class _GlassGroupPopupMenuButtonState<T>
     // 构建菜单项
     final items = widget.itemBuilder(context);
 
-    // 玻璃模式才标记菜单打开（用于隐藏按钮）
-    if (uiStyle.isGlass) {
-      setState(() => _isMenuOpen = true);
-    }
-
     try {
       final value = await showGlassPopupMenu<T>(
         context: context,
         position: position,
         items: items,
         isDark: isDark,
-        isGlassMode: uiStyle.isGlass,
+        isGlassMode: true,
       );
 
       if (value != null && widget.onSelected != null) {
@@ -1306,10 +1364,38 @@ class _GlassGroupPopupMenuButtonState<T>
       }
     } finally {
       // 确保菜单关闭后恢复按钮显示
-      if (mounted && uiStyle.isGlass) {
+      if (mounted) {
         setState(() => _isMenuOpen = false);
       }
     }
+  }
+
+  /// 经典模式下显示标准菜单
+  void _showClassicMenu(BuildContext context, bool isDark) {
+    final button = context.findRenderObject()! as RenderBox;
+    final overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero),
+            ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    final items = widget.itemBuilder(context);
+
+    showMenu<T>(
+      context: context,
+      position: position,
+      items: items,
+    ).then((value) {
+      if (value != null && widget.onSelected != null) {
+        widget.onSelected!(value);
+      }
+    });
   }
 }
 

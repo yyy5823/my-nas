@@ -7,6 +7,7 @@ import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
 import 'package:my_nas/service_adapters/nastool/nastool_adapter.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// NASTool 主页面
 class NasToolMainPage extends ConsumerStatefulWidget {
@@ -18,7 +19,8 @@ class NasToolMainPage extends ConsumerStatefulWidget {
   ConsumerState<NasToolMainPage> createState() => _NasToolMainPageState();
 }
 
-class _NasToolMainPageState extends ConsumerState<NasToolMainPage> {
+class _NasToolMainPageState extends ConsumerState<NasToolMainPage>
+    with ConsumerTabBarVisibilityMixin {
   int _selectedIndex = 0;
 
   static const _navItems = [
@@ -35,6 +37,7 @@ class _NasToolMainPageState extends ConsumerState<NasToolMainPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     // 自动连接到 NASTool
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _connectToNasTool();

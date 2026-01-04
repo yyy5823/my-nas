@@ -15,6 +15,7 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/providers/download_provider.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/skeleton_loader.dart';
 
@@ -35,13 +36,15 @@ class FileBrowserPage extends ConsumerStatefulWidget {
   ConsumerState<FileBrowserPage> createState() => _FileBrowserPageState();
 }
 
-class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
+class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
+    with ConsumerTabBarVisibilityMixin {
   /// 是否从外部导航进入（需要显示返回按钮）
   bool get _isNavigatedFrom => widget.sourceId != null;
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     Future.microtask(() {
       // 如果指定了源 ID，先切换到该源
       if (widget.sourceId != null) {

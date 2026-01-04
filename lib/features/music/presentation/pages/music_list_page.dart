@@ -40,6 +40,7 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -3074,13 +3075,15 @@ class AllSongsPage extends ConsumerStatefulWidget {
   ConsumerState<AllSongsPage> createState() => _AllSongsPageState();
 }
 
-class _AllSongsPageState extends ConsumerState<AllSongsPage> {
+class _AllSongsPageState extends ConsumerState<AllSongsPage>
+    with ConsumerTabBarVisibilityMixin {
   final _scrollController = ScrollController();
   bool _isTableView = false; // 桌面端表格视图模式
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _scrollController.addListener(_onScroll);
     // 桌面端默认使用表格视图
     _isTableView = PlatformCapabilities.isDesktop;
@@ -4826,8 +4829,15 @@ class CategoryDetailPage extends ConsumerStatefulWidget {
   ConsumerState<CategoryDetailPage> createState() => _CategoryDetailPageState();
 }
 
-class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage> {
+class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage>
+    with ConsumerTabBarVisibilityMixin {
   final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    hideTabBar();
+  }
 
   @override
   void dispose() {

@@ -6,6 +6,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/aria2/presentation/providers/aria2_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/aria2/api/aria2_api.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// Aria2 详情页面
 class Aria2DetailPage extends ConsumerStatefulWidget {
@@ -22,12 +23,14 @@ class Aria2DetailPage extends ConsumerStatefulWidget {
   ConsumerState<Aria2DetailPage> createState() => _Aria2DetailPageState();
 }
 
-class _Aria2DetailPageState extends ConsumerState<Aria2DetailPage> {
+class _Aria2DetailPageState extends ConsumerState<Aria2DetailPage>
+    with ConsumerTabBarVisibilityMixin {
   bool _hasConnected = false;
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _connect();
     });

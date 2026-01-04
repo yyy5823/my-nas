@@ -18,6 +18,7 @@ import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dar
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 
 class MusicPlayerPage extends ConsumerStatefulWidget {
@@ -88,8 +89,10 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   @override
   void initState() {
     super.initState();
-    // 隐藏原生 Tab Bar（iOS）
+    // 隐藏原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(false);
+    // 隐藏 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.hide();
     _rotationController = AnimationController(
       duration: const Duration(seconds: 20),
       vsync: this,
@@ -99,8 +102,10 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   @override
   void dispose() {
     _rotationController.dispose();
-    // 恢复原生 Tab Bar（iOS）
+    // 恢复原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(true);
+    // 恢复 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.show();
     super.dispose();
   }
 

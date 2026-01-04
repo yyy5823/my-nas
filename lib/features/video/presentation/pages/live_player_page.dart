@@ -9,6 +9,8 @@ import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/live_stream_models.dart';
 import 'package:my_nas/features/video/presentation/providers/live_stream_provider.dart';
+import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
+import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
 /// 收藏频道 Provider
@@ -119,6 +121,10 @@ class _LivePlayerPageState extends ConsumerState<LivePlayerPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏原生 Tab Bar（iOS 玻璃风格）
+    NativeTabBarService.instance.setTabBarVisible(false);
+    // 隐藏 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.hide();
     _currentChannel = widget.channel;
     _initPlayer();
     _setFullScreen();
@@ -191,6 +197,10 @@ class _LivePlayerPageState extends ConsumerState<LivePlayerPage> {
 
   @override
   void dispose() {
+    // 恢复原生 Tab Bar（iOS 玻璃风格）
+    NativeTabBarService.instance.setTabBarVisible(true);
+    // 恢复 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.show();
     _player.dispose();
     _exitFullScreen();
     super.dispose();

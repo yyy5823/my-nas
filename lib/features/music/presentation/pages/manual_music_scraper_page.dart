@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
@@ -40,7 +41,8 @@ class ManualMusicScraperPage extends ConsumerStatefulWidget {
   ConsumerState<ManualMusicScraperPage> createState() => _ManualMusicScraperPageState();
 }
 
-class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage> {
+class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
+    with ConsumerTabBarVisibilityMixin {
   // 搜索控制器
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _artistController = TextEditingController();
@@ -85,6 +87,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _audioFormat = _tagWriter.getFormat(widget.music.path);
 
     // 如果已有封面/歌词，默认不下载（但用户可以勾选覆盖）

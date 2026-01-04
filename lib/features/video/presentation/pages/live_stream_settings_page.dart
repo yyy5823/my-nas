@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/features/video/domain/entities/live_stream_models.dart';
 import 'package:my_nas/features/video/presentation/providers/live_stream_provider.dart';
 
@@ -16,7 +17,16 @@ class LiveStreamSettingsPage extends ConsumerStatefulWidget {
 }
 
 class _LiveStreamSettingsPageState
-    extends ConsumerState<LiveStreamSettingsPage> {
+    extends ConsumerState<LiveStreamSettingsPage>
+    with ConsumerTabBarVisibilityMixin {
+  bool _isReorderMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    hideTabBar();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -27,6 +37,17 @@ class _LiveStreamSettingsPageState
       appBar: AppBar(
         title: const Text('直播源管理'),
         actions: [
+          // 排序模式切换按钮
+          if (sources.isNotEmpty)
+            IconButton(
+              icon: Icon(_isReorderMode ? Icons.done : Icons.reorder),
+              onPressed: () {
+                setState(() {
+                  _isReorderMode = !_isReorderMode;
+                });
+              },
+              tooltip: _isReorderMode ? '完成排序' : '调整顺序',
+            ),
           IconButton(
             icon: const Icon(Icons.add_rounded),
             onPressed: () => _showAddSourceDialog(context),
@@ -36,33 +57,78 @@ class _LiveStreamSettingsPageState
       ),
       body: sources.isEmpty
           ? _buildEmptyState(context)
-          : ReorderableListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: sources.length,
-              onReorder: (oldIndex, newIndex) {
-                ref
-                    .read(liveStreamSettingsProvider.notifier)
-                    .reorder(oldIndex, newIndex);
-              },
-              itemBuilder: (context, index) {
-                final source = sources[index];
-                return _SourceTile(
-                  key: ValueKey(source.id),
-                  source: source,
-                  isDark: isDark,
-                  onToggle: (enabled) {
-                    ref
-                        .read(liveStreamSettingsProvider.notifier)
-                        .toggleEnabled(source.id, enabled: enabled);
-                  },
-                  onEdit: () => _showEditSourceDialog(context, source),
-                  onRefresh: () => _refreshSource(source.id),
-                  onDelete: () => _deleteSource(source),
-                );
-              },
-            ),
+          : _isReorderMode
+              ? _buildReorderableList(sources, isDark)
+              : _buildNormalList(sources, isDark),
     );
   }
+
+  /// 构建普通列表（非排序模式）
+  Widget _buildNormalList(List<LiveStreamSource> sources, bool isDark) =>
+      ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: sources.length,
+        itemBuilder: (context, index) {
+          final source = sources[index];
+          return _SourceTile(
+            key: ValueKey(source.id),
+            source: source,
+            index: index,
+            isDark: isDark,
+            isReorderMode: false,
+            onToggle: (enabled) {
+              ref
+                  .read(liveStreamSettingsProvider.notifier)
+                  .toggleEnabled(source.id, enabled: enabled);
+            },
+            onEdit: () => _showEditSourceDialog(context, source),
+            onRefresh: () => _refreshSource(source.id),
+            onDelete: () => _deleteSource(source),
+          );
+        },
+      );
+
+  /// 构建可排序列表（排序模式）
+  Widget _buildReorderableList(List<LiveStreamSource> sources, bool isDark) =>
+      ReorderableListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: sources.length,
+        onReorder: (oldIndex, newIndex) {
+          ref
+              .read(liveStreamSettingsProvider.notifier)
+              .reorder(oldIndex, newIndex);
+        },
+        proxyDecorator: (child, index, animation) => AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) {
+            final elevation = Tween<double>(begin: 0, end: 8).evaluate(animation);
+            return Material(
+              elevation: elevation,
+              borderRadius: BorderRadius.circular(12),
+              child: child,
+            );
+          },
+          child: child,
+        ),
+        itemBuilder: (context, index) {
+          final source = sources[index];
+          return _SourceTile(
+            key: ValueKey(source.id),
+            source: source,
+            index: index,
+            isDark: isDark,
+            isReorderMode: true,
+            onToggle: (enabled) {
+              ref
+                  .read(liveStreamSettingsProvider.notifier)
+                  .toggleEnabled(source.id, enabled: enabled);
+            },
+            onEdit: () => _showEditSourceDialog(context, source),
+            onRefresh: () => _refreshSource(source.id),
+            onDelete: () => _deleteSource(source),
+          );
+        },
+      );
 
   Widget _buildEmptyState(BuildContext context) => Center(
         child: Column(
@@ -179,7 +245,9 @@ class _SourceTile extends StatelessWidget {
   const _SourceTile({
     super.key,
     required this.source,
+    required this.index,
     required this.isDark,
+    required this.isReorderMode,
     required this.onToggle,
     required this.onEdit,
     required this.onRefresh,
@@ -187,7 +255,9 @@ class _SourceTile extends StatelessWidget {
   });
 
   final LiveStreamSource source;
+  final int index;
   final bool isDark;
+  final bool isReorderMode;
   final ValueChanged<bool> onToggle;
   final VoidCallback onEdit;
   final VoidCallback onRefresh;
@@ -197,10 +267,28 @@ class _SourceTile extends StatelessWidget {
   Widget build(BuildContext context) => Card(
         margin: const EdgeInsets.only(bottom: 12),
         child: ListTile(
-          leading: ReorderableDragStartListener(
-            index: source.sortOrder,
-            child: const Icon(Icons.drag_handle_rounded),
-          ),
+          leading: isReorderMode
+              ? ReorderableDragStartListener(
+                  index: index,
+                  child: const Icon(Icons.drag_handle_rounded),
+                )
+              : Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: source.isEnabled
+                        ? AppColors.primary.withValues(alpha: 0.15)
+                        : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.satellite_alt_rounded,
+                    size: 20,
+                    color: source.isEnabled
+                        ? AppColors.primary
+                        : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                  ),
+                ),
           title: Text(
             source.name,
             style: TextStyle(
@@ -213,31 +301,33 @@ class _SourceTile extends StatelessWidget {
               color: source.isEnabled ? null : Colors.grey,
             ),
           ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Switch(
-                value: source.isEnabled,
-                onChanged: onToggle,
-              ),
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded),
-                onPressed: onRefresh,
-                tooltip: '刷新频道',
-              ),
-              IconButton(
-                icon: const Icon(Icons.edit_rounded),
-                onPressed: onEdit,
-                tooltip: '编辑',
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_rounded),
-                onPressed: onDelete,
-                tooltip: '删除',
-                color: Colors.red,
-              ),
-            ],
-          ),
+          trailing: isReorderMode
+              ? null
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Switch(
+                      value: source.isEnabled,
+                      onChanged: onToggle,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded),
+                      onPressed: onRefresh,
+                      tooltip: '刷新频道',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit_rounded),
+                      onPressed: onEdit,
+                      tooltip: '编辑',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_rounded),
+                      onPressed: onDelete,
+                      tooltip: '删除',
+                      color: Colors.red,
+                    ),
+                  ],
+                ),
         ),
       );
 }

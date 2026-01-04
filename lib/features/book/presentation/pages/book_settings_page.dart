@@ -5,6 +5,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_container.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 
@@ -22,14 +23,15 @@ class BookSettingsPage extends ConsumerWidget {
     final uiStyle = ref.watch(uiStyleProvider);
     final settings = ref.watch(bookReaderSettingsProvider);
 
-    return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : null,
-      appBar: AppBar(
-        title: const Text('图书设置'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: ListView(
+    return HideBottomNavWrapper(
+      child: Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : null,
+        appBar: AppBar(
+          title: const Text('图书设置'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+        ),
+        body: ListView(
         padding: AppSpacing.paddingMd,
         children: [
           // 阅读器设置
@@ -96,6 +98,7 @@ class BookSettingsPage extends ConsumerWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

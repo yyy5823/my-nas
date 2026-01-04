@@ -10,6 +10,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 class ConnectionPage extends ConsumerStatefulWidget {
   const ConnectionPage({super.key});
@@ -19,7 +20,7 @@ class ConnectionPage extends ConsumerStatefulWidget {
 }
 
 class _ConnectionPageState extends ConsumerState<ConnectionPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, ConsumerTabBarVisibilityMixin {
   final _formKey = GlobalKey<FormState>();
   final _hostController = TextEditingController();
   final _portController = TextEditingController(text: '5000');
@@ -38,6 +39,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),

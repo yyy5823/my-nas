@@ -6,6 +6,7 @@ import 'package:my_nas/features/video/domain/entities/live_stream_models.dart';
 import 'package:my_nas/features/video/presentation/pages/live_player_page.dart';
 import 'package:my_nas/features/video/presentation/pages/live_stream_settings_page.dart';
 import 'package:my_nas/features/video/presentation/providers/live_stream_provider.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 直播频道列表页面
 class LiveChannelListPage extends ConsumerStatefulWidget {
@@ -16,9 +17,17 @@ class LiveChannelListPage extends ConsumerStatefulWidget {
       _LiveChannelListPageState();
 }
 
-class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage> {
+class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
+    with ConsumerTabBarVisibilityMixin {
   final _searchController = TextEditingController();
   bool _isGridView = true;
+  bool _showSearch = false;
+
+  @override
+  void initState() {
+    super.initState();
+    hideTabBar();
+  }
 
   @override
   void dispose() {
@@ -29,8 +38,6 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final categories = ref.watch(liveChannelCategoriesProvider);
-    final selectedCategory = ref.watch(selectedLiveCategoryProvider);
     final channels = ref.watch(searchedLiveChannelsProvider);
     final hasLiveSources = ref.watch(hasLiveSourcesProvider);
 
@@ -38,6 +45,18 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage> {
       appBar: AppBar(
         title: const Text('直播频道'),
         actions: [
+          // 搜索按钮
+          IconButton(
+            icon: Icon(_showSearch ? Icons.close_rounded : Icons.search_rounded),
+            onPressed: () => setState(() {
+              _showSearch = !_showSearch;
+              if (!_showSearch) {
+                _searchController.clear();
+                ref.read(liveChannelSearchQueryProvider.notifier).state = '';
+              }
+            }),
+            tooltip: '搜索频道',
+          ),
           // 切换视图
           IconButton(
             icon: Icon(_isGridView ? Icons.list_rounded : Icons.grid_view_rounded),
@@ -54,72 +73,39 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage> {
       ),
       body: Column(
         children: [
-          // 搜索栏
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: '搜索频道...',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () {
-                          _searchController.clear();
-                          ref.read(liveChannelSearchQueryProvider.notifier).state = '';
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: isDark
-                    ? AppColors.darkSurfaceVariant
-                    : AppColors.lightSurfaceVariant,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+          // 搜索栏（只在点击搜索按钮后显示）
+          if (_showSearch)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: '搜索频道...',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            ref.read(liveChannelSearchQueryProvider.notifier).state = '';
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: isDark
+                      ? AppColors.darkSurfaceVariant
+                      : AppColors.lightSurfaceVariant,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
-              ),
-              onChanged: (value) {
-                ref.read(liveChannelSearchQueryProvider.notifier).state = value;
-              },
-            ),
-          ),
-
-          // 分类筛选
-          if (categories.isNotEmpty)
-            SizedBox(
-              height: 48,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: categories.length + 1,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    return FilterChip(
-                      label: const Text('全部'),
-                      selected: selectedCategory == null,
-                      onSelected: (_) {
-                        ref.read(selectedLiveCategoryProvider.notifier).state =
-                            null;
-                      },
-                    );
-                  }
-                  final category = categories.elementAt(index - 1);
-                  return FilterChip(
-                    label: Text(category),
-                    selected: selectedCategory == category,
-                    onSelected: (_) {
-                      ref.read(selectedLiveCategoryProvider.notifier).state =
-                          selectedCategory == category ? null : category;
-                    },
-                  );
+                onChanged: (value) {
+                  ref.read(liveChannelSearchQueryProvider.notifier).state = value;
                 },
               ),
             ),
-
-          const SizedBox(height: 8),
 
           // 频道列表
           Expanded(

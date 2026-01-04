@@ -8,6 +8,7 @@ import 'package:my_nas/features/media_tracking/presentation/providers/trakt_sync
 import 'package:my_nas/features/video/data/services/trakt_scrobble_service.dart';
 import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
 import 'package:my_nas/service_adapters/trakt/trakt_config.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Trakt 连接页面
@@ -22,13 +23,20 @@ class TraktConnectionPage extends ConsumerStatefulWidget {
   ConsumerState<TraktConnectionPage> createState() => _TraktConnectionPageState();
 }
 
-class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
+class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
+    with ConsumerTabBarVisibilityMixin {
   final _clientIdController = TextEditingController();
   final _clientSecretController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   bool _showCustomCredentials = false;
   bool _obscureSecret = true;
+
+  @override
+  void initState() {
+    super.initState();
+    hideTabBar();
+  }
 
   @override
   void deactivate() {

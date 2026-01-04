@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -17,7 +18,8 @@ class VideoDuplicatesPage extends ConsumerStatefulWidget {
   ConsumerState<VideoDuplicatesPage> createState() => _VideoDuplicatesPageState();
 }
 
-class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
+class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage>
+    with ConsumerTabBarVisibilityMixin {
   final VideoDatabaseService _db = VideoDatabaseService();
 
   // 状态
@@ -39,6 +41,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _loadDuplicates();
   }
 

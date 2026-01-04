@@ -5,6 +5,7 @@ import 'package:my_nas/features/video/domain/entities/scraper_form_config.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 刮削源表单页面
 class ScraperFormPage extends ConsumerStatefulWidget {
@@ -26,7 +27,8 @@ class ScraperFormPage extends ConsumerStatefulWidget {
   ConsumerState<ScraperFormPage> createState() => _ScraperFormPageState();
 }
 
-class _ScraperFormPageState extends ConsumerState<ScraperFormPage> {
+class _ScraperFormPageState extends ConsumerState<ScraperFormPage>
+    with ConsumerTabBarVisibilityMixin {
   late final ScraperFormConfig _formConfig;
   late final GlobalKey<FormState> _formKey;
   late final Map<String, TextEditingController> _controllers;
@@ -39,6 +41,7 @@ class _ScraperFormPageState extends ConsumerState<ScraperFormPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _formConfig = ScraperFormConfig.forType(widget.type);
     _formKey = GlobalKey<FormState>();
     _controllers = {};

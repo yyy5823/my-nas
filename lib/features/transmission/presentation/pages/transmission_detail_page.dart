@@ -6,6 +6,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/transmission/presentation/providers/transmission_provider.dart';
 import 'package:my_nas/service_adapters/transmission/api/transmission_api.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// Transmission 详情页面
 class TransmissionDetailPage extends ConsumerStatefulWidget {
@@ -23,12 +24,14 @@ class TransmissionDetailPage extends ConsumerStatefulWidget {
       _TransmissionDetailPageState();
 }
 
-class _TransmissionDetailPageState extends ConsumerState<TransmissionDetailPage> {
+class _TransmissionDetailPageState extends ConsumerState<TransmissionDetailPage>
+    with ConsumerTabBarVisibilityMixin {
   bool _hasConnected = false;
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _connect();
     });

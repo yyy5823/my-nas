@@ -45,6 +45,7 @@ import 'package:my_nas/features/video/presentation/widgets/live_stream_section.d
 import 'package:my_nas/features/video/presentation/widgets/video_category_settings_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -5801,7 +5802,8 @@ class _CategoryFullPage extends ConsumerStatefulWidget {
   ConsumerState<_CategoryFullPage> createState() => _CategoryFullPageState();
 }
 
-class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
+class _CategoryFullPageState extends ConsumerState<_CategoryFullPage>
+    with ConsumerTabBarVisibilityMixin {
   // 默认按年份降序排序（最近上映的排在前面）
   _SortType _sortType = _SortType.year;
   bool _sortDescending = true;
@@ -5811,6 +5813,7 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _extractGenres();
   }
 
@@ -6790,7 +6793,14 @@ class _TvShowsFullPage extends ConsumerStatefulWidget {
   ConsumerState<_TvShowsFullPage> createState() => _TvShowsFullPageState();
 }
 
-class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
+class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage>
+    with ConsumerTabBarVisibilityMixin {
+  @override
+  void initState() {
+    super.initState();
+    hideTabBar();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -6848,7 +6858,8 @@ class _MoviesPaginatedPage extends ConsumerStatefulWidget {
       _MoviesPaginatedPageState();
 }
 
-class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
+class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage>
+    with ConsumerTabBarVisibilityMixin {
   final List<VideoMetadata> _movies = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -6870,6 +6881,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -7585,7 +7597,8 @@ class _TvShowsPaginatedPage extends ConsumerStatefulWidget {
       _TvShowsPaginatedPageState();
 }
 
-class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
+class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage>
+    with ConsumerTabBarVisibilityMixin {
   final List<VideoMetadata> _tvShows = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -7607,6 +7620,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -8006,7 +8020,8 @@ class _OthersPaginatedPage extends ConsumerStatefulWidget {
       _OthersPaginatedPageState();
 }
 
-class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
+class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage>
+    with ConsumerTabBarVisibilityMixin {
   final List<VideoMetadata> _videos = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -8021,6 +8036,7 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _loadCount();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -9346,7 +9362,8 @@ class _FilteredVideosPaginatedPage extends StatefulWidget {
 }
 
 class _FilteredVideosPaginatedPageState
-    extends State<_FilteredVideosPaginatedPage> {
+    extends State<_FilteredVideosPaginatedPage>
+    with TabBarVisibilityMixin {
   final List<VideoMetadata> _videos = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -9360,6 +9377,7 @@ class _FilteredVideosPaginatedPageState
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _loadMore();
     _scrollController.addListener(_onScroll);
   }

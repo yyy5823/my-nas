@@ -7,6 +7,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/data/services/music_scraper_factory.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 音乐刮削源管理页面
 /// - 点击需要配置的卡片弹出配置弹框
@@ -18,9 +19,16 @@ class MusicScraperSourcesPage extends ConsumerStatefulWidget {
   ConsumerState<MusicScraperSourcesPage> createState() => _MusicScraperSourcesPageState();
 }
 
-class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPage> {
+class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPage>
+    with ConsumerTabBarVisibilityMixin {
   String? _testingSourceId;
   bool _isReorderMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    hideTabBar();
+  }
 
   @override
   Widget build(BuildContext context) {

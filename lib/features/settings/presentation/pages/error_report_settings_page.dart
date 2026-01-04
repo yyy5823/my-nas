@@ -5,6 +5,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/services/error_report/error_report_service.dart';
 import 'package:my_nas/core/services/error_report/error_report_settings.dart';
 import 'package:my_nas/core/services/error_report/error_report_settings_service.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 日志上报设置页面
 /// @author cq
@@ -16,12 +17,14 @@ class ErrorReportSettingsPage extends StatefulWidget {
   State<ErrorReportSettingsPage> createState() => _ErrorReportSettingsPageState();
 }
 
-class _ErrorReportSettingsPageState extends State<ErrorReportSettingsPage> {
+class _ErrorReportSettingsPageState extends State<ErrorReportSettingsPage>
+    with TabBarVisibilityMixin {
   late ErrorReportSettings _settings;
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _settings = ErrorReportSettingsService.instance.settings;
   }
 

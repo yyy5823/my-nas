@@ -9,6 +9,7 @@ import 'package:my_nas/features/photo/data/services/face_recognition_service.dar
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 人物分组页面
@@ -19,7 +20,8 @@ class PhotoPeoplePage extends ConsumerStatefulWidget {
   ConsumerState<PhotoPeoplePage> createState() => _PhotoPeoplePageState();
 }
 
-class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
+class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage>
+    with ConsumerTabBarVisibilityMixin {
   final FaceDatabaseService _faceDb = FaceDatabaseService();
   final FaceRecognitionService _faceService = FaceRecognitionService();
 
@@ -38,6 +40,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     _loadData();
   }
 

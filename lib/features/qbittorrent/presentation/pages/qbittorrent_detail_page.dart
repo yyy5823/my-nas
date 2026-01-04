@@ -7,6 +7,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/qbittorrent/presentation/providers/qbittorrent_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// qBittorrent 详情页面
 class QBittorrentDetailPage extends ConsumerStatefulWidget {
@@ -24,12 +25,14 @@ class QBittorrentDetailPage extends ConsumerStatefulWidget {
       _QBittorrentDetailPageState();
 }
 
-class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
+class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage>
+    with ConsumerTabBarVisibilityMixin {
   bool _hasConnected = false;
 
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _connect();
     });

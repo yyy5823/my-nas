@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/features/nastool/presentation/pages/nastool_main_page.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -19,7 +20,8 @@ class NasToolLoginPage extends ConsumerStatefulWidget {
   ConsumerState<NasToolLoginPage> createState() => _NasToolLoginPageState();
 }
 
-class _NasToolLoginPageState extends ConsumerState<NasToolLoginPage> {
+class _NasToolLoginPageState extends ConsumerState<NasToolLoginPage>
+    with ConsumerTabBarVisibilityMixin {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -31,6 +33,7 @@ class _NasToolLoginPageState extends ConsumerState<NasToolLoginPage> {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
     // 预填已保存的用户名
     final savedUsername = widget.source.username;
     if (savedUsername.isNotEmpty) {
