@@ -36,6 +36,23 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
   void initState() {
     super.initState();
     hideTabBar();
+    // 使用 Future.microtask 确保在第一帧后执行
+    Future.microtask(_initializeData);
+  }
+
+  /// 初始化数据：如果已连接则加载播放进度
+  void _initializeData() {
+    final traktState = ref.read(traktConnectionProvider);
+    if (traktState.isConnected) {
+      ref.read(traktSyncProvider.notifier).refreshPlaybackProgress();
+    }
+
+    // 监听连接状态变化，当刚连接成功时自动刷新播放进度
+    ref.listenManual(traktConnectionProvider, (previous, next) {
+      if (previous?.isConnected != true && next.isConnected) {
+        ref.read(traktSyncProvider.notifier).refreshPlaybackProgress();
+      }
+    });
   }
 
   @override
@@ -372,9 +389,7 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
             if (traktSync.playbackProgress.length > 5)
               Center(
                 child: TextButton(
-                  onPressed: () {
-                    // TODO: 跳转到完整列表
-                  },
+                  onPressed: () => _showAllPlaybackProgress(context, traktSync.playbackProgress),
                   child: Text('查看全部 (${traktSync.playbackProgress.length})'),
                 ),
               ),
@@ -496,6 +511,72 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
           ),
         ),
       ],
+    );
+  }
+
+  /// 显示完整的播放进度列表
+  void _showAllPlaybackProgress(BuildContext context, List<TraktPlaybackItem> items) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // 拖动指示器
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // 标题
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Text(
+                    '继续观看',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '共 ${items.length} 项',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(),
+            // 列表
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: items.length,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemBuilder: (context, index) => _buildPlaybackProgressItem(context, items[index]),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

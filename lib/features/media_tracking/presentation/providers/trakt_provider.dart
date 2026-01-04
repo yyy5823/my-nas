@@ -546,18 +546,23 @@ class TraktConnectionNotifier extends StateNotifier<TraktConnectionState> {
     if (_api == null) return;
 
     try {
-      // 获取用户设置
-      final userSettings = await _api!.getUserSettings();
+      // 并行获取用户设置、统计数据和待看列表
+      final results = await Future.wait([
+        _api!.getUserSettings(),
+        _api!.getUserStats(),
+        _api!.getWatchlist(limit: 1),
+      ]);
 
-      // 获取统计数据（watchlist 需要单独获取）
-      final watchlist = await _api!.getWatchlist(limit: 1);
+      final userSettings = results[0] as TraktUserSettings;
+      final userStats = results[1] as TraktUserStats;
+      final watchlist = results[2] as List<TraktWatchlistItem>;
 
       state = state.copyWith(
         userSettings: userSettings,
         stats: TraktStats(
-          moviesWatched: 0, // 需要额外 API 调用
-          showsWatched: 0,
-          episodesWatched: 0,
+          moviesWatched: userStats.moviesWatched,
+          showsWatched: userStats.showsWatched,
+          episodesWatched: userStats.episodesWatched,
           watchlistCount: watchlist.length,
         ),
       );

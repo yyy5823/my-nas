@@ -275,6 +275,13 @@ class TraktApi {
     return TraktUserSettings.fromJson(data);
   }
 
+  /// 获取用户统计数据
+  Future<TraktUserStats> getUserStats() async {
+    final response = await _makeAuthenticatedRequest('GET', '/users/me/stats');
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return TraktUserStats.fromJson(data);
+  }
+
   /// 获取观看历史
   Future<List<TraktHistoryItem>> getWatchedHistory({
     String type = 'movies,shows',
@@ -739,6 +746,47 @@ class TraktUserSettings {
   final String? name;
   final bool? vip;
   final String? avatarUrl;
+}
+
+/// 用户统计数据
+class TraktUserStats {
+  const TraktUserStats({
+    this.moviesWatched = 0,
+    this.moviesCollected = 0,
+    this.moviesMinutes = 0,
+    this.showsWatched = 0,
+    this.showsCollected = 0,
+    this.episodesWatched = 0,
+    this.episodesMinutes = 0,
+    this.ratingsTotal = 0,
+  });
+
+  factory TraktUserStats.fromJson(Map<String, dynamic> json) {
+    final movies = json['movies'] as Map<String, dynamic>? ?? {};
+    final shows = json['shows'] as Map<String, dynamic>? ?? {};
+    final episodes = json['episodes'] as Map<String, dynamic>? ?? {};
+    final ratings = json['ratings'] as Map<String, dynamic>? ?? {};
+
+    return TraktUserStats(
+      moviesWatched: movies['watched'] as int? ?? 0,
+      moviesCollected: movies['collected'] as int? ?? 0,
+      moviesMinutes: movies['minutes'] as int? ?? 0,
+      showsWatched: shows['watched'] as int? ?? 0,
+      showsCollected: shows['collected'] as int? ?? 0,
+      episodesWatched: episodes['watched'] as int? ?? 0,
+      episodesMinutes: episodes['minutes'] as int? ?? 0,
+      ratingsTotal: ratings['total'] as int? ?? 0,
+    );
+  }
+
+  final int moviesWatched;
+  final int moviesCollected;
+  final int moviesMinutes;
+  final int showsWatched;
+  final int showsCollected;
+  final int episodesWatched;
+  final int episodesMinutes;
+  final int ratingsTotal;
 }
 
 /// 观看历史项
