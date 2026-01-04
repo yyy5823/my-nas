@@ -11,6 +11,7 @@ import 'package:my_nas/features/reading/data/services/reading_progress_service.d
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
@@ -289,8 +290,10 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
   @override
   void initState() {
     super.initState();
-    // 隐藏原生 Tab Bar（iOS）
+    // 隐藏原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(false);
+    // 隐藏 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.hide();
     _provider = StateNotifierProvider<ComicReaderNotifier, ComicReaderState>(
       (ref) => ComicReaderNotifier(ref, widget.comic),
     );
@@ -314,8 +317,10 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     WakelockPlus.disable();
     // 退出全屏模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    // 恢复原生 Tab Bar（iOS）
+    // 恢复原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(true);
+    // 恢复 Flutter 导航栏（经典风格）
+    BottomNavVisibilityNotifier.instance?.show();
     super.dispose();
   }
 

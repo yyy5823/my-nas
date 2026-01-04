@@ -108,7 +108,7 @@ class LiveStreamSection extends ConsumerWidget {
         ),
         // 频道列表
         SizedBox(
-          height: 130,
+          height: 120,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -165,7 +165,7 @@ class _LiveChannelCardState extends State<_LiveChannelCard> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 100,
+      width: 142,
       margin: const EdgeInsets.only(right: 12),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
@@ -180,7 +180,7 @@ class _LiveChannelCardState extends State<_LiveChannelCard> {
                 // Logo 容器
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  width: 80,
+                  width: 130,
                   height: 80,
                   decoration: BoxDecoration(
                     color: widget.isDark
@@ -296,8 +296,8 @@ class _PulsingDotState extends State<_PulsingDot>
   Widget build(BuildContext context) => AnimatedBuilder(
         animation: _animation,
         builder: (context, child) => Container(
-          width: 8,
-          height: 8,
+          width: 10,
+          height: 10,
           decoration: BoxDecoration(
             color: Colors.red.withValues(alpha: _animation.value),
             shape: BoxShape.circle,
