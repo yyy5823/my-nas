@@ -328,6 +328,7 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final traktSync = ref.watch(traktSyncProvider);
+    final combinedAsync = ref.watch(combinedContinueWatchingProvider);
 
     return Card(
       elevation: 0,
@@ -352,7 +353,7 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
                     ),
                   ),
                 ),
-                if (traktSync.isLoading)
+                if (traktSync.isLoading || combinedAsync.isLoading)
                   const SizedBox(
                     width: 16,
                     height: 16,
@@ -362,7 +363,9 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
                   IconButton(
                     icon: const Icon(Icons.refresh, size: 20),
                     onPressed: () {
-                      ref.read(traktSyncProvider.notifier).refreshPlaybackProgress();
+                      ref
+                        ..read(traktSyncProvider.notifier).refreshPlaybackProgress()
+                        ..invalidate(combinedContinueWatchingProvider);
                     },
                     tooltip: '刷新',
                     visualDensity: VisualDensity.compact,
@@ -370,53 +373,76 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
               ],
             ),
             const SizedBox(height: 8),
-            if (traktSync.playbackProgress.isEmpty)
-              Padding(
+            combinedAsync.when(
+              data: (items) {
+                if (items.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: Text(
+                        '暂无未完成的播放',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                return Column(
+                  children: [
+                    ...items.take(5).map(
+                          (item) => _buildContinueWatchingItem(context, item),
+                        ),
+                    if (items.length > 5)
+                      Center(
+                        child: TextButton(
+                          onPressed: () => _showAllContinueWatching(context, items),
+                          child: Text('查看全部 (${items.length})'),
+                        ),
+                      ),
+                  ],
+                );
+              },
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (e, _) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Center(
                   child: Text(
-                    '暂无未完成的播放',
+                    '加载失败',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                      color: colorScheme.error,
                     ),
                   ),
                 ),
-              )
-            else
-              ...traktSync.playbackProgress.take(5).map(
-                    (item) => _buildPlaybackProgressItem(context, item),
-                  ),
-            if (traktSync.playbackProgress.length > 5)
-              Center(
-                child: TextButton(
-                  onPressed: () => _showAllPlaybackProgress(context, traktSync.playbackProgress),
-                  child: Text('查看全部 (${traktSync.playbackProgress.length})'),
-                ),
               ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// 播放进度项
-  Widget _buildPlaybackProgressItem(BuildContext context, TraktPlaybackItem item) {
+  /// 继续观看项（使用本地化标题）
+  Widget _buildContinueWatchingItem(BuildContext context, ContinueWatchingItem item) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    String title;
+    // 使用本地化标题
+    final title = item.displayTitle;
     String? subtitle;
 
-    if (item.type == 'movie') {
-      title = item.movie?.title ?? '未知电影';
-      subtitle = item.movie?.year?.toString();
-    } else {
-      title = item.show?.title ?? '未知剧集';
-      final ep = item.episode;
-      if (ep != null) {
-        subtitle = 'S${ep.season.toString().padLeft(2, '0')}E${ep.number.toString().padLeft(2, '0')}${ep.title.isNotEmpty ? ' ${ep.title}' : ''}';
-      }
+    // 生成副标题（年份或来源标识）
+    if (item.metadata?.year != null) {
+      subtitle = item.metadata!.year.toString();
+    } else if (item.traktProgress?.type == 'movie') {
+      subtitle = item.traktProgress!.movie?.year?.toString();
     }
+
+    // 添加来源标识
+    final sourceLabel = item.source == ContinueWatchingSource.trakt ? 'Trakt' : '本地';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -470,19 +496,41 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
               ],
             ),
           ),
-          // 删除按钮
-          IconButton(
-            icon: Icon(
-              Icons.close,
-              size: 18,
-              color: colorScheme.onSurfaceVariant,
+          // 来源标识
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: item.source == ContinueWatchingSource.trakt
+                  ? const Color(0xFFED1C24).withValues(alpha: 0.1)
+                  : colorScheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(4),
             ),
-            onPressed: () {
-              ref.read(traktSyncProvider.notifier).deleteProgress(item.id);
-            },
-            tooltip: '删除进度',
-            visualDensity: VisualDensity.compact,
+            child: Text(
+              sourceLabel,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: item.source == ContinueWatchingSource.trakt
+                    ? const Color(0xFFED1C24)
+                    : colorScheme.primary,
+                fontSize: 10,
+              ),
+            ),
           ),
+          const SizedBox(width: 8),
+          // 删除按钮（仅 Trakt 进度可删除）
+          if (item.traktProgress != null)
+            IconButton(
+              icon: Icon(
+                Icons.close,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              onPressed: () {
+                ref.read(traktSyncProvider.notifier).deleteProgress(item.traktProgress!.id);
+                ref.invalidate(combinedContinueWatchingProvider);
+              },
+              tooltip: '删除进度',
+              visualDensity: VisualDensity.compact,
+            ),
         ],
       ),
     );
@@ -514,8 +562,8 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
     );
   }
 
-  /// 显示完整的播放进度列表
-  void _showAllPlaybackProgress(BuildContext context, List<TraktPlaybackItem> items) {
+  /// 显示完整的继续观看列表
+  void _showAllContinueWatching(BuildContext context, List<ContinueWatchingItem> items) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -571,7 +619,8 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
                 controller: scrollController,
                 itemCount: items.length,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemBuilder: (context, index) => _buildPlaybackProgressItem(context, items[index]),
+                itemBuilder: (context, index) =>
+                    _buildContinueWatchingItem(context, items[index]),
               ),
             ),
           ],

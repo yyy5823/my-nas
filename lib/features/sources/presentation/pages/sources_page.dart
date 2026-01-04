@@ -10,6 +10,7 @@ import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 class SourcesPage extends ConsumerStatefulWidget {
   const SourcesPage({super.key});
@@ -18,12 +19,15 @@ class SourcesPage extends ConsumerStatefulWidget {
   ConsumerState<SourcesPage> createState() => _SourcesPageState();
 }
 
-class _SourcesPageState extends ConsumerState<SourcesPage> {
+class _SourcesPageState extends ConsumerState<SourcesPage>
+    with ConsumerTabBarVisibilityMixin {
   bool _isReorderMode = false;
 
   @override
   void initState() {
     super.initState();
+    // 隐藏底部导航栏
+    hideTabBar();
     // 启动网络发现
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(networkDiscoveryProvider.notifier).startDiscovery();

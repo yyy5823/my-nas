@@ -3,8 +3,11 @@ import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
+import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
+import 'package:my_nas/shared/providers/language_preference_provider.dart';
 
 /// Trakt 同步状态
 class TraktSyncState {
@@ -184,30 +187,113 @@ class TraktSyncNotifier extends StateNotifier<TraktSyncState> {
       );
 }
 
-/// 获取继续观看列表（结合本地和 Trakt 进度）
+/// 获取继续观看列表（结合本地历史和 Trakt 进度）
 ///
 /// 此 Provider 合并本地播放历史和 Trakt 进度，提供统一的继续观看列表
+/// 特性：
+/// - 合并本地历史和 Trakt 进度
+/// - 去重：同一视频优先使用 Trakt 进度
+/// - 本地化标题：使用本地数据库中的标题
+/// - 匹配本地影视库：只显示本地有对应文件的视频
 final combinedContinueWatchingProvider =
     FutureProvider<List<ContinueWatchingItem>>((ref) async {
   final traktSync = ref.watch(traktSyncProvider);
   final traktConnection = ref.watch(traktConnectionProvider);
+  final localHistoryAsync = ref.watch(continueWatchingProvider);
+  final langPref = ref.watch(languagePreferenceProvider);
 
-  final items = <ContinueWatchingItem>[];
+  // 用于去重的 Map: key 为 "tmdb_{id}" 或 "path_{videoPath}"
+  final itemMap = <String, ContinueWatchingItem>{};
 
-  // 如果已连接 Trakt，添加 Trakt 进度
+  // 初始化数据库服务
+  final dbService = VideoDatabaseService();
+  await dbService.init();
+
+  // 获取首选语言列表
+  final preferredLangs = langPref.metadataLanguages.isNotEmpty
+      ? langPref.metadataLanguages.map((l) => l.code).toList()
+      : ['zh-CN', 'en'];
+
+  // 1. 处理 Trakt 进度
   if (traktConnection.isConnected) {
     for (final progress in traktSync.playbackProgress) {
-      items.add(ContinueWatchingItem(
+      final tmdbId = progress.tmdbId;
+      VideoMetadata? matchedMetadata;
+      String? localizedTitle;
+
+      // 尝试从本地数据库查找匹配的元数据
+      if (tmdbId != null) {
+        final localMatches = await dbService.getByTmdbId(tmdbId);
+        if (localMatches.isNotEmpty) {
+          // 如果是剧集，尝试匹配季和集
+          if (progress.type == 'episode') {
+            final epInfo = progress.episodeInfo;
+            if (epInfo != null) {
+              matchedMetadata = localMatches.where((m) =>
+                  m.seasonNumber == epInfo.$1 && m.episodeNumber == epInfo.$2).firstOrNull;
+            }
+          }
+          // 电影或未找到精确匹配的剧集，使用第一个匹配
+          matchedMetadata ??= localMatches.first;
+
+          // 获取本地化标题
+          localizedTitle = matchedMetadata.getLocalizedTitle(preferredLangs);
+        }
+      }
+
+      final key = tmdbId != null ? 'tmdb_$tmdbId' : 'trakt_${progress.id}';
+      itemMap[key] = ContinueWatchingItem(
         source: ContinueWatchingSource.trakt,
         traktProgress: progress,
         progress: progress.progress,
         updatedAt: progress.pausedAt,
-      ));
+        metadata: matchedMetadata,
+        localizedTitle: localizedTitle,
+        videoPath: matchedMetadata?.filePath,
+        sourceId: matchedMetadata?.sourceId,
+      );
     }
   }
 
+  // 2. 处理本地历史
+  final localHistory = localHistoryAsync.valueOrNull ?? [];
+  for (final item in localHistory) {
+    // 尝试获取视频元数据
+    VideoMetadata? metadata;
+    String? localizedTitle;
+    int? tmdbId;
+
+    if (item.sourceId != null) {
+      metadata = await dbService.get(item.sourceId!, item.videoPath);
+      if (metadata != null) {
+        tmdbId = metadata.tmdbId;
+        localizedTitle = metadata.getLocalizedTitle(preferredLangs);
+      }
+    }
+
+    // 去重：如果已有 Trakt 进度，跳过
+    final key = tmdbId != null ? 'tmdb_$tmdbId' : 'path_${item.videoPath}';
+    if (itemMap.containsKey(key)) continue;
+
+    itemMap[key] = ContinueWatchingItem(
+      source: ContinueWatchingSource.local,
+      progress: item.progressPercent * 100, // 转换为 0-100
+      updatedAt: item.watchedAt,
+      videoPath: item.videoPath,
+      sourceId: item.sourceId,
+      metadata: metadata,
+      localizedTitle: localizedTitle,
+      localHistoryItem: item,
+    );
+  }
+
   // 按更新时间排序
-  items.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  final items = itemMap.values.toList()
+    ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+  logger.d('CombinedContinueWatching: 共 ${items.length} 项 '
+      '(Trakt: ${items.where((i) => i.source == ContinueWatchingSource.trakt).length}, '
+      'Local: ${items.where((i) => i.source == ContinueWatchingSource.local).length})');
 
   return items;
 });
@@ -229,6 +315,8 @@ class ContinueWatchingItem {
     this.sourceId,
     this.traktProgress,
     this.metadata,
+    this.localizedTitle,
+    this.localHistoryItem,
   });
 
   final ContinueWatchingSource source;
@@ -238,9 +326,22 @@ class ContinueWatchingItem {
   final String? sourceId;
   final TraktPlaybackItem? traktProgress;
   final VideoMetadata? metadata;
+  final String? localizedTitle;
+  final VideoHistoryItem? localHistoryItem;
 
-  /// 获取显示标题
+  /// 获取显示标题（优先本地化标题）
   String get displayTitle {
+    // 优先使用本地化标题
+    if (localizedTitle != null && localizedTitle!.isNotEmpty) {
+      return _formatTitleWithEpisode(localizedTitle!);
+    }
+
+    // 其次使用本地元数据标题
+    if (metadata != null) {
+      return _formatTitleWithEpisode(metadata!.displayTitle);
+    }
+
+    // 最后使用 Trakt 原始标题
     if (traktProgress != null) {
       if (traktProgress!.type == 'movie') {
         return traktProgress!.movie?.title ?? '未知电影';
@@ -253,17 +354,56 @@ class ContinueWatchingItem {
         return show;
       }
     }
-    return metadata?.displayTitle ?? videoPath ?? '未知视频';
+
+    // 本地历史记录
+    if (localHistoryItem != null) {
+      return localHistoryItem!.videoName;
+    }
+
+    return videoPath ?? '未知视频';
+  }
+
+  /// 格式化标题（添加剧集信息）
+  String _formatTitleWithEpisode(String title) {
+    // 如果是剧集，添加季集信息
+    if (traktProgress?.type == 'episode') {
+      final ep = traktProgress!.episode;
+      if (ep != null) {
+        return '$title S${ep.season.toString().padLeft(2, '0')}E${ep.number.toString().padLeft(2, '0')}';
+      }
+    } else if (metadata?.category == MediaCategory.tvShow &&
+        metadata?.seasonNumber != null &&
+        metadata?.episodeNumber != null) {
+      return '$title S${metadata!.seasonNumber.toString().padLeft(2, '0')}E${metadata!.episodeNumber.toString().padLeft(2, '0')}';
+    }
+    return title;
   }
 
   /// 获取海报 URL
-  String? get posterUrl => metadata?.displayPosterUrl;
+  String? get posterUrl {
+    // 优先使用本地元数据海报
+    if (metadata?.displayPosterUrl != null) {
+      return metadata!.displayPosterUrl;
+    }
+    // 本地历史记录的缩略图
+    if (localHistoryItem?.thumbnailUrl != null) {
+      return localHistoryItem!.thumbnailUrl;
+    }
+    return null;
+  }
 
   /// 获取 TMDB ID
   int? get tmdbId {
+    if (metadata?.tmdbId != null) return metadata!.tmdbId;
     if (traktProgress != null) return traktProgress!.tmdbId;
-    return metadata?.tmdbId;
+    return null;
   }
+
+  /// 是否有本地文件
+  bool get hasLocalFile => videoPath != null && videoPath!.isNotEmpty;
+
+  /// 是否可播放（有本地文件或本地历史记录）
+  bool get isPlayable => hasLocalFile || localHistoryItem != null;
 }
 
 /// Trakt 观看历史 Provider

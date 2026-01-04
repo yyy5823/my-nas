@@ -236,7 +236,11 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
         _tabSelectedSubscription = null;
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
           NativeTabBarService.instance.setTabBarVisible(false);
+          // 切换到经典风格时，重置 Flutter 底部导航栏可见性
+          // 确保从玻璃风格切换回来后，底栏能正确显示
+          ref.read(bottomNavVisibleProvider.notifier).show();
         });
       }
     } else if (useNativeTabBar && !_isHandlingTabChange) {

@@ -1376,13 +1376,16 @@ class _GlassGroupPopupMenuButtonState<T>
     final overlay =
         Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
 
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero),
-            ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
+    // 计算按钮在 overlay 中的位置
+    final buttonPosition = button.localToGlobal(Offset.zero, ancestor: overlay);
+    final buttonSize = button.size;
+
+    // 菜单显示在按钮下方，右对齐
+    final position = RelativeRect.fromLTRB(
+      buttonPosition.dx - 120, // 菜单宽度约 180，右对齐需要左移
+      buttonPosition.dy + buttonSize.height + 4, // 按钮下方 4px
+      overlay.size.width - buttonPosition.dx - buttonSize.width,
+      0,
     );
 
     final items = widget.itemBuilder(context);
@@ -1851,7 +1854,8 @@ class _GlassMenuItemState<T> extends State<_GlassMenuItem<T>> {
                 color: widget.isDark ? Colors.white70 : Colors.black54,
                 size: 18,
               ),
-              child: widget.child,
+              // IgnorePointer 防止 ListTile 等拦截点击事件
+              child: IgnorePointer(child: widget.child),
             ),
           ),
         ),
