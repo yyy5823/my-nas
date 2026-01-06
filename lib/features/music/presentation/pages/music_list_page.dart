@@ -40,7 +40,6 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -1726,6 +1725,11 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   bool _showSearch = false;
 
   @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -1962,35 +1966,38 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
               icon: Icons.more_vert_rounded,
               tooltip: '更多',
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'layout',
-                  child: ListTile(
-                    leading: Icon(Icons.dashboard_customize_rounded),
-                    title: Text('首页布局'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.dashboard_customize_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('首页布局'),
+                    ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'library',
-                  child: ListTile(
-                    leading: Icon(Icons.settings_rounded),
-                    title: Text('媒体库设置'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.settings_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('媒体库设置'),
+                    ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'sources',
-                  child: ListTile(
-                    leading: Icon(Icons.cloud_rounded),
-                    title: Text('连接源管理'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.cloud_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('连接源管理'),
+                    ],
                   ),
                 ),
               ],
-              onSelected: (value) => _handleMusicMenuSelection(context, value),
+              onSelected: _handleMusicMenuSelection,
             ),
           ],
         ),
@@ -2059,52 +2066,60 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           icon: Icons.more_vert_rounded,
           tooltip: '更多',
           itemBuilder: (context) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'layout',
-              child: ListTile(
-                leading: Icon(Icons.dashboard_customize_rounded),
-                title: Text('首页布局'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.dashboard_customize_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('首页布局'),
+                ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'library',
-              child: ListTile(
-                leading: Icon(Icons.settings_rounded),
-                title: Text('媒体库设置'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.settings_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('媒体库设置'),
+                ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'sources',
-              child: ListTile(
-                leading: Icon(Icons.cloud_rounded),
-                title: Text('连接源管理'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.cloud_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('连接源管理'),
+                ],
               ),
             ),
           ],
-          onSelected: (value) => _handleMusicMenuSelection(context, value),
+          onSelected: _handleMusicMenuSelection,
         ),
       ],
     );
   }
 
-  /// 处理音乐菜单选择
-  void _handleMusicMenuSelection(BuildContext context, String value) {
+  /// 音乐菜单选择处理
+  void _handleMusicMenuSelection(String value) {
+    debugPrint('_handleMusicMenuSelection: called with value: $value, mounted: $mounted');
+    if (!mounted) return;
     switch (value) {
       case 'layout':
+        debugPrint('_handleMusicMenuSelection: showing home layout sheet');
         showHomeLayoutSheet(context);
       case 'library':
+        debugPrint('_handleMusicMenuSelection: navigating to media library');
         Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (context) => const MediaLibraryPage(),
           ),
         );
       case 'sources':
+        debugPrint('_handleMusicMenuSelection: navigating to sources');
         Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (context) => const SourcesPage(),
@@ -3075,15 +3090,13 @@ class AllSongsPage extends ConsumerStatefulWidget {
   ConsumerState<AllSongsPage> createState() => _AllSongsPageState();
 }
 
-class _AllSongsPageState extends ConsumerState<AllSongsPage>
-    with ConsumerTabBarVisibilityMixin {
+class _AllSongsPageState extends ConsumerState<AllSongsPage> {
   final _scrollController = ScrollController();
   bool _isTableView = false; // 桌面端表格视图模式
 
   @override
   void initState() {
     super.initState();
-    hideTabBar();
     _scrollController.addListener(_onScroll);
     // 桌面端默认使用表格视图
     _isTableView = PlatformCapabilities.isDesktop;
@@ -4829,14 +4842,12 @@ class CategoryDetailPage extends ConsumerStatefulWidget {
   ConsumerState<CategoryDetailPage> createState() => _CategoryDetailPageState();
 }
 
-class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage>
-    with ConsumerTabBarVisibilityMixin {
+class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage> {
   final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    hideTabBar();
   }
 
   @override

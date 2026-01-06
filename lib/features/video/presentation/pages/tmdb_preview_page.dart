@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/errors/errors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
 import 'package:my_nas/features/pt_sites/presentation/providers/pt_site_provider.dart';
@@ -12,7 +13,6 @@ import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart'
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
@@ -48,7 +48,6 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage>
   @override
   void initState() {
     super.initState();
-    // 详情页隐藏底部导航栏
     hideTabBar();
     _loadData();
   }

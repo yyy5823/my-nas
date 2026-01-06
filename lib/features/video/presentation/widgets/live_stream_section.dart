@@ -42,25 +42,17 @@ class LiveStreamSection extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
           child: Row(
             children: [
-              // 直播图标 (带动画红点)
+              // 直播图标
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: Colors.red.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 闪烁红点
-                    const _PulsingDot(),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.live_tv_rounded,
-                      size: 18,
-                      color: Colors.red,
-                    ),
-                  ],
+                child: const Icon(
+                  Icons.live_tv_rounded,
+                  size: 18,
+                  color: Colors.red,
                 ),
               ),
               const SizedBox(width: 10),
@@ -257,51 +249,6 @@ class _LiveChannelCardState extends State<_LiveChannelCard> {
           Icons.tv_rounded,
           size: 32,
           color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
-        ),
-      );
-}
-
-/// 闪烁的红点动画
-class _PulsingDot extends StatefulWidget {
-  const _PulsingDot();
-
-  @override
-  State<_PulsingDot> createState() => _PulsingDotState();
-}
-
-class _PulsingDotState extends State<_PulsingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _animation,
-        builder: (context, child) => Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: _animation.value),
-            shape: BoxShape.circle,
-          ),
         ),
       );
 }

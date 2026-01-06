@@ -138,6 +138,15 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     ),
   ];
 
+  /// 5 个主页面的路由
+  static const _mainTabRoutes = {
+    Routes.video,
+    Routes.music,
+    Routes.photo,
+    Routes.reading,
+    Routes.mine,
+  };
+
   int _getCurrentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
     for (var i = 0; i < _destinations.length; i++) {
@@ -146,6 +155,12 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       }
     }
     return 0;
+  }
+
+  /// 判断当前 GoRouter 路由是否是主 Tab 页面
+  bool _isMainTabRoute(BuildContext context) {
+    final location = GoRouterState.of(context).uri.path;
+    return _mainTabRoutes.contains(location);
   }
 
   void _onDestinationSelected(BuildContext context, int index) {
@@ -170,11 +185,15 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     final enableGlass = PlatformGlassConfig.shouldEnableGlass(uiStyle);
     final useNativeTabBar = _shouldUseNativeTabBar(uiStyle);
 
-    // 监听底部导航栏可见性（经典风格使用）
+    // 监听底部导航栏可见性
+    // 由子页面通过 BottomNavVisibilityNotifier 控制
     final bottomNavVisible = ref.watch(bottomNavVisibleProvider);
 
+    // 检查当前是否在主 Tab 路由上
+    final isMainTabRoute = _isMainTabRoute(context);
+
     // 处理 UI 风格变化时的原生 Tab Bar 订阅
-    _handleUiStyleChange(uiStyle, useNativeTabBar, currentIndex);
+    _handleUiStyleChange(uiStyle, useNativeTabBar, currentIndex, bottomNavVisible);
 
     // Use NavigationRail for desktop, NavigationBar for mobile
     if (context.isDesktop) {
@@ -189,7 +208,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       );
     }
 
-    // iOS 玻璃风格：使用原生 UITabBar，不显示 Flutter 底部导航栏
+    // iOS 玻璃风格：使用原生 UITabBar
     if (useNativeTabBar) {
       return Scaffold(
         backgroundColor: isDark ? AppColors.darkBackground : null,
@@ -198,20 +217,29 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     }
 
     // 其他情况: 使用 Flutter 底部导航栏
-    // 根据 bottomNavVisible 决定是否显示
+    // 只有在主 Tab 路由且 provider 允许时才显示底栏
+    final showBottomNav = isMainTabRoute && bottomNavVisible;
+
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
-      // 玻璃模式下让内容延伸到导航栏下方
-      extendBody: enableGlass && bottomNavVisible,
+      // 始终让内容延伸到导航栏下方，确保动画平滑
+      extendBody: true,
       body: widget.child,
-      bottomNavigationBar: bottomNavVisible
-          ? _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass)
-          : null,
+      // 始终渲染导航栏，使用 AnimatedSlide 实现平滑过渡
+      bottomNavigationBar: _AnimatedBottomNav(
+        visible: showBottomNav,
+        child: _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
+      ),
     );
   }
 
   /// 处理 UI 风格变化
-  void _handleUiStyleChange(UIStyle uiStyle, bool useNativeTabBar, int currentIndex) {
+  void _handleUiStyleChange(
+    UIStyle uiStyle,
+    bool useNativeTabBar,
+    int currentIndex,
+    bool bottomNavVisible,
+  ) {
     // 首次调用或风格变化时
     if (_cachedUiStyle != uiStyle) {
       final wasUsingNative = _cachedUiStyle != null && _shouldUseNativeTabBar(_cachedUiStyle!);
@@ -226,8 +254,11 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          NativeTabBarService.instance.setTabBarVisible(true);
-          NativeTabBarService.instance.setSelectedIndex(currentIndex);
+          // 根据 provider 状态决定是否显示原生 Tab Bar
+          NativeTabBarService.instance.setTabBarVisible(bottomNavVisible);
+          if (bottomNavVisible) {
+            NativeTabBarService.instance.setSelectedIndex(currentIndex);
+          }
         });
       } else if (!useNativeTabBar && wasUsingNative) {
         // 切换到经典风格：禁用原生 Tab Bar，取消订阅
@@ -238,16 +269,16 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           NativeTabBarService.instance.setTabBarVisible(false);
-          // 切换到经典风格时，重置 Flutter 底部导航栏可见性
-          // 确保从玻璃风格切换回来后，底栏能正确显示
-          ref.read(bottomNavVisibleProvider.notifier).show();
         });
       }
-    } else if (useNativeTabBar && !_isHandlingTabChange) {
-      // 同步 Flutter 路由到原生 Tab Bar
+    } else if (useNativeTabBar) {
+      // 玻璃风格下，根据 provider 状态更新原生 Tab Bar 可见性
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        NativeTabBarService.instance.setSelectedIndex(currentIndex);
+        NativeTabBarService.instance.setTabBarVisible(bottomNavVisible);
+        if (bottomNavVisible && !_isHandlingTabChange) {
+          NativeTabBarService.instance.setSelectedIndex(currentIndex);
+        }
       });
     }
   }
@@ -525,4 +556,33 @@ class _Destination {
   final String label;
   final String route;
   final String? sfSymbol;
+}
+
+/// 带动画的底部导航栏包装器
+///
+/// 使用 AnimatedSlide 实现平滑的滑入滑出效果
+/// 当 [visible] 为 false 时，导航栏从底部滑出
+/// 当 [visible] 为 true 时，导航栏从底部滑入
+class _AnimatedBottomNav extends StatelessWidget {
+  const _AnimatedBottomNav({
+    required this.visible,
+    required this.child,
+  });
+
+  final bool visible;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSlide(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      offset: visible ? Offset.zero : const Offset(0, 1),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: visible ? 1.0 : 0.0,
+        child: child,
+      ),
+    );
+  }
 }

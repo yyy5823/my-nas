@@ -1571,35 +1571,38 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
               icon: Icons.more_vert_rounded,
               tooltip: '更多',
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'duplicates',
-                  child: ListTile(
-                    leading: Icon(Icons.content_copy_rounded),
-                    title: Text('重复照片'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.content_copy_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('重复照片'),
+                    ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'library',
-                  child: ListTile(
-                    leading: Icon(Icons.settings_rounded),
-                    title: Text('媒体库设置'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.settings_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('媒体库设置'),
+                    ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'sources',
-                  child: ListTile(
-                    leading: Icon(Icons.cloud_rounded),
-                    title: Text('连接源管理'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.cloud_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('连接源管理'),
+                    ],
                   ),
                 ),
               ],
-              onSelected: (value) => _handlePhotoMenuSelection(context, value),
+              onSelected: _handlePhotoMenuSelection,
             ),
           ],
         ),
@@ -1697,42 +1700,46 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           icon: Icons.more_vert_rounded,
           tooltip: '更多',
           itemBuilder: (context) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'duplicates',
-              child: ListTile(
-                leading: Icon(Icons.content_copy_rounded),
-                title: Text('重复照片'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.content_copy_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('重复照片'),
+                ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'library',
-              child: ListTile(
-                leading: Icon(Icons.settings_rounded),
-                title: Text('媒体库设置'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.settings_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('媒体库设置'),
+                ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'sources',
-              child: ListTile(
-                leading: Icon(Icons.cloud_rounded),
-                title: Text('连接源管理'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.cloud_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('连接源管理'),
+                ],
               ),
             ),
           ],
-          onSelected: (value) => _handlePhotoMenuSelection(context, value),
+          onSelected: _handlePhotoMenuSelection,
         ),
       ],
     );
   }
 
-  /// 处理相册菜单选择
-  void _handlePhotoMenuSelection(BuildContext context, String value) {
+  /// 相册菜单选择处理
+  void _handlePhotoMenuSelection(String value) {
+    if (!mounted) return;
     switch (value) {
       case 'duplicates':
         Navigator.of(context).push(

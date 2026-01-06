@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/services/error_report/error_report_service.dart';
 import 'package:my_nas/core/services/error_report/error_report_settings.dart';
 import 'package:my_nas/core/services/error_report/error_report_settings_service.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 日志上报设置页面
 /// @author cq

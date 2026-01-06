@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
@@ -31,7 +32,6 @@ import 'package:my_nas/features/video/presentation/widgets/recommendations_secti
 import 'package:my_nas/features/video/presentation/widgets/subtitle_download_dialog.dart';
 import 'package:my_nas/features/video/presentation/widgets/unified_episode_selector.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 
@@ -59,9 +59,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage>
   @override
   void initState() {
     super.initState();
-    _selectedMetadata = widget.metadata;
-    // 详情页隐藏底部导航栏以获得更沉浸的体验
     hideTabBar();
+    _selectedMetadata = widget.metadata;
   }
 
   bool get _isTvShow => _selectedMetadata.category == MediaCategory.tvShow;

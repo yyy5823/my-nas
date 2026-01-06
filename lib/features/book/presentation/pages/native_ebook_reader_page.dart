@@ -23,6 +23,8 @@ import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
+import 'package:my_nas/features/book/presentation/providers/tts_provider.dart';
+import 'package:my_nas/features/book/presentation/widgets/tts_control_bar.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// 原生电子书阅读器状态
@@ -190,6 +192,7 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
   int _currentPage = 0;
   bool _showControls = false;
   bool _showToc = false;
+  bool _showTTS = false;
 
   // 进度保存防抖
   Timer? _saveProgressTimer;
@@ -282,8 +285,48 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
   void _toggleControls() {
     setState(() {
       _showControls = !_showControls;
-      if (!_showControls) _showToc = false;
+      if (!_showControls) {
+        _showToc = false;
+        // Keep TTS visible if playing
+        final ttsState = ref.read(ttsProvider);
+        if (!ttsState.isPlaying && !ttsState.isPaused) {
+          _showTTS = false;
+        }
+      }
     });
+  }
+
+  /// 开始朗读当前页面
+  Future<void> _startTTS() async {
+    final state = ref.read(nativeEbookReaderProvider(widget.book));
+    if (state is! NativeEbookLoaded) return;
+
+    final ttsNotifier = ref.read(ttsProvider.notifier);
+    await ttsNotifier.init();
+
+    // 获取当前页面的文本内容
+    final currentPageContent = state.pages[_currentPage].textContent;
+    if (currentPageContent.isEmpty) return;
+
+    // 按段落分割
+    final paragraphs = currentPageContent
+        .split(RegExp(r'\n\n+'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+
+    setState(() => _showTTS = true);
+
+    await ttsNotifier.speakParagraphs(
+      paragraphs,
+      onAllComplete: () {
+        // 朗读完成，检查是否自动播放下一页
+        final settings = ref.read(ttsProvider).settings;
+        if (settings.autoPlayNextChapter && _currentPage < state.pages.length - 1) {
+          _goToPage(_currentPage + 1);
+          Future.delayed(const Duration(milliseconds: 300), _startTTS);
+        }
+      },
+    );
   }
 
   void _goToPage(int page) {
@@ -439,6 +482,17 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
         ],
         // 目录抽屉
         if (_showToc) _buildTocDrawer(state, settings),
+        // TTS 控制栏
+        if (_showTTS)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: TTSControlBar(
+              onClose: () => setState(() => _showTTS = false),
+              backgroundColor: settings.theme.backgroundColor,
+            ),
+          ),
       ],
     );
   }
@@ -561,6 +615,11 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
                 onPressed: () => setState(() => _showToc = !_showToc),
                 icon: const Icon(Icons.menu_book_rounded, color: Colors.white),
                 tooltip: '目录',
+              ),
+              IconButton(
+                onPressed: _startTTS,
+                icon: const Icon(Icons.headphones_rounded, color: Colors.white),
+                tooltip: '朗读',
               ),
               IconButton(
                 onPressed: _showSettingsSheet,

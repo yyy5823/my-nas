@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_sync_provider.dart';
 import 'package:my_nas/features/video/data/services/trakt_scrobble_service.dart';
 import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
 import 'package:my_nas/service_adapters/trakt/trakt_config.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Trakt 连接页面

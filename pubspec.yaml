@@ -139,6 +139,8 @@ dependencies:
   flutter_html: ^3.0.0
   flutter_widget_from_html_core: ^0.15.2 # Lightweight HTML rendering for native e-book reader
   html: ^0.15.4 # HTML parsing for web scraping
+  xpath_selector_html_parser: ^3.0.1 # XPath parsing for Legado book sources
+  json_path: ^0.7.4 # JSONPath parsing for Legado book sources
   flutter_foliate_viewer:
     path: packages/flutter_foliate_viewer
   dart_amqp: ^0.3.1
@@ -161,6 +163,12 @@ dependencies:
   ffi: ^2.1.4
   screen_brightness: ^2.1.7
   flutter_shaders: ^0.1.3
+
+  # Text-to-Speech for book reading aloud
+  # 使用本地修复版本，修复 Android 插件包路径问题
+  # (原 com.eyedeadevelopment.fluttertts -> com.tundralabs.fluttertts)
+  flutter_tts:
+    path: packages/flutter_tts_fixed
 
 dev_dependencies:
   flutter_test:

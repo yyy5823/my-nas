@@ -24,6 +24,21 @@ class EbookPage {
 
   /// 进度 (0.0 - 1.0)
   final double progress;
+
+  /// 纯文本内容 (用于 TTS 朗读)
+  String get textContent {
+    return htmlContent
+        .replaceAll(RegExp(r'<br\s*/?>'), '\n')
+        .replaceAll(RegExp(r'</p>|</div>|</h[1-6]>'), '\n\n')
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll(RegExp(r'&nbsp;'), ' ')
+        .replaceAll(RegExp(r'&lt;'), '<')
+        .replaceAll(RegExp(r'&gt;'), '>')
+        .replaceAll(RegExp(r'&amp;'), '&')
+        .replaceAll(RegExp(r'&quot;'), '"')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
 }
 
 /// 分页信息

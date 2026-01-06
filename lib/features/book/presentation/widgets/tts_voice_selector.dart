@@ -1,0 +1,215 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/features/book/data/services/tts/tts_voice.dart';
+import 'package:my_nas/features/book/presentation/providers/tts_provider.dart';
+
+/// 音色选择器
+class TTSVoiceSelector extends ConsumerStatefulWidget {
+  const TTSVoiceSelector({super.key});
+
+  @override
+  ConsumerState<TTSVoiceSelector> createState() => _TTSVoiceSelectorState();
+}
+
+class _TTSVoiceSelectorState extends ConsumerState<TTSVoiceSelector> {
+  VoiceGender? _filterGender;
+
+  @override
+  Widget build(BuildContext context) {
+    final ttsState = ref.watch(ttsProvider);
+    final ttsNotifier = ref.read(ttsProvider.notifier);
+    final theme = Theme.of(context);
+
+    // 过滤音色
+    List<TTSVoice> filteredVoices = ttsState.voices;
+    if (_filterGender != null) {
+      filteredVoices =
+          ttsState.voices.where((v) => v.gender == _filterGender).toList();
+    }
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.6,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Column(
+        children: [
+          // 拖动指示器
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.outlineVariant,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // 标题
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.record_voice_over,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '选择音色',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('完成'),
+                ),
+              ],
+            ),
+          ),
+
+          // 性别筛选
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                _buildFilterChip(
+                  label: '全部',
+                  isSelected: _filterGender == null,
+                  onSelected: () => setState(() => _filterGender = null),
+                ),
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  label: '👨 男声',
+                  isSelected: _filterGender == VoiceGender.male,
+                  onSelected: () =>
+                      setState(() => _filterGender = VoiceGender.male),
+                ),
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  label: '👩 女声',
+                  isSelected: _filterGender == VoiceGender.female,
+                  onSelected: () =>
+                      setState(() => _filterGender = VoiceGender.female),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // 音色列表
+          Expanded(
+            child: filteredVoices.isEmpty
+                ? Center(
+                    child: Text(
+                      '没有可用的音色',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: filteredVoices.length,
+                    itemBuilder: (context, index) {
+                      final voice = filteredVoices[index];
+                      final isSelected =
+                          voice.id == ttsState.selectedVoice?.id;
+
+                      return _buildVoiceTile(
+                        context,
+                        voice: voice,
+                        isSelected: isSelected,
+                        onTap: () => ttsNotifier.setVoice(voice),
+                        onPreview: () => ttsNotifier.previewVoice(voice),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onSelected,
+  }) {
+    final theme = Theme.of(context);
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => onSelected(),
+      selectedColor: theme.colorScheme.primaryContainer,
+      checkmarkColor: theme.colorScheme.primary,
+    );
+  }
+
+  Widget _buildVoiceTile(
+    BuildContext context, {
+    required TTSVoice voice,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required VoidCallback onPreview,
+  }) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: isSelected
+          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+          : null,
+      child: ListTile(
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Center(
+            child: Text(
+              VoicePresets.getVoiceIcon(voice.gender),
+              style: const TextStyle(fontSize: 20),
+            ),
+          ),
+        ),
+        title: Text(
+          voice.displayName,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: isSelected ? FontWeight.w600 : null,
+          ),
+        ),
+        subtitle: Text(
+          voice.gender.label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 试听按钮
+            IconButton(
+              icon: const Icon(Icons.play_circle_outline),
+              onPressed: onPreview,
+              tooltip: '试听',
+            ),
+            // 选中标记
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                color: theme.colorScheme.primary,
+              ),
+          ],
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}

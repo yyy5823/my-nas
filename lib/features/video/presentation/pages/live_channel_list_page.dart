@@ -2,11 +2,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/features/video/domain/entities/live_stream_models.dart';
 import 'package:my_nas/features/video/presentation/pages/live_player_page.dart';
 import 'package:my_nas/features/video/presentation/pages/live_stream_settings_page.dart';
 import 'package:my_nas/features/video/presentation/providers/live_stream_provider.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 直播频道列表页面
 class LiveChannelListPage extends ConsumerStatefulWidget {

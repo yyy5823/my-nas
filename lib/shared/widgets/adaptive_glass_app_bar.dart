@@ -1021,29 +1021,39 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
 
   /// 经典模式下显示标准弹出菜单
   void _showClassicPopupMenu<T>(GlassGroupPopupMenuButton<T> button, bool isDark) {
+    debugPrint('GlassButtonGroup._showClassicPopupMenu: called');
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
     final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
 
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        renderBox.localToGlobal(Offset.zero, ancestor: overlay),
-        renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
+    // 计算按钮组的位置
+    final buttonPosition = renderBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final buttonSize = renderBox.size;
+
+    // 菜单显示在按钮下方，右对齐
+    final position = RelativeRect.fromLTRB(
+      buttonPosition.dx - 120, // 菜单宽度约 180，右对齐需要左移
+      buttonPosition.dy + buttonSize.height + 4, // 按钮下方 4px
+      overlay.size.width - buttonPosition.dx - buttonSize.width,
+      0,
     );
 
     final items = button.itemBuilder(context);
+    debugPrint('GlassButtonGroup._showClassicPopupMenu: ${items.length} items');
 
-    // 经典模式：使用标准 Flutter 弹出菜单，按钮不消失
-    showMenu<T>(
+    // 使用 showGlassPopupMenu 以获得正确的点击处理（IgnorePointer）
+    showGlassPopupMenu<T>(
       context: context,
       position: position,
       items: items,
+      isDark: isDark,
+      isGlassMode: false, // 经典模式但使用玻璃菜单的点击处理
     ).then((value) {
+      debugPrint('GlassButtonGroup._showClassicPopupMenu: returned value: $value');
       if (value != null && button.onSelected != null) {
+        debugPrint('GlassButtonGroup._showClassicPopupMenu: calling onSelected');
         button.onSelected!(value);
       }
     });
@@ -1349,6 +1359,7 @@ class _GlassGroupPopupMenuButtonState<T>
 
     // 构建菜单项
     final items = widget.itemBuilder(context);
+    debugPrint('GlassGroupPopupMenuButton: _showGlassMenu called with ${items.length} items');
 
     try {
       final value = await showGlassPopupMenu<T>(
@@ -1359,7 +1370,9 @@ class _GlassGroupPopupMenuButtonState<T>
         isGlassMode: true,
       );
 
+      debugPrint('GlassGroupPopupMenuButton: showGlassPopupMenu returned value: $value');
       if (value != null && widget.onSelected != null) {
+        debugPrint('GlassGroupPopupMenuButton: calling onSelected with value: $value');
         widget.onSelected!(value);
       }
     } finally {
@@ -1389,13 +1402,16 @@ class _GlassGroupPopupMenuButtonState<T>
     );
 
     final items = widget.itemBuilder(context);
+    debugPrint('GlassGroupPopupMenuButton: _showClassicMenu called with ${items.length} items');
 
     showMenu<T>(
       context: context,
       position: position,
       items: items,
     ).then((value) {
+      debugPrint('GlassGroupPopupMenuButton: showMenu returned value: $value');
       if (value != null && widget.onSelected != null) {
+        debugPrint('GlassGroupPopupMenuButton: calling onSelected with value: $value');
         widget.onSelected!(value);
       }
     });
@@ -1418,29 +1434,38 @@ Future<T?> showGlassPopupMenu<T>({
   double blurSigma = 20,
   bool isGlassMode = true,
 }) async {
+  debugPrint('showGlassPopupMenu: isGlassMode=$isGlassMode, items=${items.length}');
+
   // 经典模式：使用 Flutter 标准弹出菜单
   if (!isGlassMode) {
-    return showMenu<T>(
+    debugPrint('showGlassPopupMenu: using Flutter showMenu');
+    final result = await showMenu<T>(
       context: context,
       position: position,
       items: items,
       elevation: elevation,
     );
+    debugPrint('showGlassPopupMenu: Flutter showMenu returned: $result');
+    return result;
   }
 
   // 玻璃模式
   // iOS 平台使用原生弹出菜单
   if (!kIsWeb && Platform.isIOS) {
-    return _showNativeIOSPopupMenu<T>(
+    debugPrint('showGlassPopupMenu: using native iOS popup menu');
+    final result = await _showNativeIOSPopupMenu<T>(
       context: context,
       position: position,
       items: items,
       isDark: isDark,
     );
+    debugPrint('showGlassPopupMenu: native iOS returned: $result');
+    return result;
   }
 
   // 其他平台使用 Flutter 玻璃效果实现
-  return Navigator.of(context).push<T>(
+  debugPrint('showGlassPopupMenu: using Flutter glass popup route');
+  final result = await Navigator.of(context).push<T>(
     _GlassPopupMenuRoute<T>(
       position: position,
       items: items,
@@ -1450,6 +1475,8 @@ Future<T?> showGlassPopupMenu<T>({
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     ),
   );
+  debugPrint('showGlassPopupMenu: Flutter glass route returned: $result');
+  return result;
 }
 
 /// iOS 原生弹出菜单实现
@@ -1792,6 +1819,7 @@ class _GlassPopupMenu<T> extends StatelessWidget {
             value: item.value,
             isDark: route.isDark,
             onTap: () {
+              debugPrint('_GlassMenuItem: onTap called, value: ${item.value}');
               Navigator.of(context).pop(item.value);
             },
             child: item.child ?? const SizedBox.shrink(),
@@ -1835,7 +1863,10 @@ class _GlassMenuItemState<T> extends State<_GlassMenuItem<T>> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: () {
+          debugPrint('_GlassMenuItemState: GestureDetector onTap triggered, value: ${widget.value}');
+          widget.onTap();
+        },
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
@@ -2767,17 +2798,15 @@ class GlassFloatingSearchBar extends StatelessWidget {
   Widget build(BuildContext context) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 玻璃搜索框
-        SizedBox(
+        // 玻璃搜索框 - 必须传递 width 给 GlassSearchBar，否则 iOS UiKitView 无法确定尺寸
+        GlassSearchBar(
+          controller: controller,
+          hintText: hintText,
+          onChanged: onChanged,
+          autofocus: true,
+          showCancelButton: false,
+          height: 40,
           width: width,
-          child: GlassSearchBar(
-            controller: controller,
-            hintText: hintText,
-            onChanged: onChanged,
-            autofocus: true,
-            showCancelButton: false,
-            height: 40,
-          ),
         ),
         const SizedBox(width: 8),
         // 关闭按钮（使用 GlassButtonGroup 样式）

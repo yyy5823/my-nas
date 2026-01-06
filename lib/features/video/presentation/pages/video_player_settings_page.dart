@@ -24,23 +24,23 @@ class VideoPlayerSettingsPage extends ConsumerWidget {
 
     return HideBottomNavWrapper(
       child: Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : null,
-      appBar: AppBar(
-        backgroundColor: isDark ? AppColors.darkSurface : null,
-        title: Text(
-          '播放器设置',
-          style: TextStyle(
+        backgroundColor: isDark ? AppColors.darkBackground : null,
+        appBar: AppBar(
+          backgroundColor: isDark ? AppColors.darkSurface : null,
+          title: Text(
+            '播放器设置',
+            style: TextStyle(
+              color: isDark ? AppColors.darkOnSurface : null,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          iconTheme: IconThemeData(
             color: isDark ? AppColors.darkOnSurface : null,
-            fontWeight: FontWeight.bold,
           ),
         ),
-        iconTheme: IconThemeData(
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-      ),
-      body: ListView(
-        padding: AppSpacing.paddingMd,
-        children: [
+        body: ListView(
+          padding: AppSpacing.paddingMd,
+          children: [
           // 清晰度设置
           _buildSectionHeader(context, '清晰度', Icons.high_quality_rounded, isDark),
           const SizedBox(height: AppSpacing.sm),
@@ -258,8 +258,8 @@ class VideoPlayerSettingsPage extends ConsumerWidget {
 
           const SizedBox(height: AppSpacing.xxxl),
         ],
+        ),
       ),
-    ),
     );
   }
 

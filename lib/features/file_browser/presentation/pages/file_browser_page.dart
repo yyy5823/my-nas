@@ -15,9 +15,9 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/providers/download_provider.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/skeleton_loader.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 class FileBrowserPage extends ConsumerStatefulWidget {
   const FileBrowserPage({

@@ -39,13 +39,13 @@ import 'package:my_nas/features/video/presentation/providers/playlist_provider.d
 import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
+import 'package:my_nas/features/media_tracking/presentation/providers/trakt_sync_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/category_browse_cards.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
 import 'package:my_nas/features/video/presentation/widgets/live_stream_section.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_category_settings_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -1906,42 +1906,46 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           icon: Icons.more_vert_rounded,
           tooltip: '更多',
           itemBuilder: (context) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'library',
-              child: ListTile(
-                leading: Icon(Icons.settings_rounded),
-                title: Text('媒体库设置'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.settings_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('媒体库设置'),
+                ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'sources',
-              child: ListTile(
-                leading: Icon(Icons.cloud_rounded),
-                title: Text('连接源管理'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.cloud_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('连接源管理'),
+                ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'duplicates',
-              child: ListTile(
-                leading: Icon(Icons.content_copy_rounded),
-                title: Text('查找重复'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              child: Row(
+                children: const [
+                  Icon(Icons.content_copy_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('查找重复'),
+                ],
               ),
             ),
           ],
-          onSelected: (value) => _handleMenuSelection(context, value),
+          onSelected: _handleMenuSelection,
         ),
       ],
     );
   }
 
   /// 处理菜单选择
-  void _handleMenuSelection(BuildContext context, String value) {
+  void _handleMenuSelection(String value) {
+    if (!mounted) return;
     switch (value) {
       case 'library':
         Navigator.of(context).push(
@@ -2237,35 +2241,38 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               icon: Icons.more_vert_rounded,
               tooltip: '更多',
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'library',
-                  child: ListTile(
-                    leading: Icon(Icons.settings_rounded),
-                    title: Text('媒体库设置'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.settings_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('媒体库设置'),
+                    ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'sources',
-                  child: ListTile(
-                    leading: Icon(Icons.cloud_rounded),
-                    title: Text('连接源管理'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.cloud_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('连接源管理'),
+                    ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'duplicates',
-                  child: ListTile(
-                    leading: Icon(Icons.content_copy_rounded),
-                    title: Text('查找重复'),
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.content_copy_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('查找重复'),
+                    ],
                   ),
                 ),
               ],
-              onSelected: (value) => _handleMenuSelection(context, value),
+              onSelected: _handleMenuSelection,
             ),
           ],
         ),
@@ -3627,12 +3634,17 @@ class _ContinueWatchingSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final continueWatchingAsync = ref.watch(continueWatchingProvider);
+    // 使用合并后的继续观看数据（包含本地历史和 Trakt 进度）
+    final combinedAsync = ref.watch(combinedContinueWatchingProvider);
 
-    return continueWatchingAsync.when(
+    return combinedAsync.when(
       data: (items) {
-        if (items.isEmpty)
+        // 过滤出可播放的项目（有本地文件或本地历史记录）
+        final playableItems = items.where((item) => item.isPlayable).toList();
+
+        if (playableItems.isEmpty) {
           return const SliverToBoxAdapter(child: SizedBox.shrink());
+        }
 
         return SliverToBoxAdapter(
           child: Column(
@@ -3662,6 +3674,25 @@ class _ContinueWatchingSection extends ConsumerWidget {
                         color: isDark ? Colors.white : null,
                       ),
                     ),
+                    // 显示数据来源指示
+                    if (items.any((i) => i.source == ContinueWatchingSource.trakt)) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFED1C24).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Trakt',
+                          style: TextStyle(
+                            color: Color(0xFFED1C24),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -3672,9 +3703,9 @@ class _ContinueWatchingSection extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   // 预构建更多屏幕外的 item，让图片提前开始加载
                   cacheExtent: 500,
-                  itemCount: items.length,
+                  itemCount: playableItems.length,
                   itemBuilder: (context, index) =>
-                      _ContinueWatchingCard(item: items[index], isDark: isDark),
+                      _CombinedContinueWatchingCard(item: playableItems[index], isDark: isDark),
                 ),
               ),
             ],
@@ -3684,6 +3715,218 @@ class _ContinueWatchingSection extends ConsumerWidget {
       loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
       error: (_, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
     );
+  }
+}
+
+/// 合并版继续观看卡片（支持本地和 Trakt 数据源）
+class _CombinedContinueWatchingCard extends ConsumerWidget {
+  _CombinedContinueWatchingCard({required this.item, required this.isDark});
+
+  final ContinueWatchingItem item;
+  final bool isDark;
+  final VideoThumbnailService _thumbnailService = VideoThumbnailService();
+
+  /// 获取可用的海报 URL
+  String? _getDisplayPosterUrl() {
+    // 优先使用进度截图（停止帧）
+    if (item.videoPath != null) {
+      final progressThumbnail = _thumbnailService.getProgressThumbnailUrl(item.videoPath!);
+      if (progressThumbnail != null) {
+        return progressThumbnail;
+      }
+    }
+
+    // 其次使用 ContinueWatchingItem 的海报 URL
+    if (item.posterUrl != null && item.posterUrl!.isNotEmpty) {
+      if (AdaptiveImage.isSupportedUrl(item.posterUrl!)) {
+        return item.posterUrl;
+      }
+    }
+
+    // 最后使用本地历史记录的缩略图
+    if (item.localHistoryItem?.thumbnailUrl != null &&
+        item.localHistoryItem!.thumbnailUrl!.isNotEmpty) {
+      if (AdaptiveImage.isSupportedUrl(item.localHistoryItem!.thumbnailUrl!)) {
+        return item.localHistoryItem!.thumbnailUrl;
+      }
+    }
+
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final posterUrl = _getDisplayPosterUrl();
+    final progressPercent = (item.progress / 100).clamp(0.0, 1.0);
+
+    return Container(
+      width: 200,
+      margin: const EdgeInsets.only(right: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _playVideo(context, ref),
+          borderRadius: BorderRadius.circular(12),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 缩略图区域
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(12),
+                        ),
+                        child: posterUrl != null
+                            ? AdaptiveImage(
+                                imageUrl: posterUrl,
+                                placeholder: (_) => _buildThumbnailPlaceholder(),
+                                errorWidget: (_, _) => _buildThumbnailPlaceholder(),
+                              )
+                            : _buildThumbnailPlaceholder(),
+                      ),
+                      // 进度条
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          height: 3,
+                          color: Colors.black45,
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: progressPercent,
+                            child: Container(color: AppColors.error),
+                          ),
+                        ),
+                      ),
+                      // 来源标识
+                      if (item.source == ContinueWatchingSource.trakt)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFED1C24),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'T',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // 信息区域
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.displayTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : null,
+                        ),
+                      ),
+                      Text(
+                        '${item.progress.round()}%',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : AppColors.lightOnSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnailPlaceholder() => Container(
+        color: isDark ? Colors.grey[800] : Colors.grey[200],
+        child: const Center(
+          child: Icon(Icons.play_circle_rounded, size: 40, color: Colors.white54),
+        ),
+      );
+
+  Future<void> _playVideo(BuildContext context, WidgetRef ref) async {
+    // 优先使用本地历史记录播放
+    if (item.localHistoryItem != null) {
+      final historyItem = item.localHistoryItem!;
+      final videoItem = VideoItem(
+        name: item.displayTitle,
+        path: historyItem.videoPath,
+        url: historyItem.videoUrl,
+        sourceId: historyItem.sourceId,
+        size: historyItem.size,
+        thumbnailUrl: historyItem.thumbnailUrl,
+        lastPosition: historyItem.lastPosition,
+      );
+
+      if (!context.mounted) return;
+
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoPlayerPage(video: videoItem),
+        ),
+      );
+
+      if (!context.mounted) return;
+      ref
+        ..invalidate(continueWatchingProvider)
+        ..invalidate(combinedContinueWatchingProvider);
+      return;
+    }
+
+    // 使用元数据播放
+    if (item.metadata != null && item.videoPath != null) {
+      final metadata = item.metadata!;
+      final videoItem = VideoItem(
+        name: item.displayTitle,
+        path: item.videoPath!,
+        url: '', // URL 需要通过文件系统获取
+        sourceId: item.sourceId,
+        thumbnailUrl: metadata.displayPosterUrl,
+      );
+
+      if (!context.mounted) return;
+
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoPlayerPage(video: videoItem),
+        ),
+      );
+
+      if (!context.mounted) return;
+      ref
+        ..invalidate(continueWatchingProvider)
+        ..invalidate(combinedContinueWatchingProvider);
+    }
   }
 }
 
@@ -5802,8 +6045,7 @@ class _CategoryFullPage extends ConsumerStatefulWidget {
   ConsumerState<_CategoryFullPage> createState() => _CategoryFullPageState();
 }
 
-class _CategoryFullPageState extends ConsumerState<_CategoryFullPage>
-    with ConsumerTabBarVisibilityMixin {
+class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
   // 默认按年份降序排序（最近上映的排在前面）
   _SortType _sortType = _SortType.year;
   bool _sortDescending = true;
@@ -5813,7 +6055,6 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage>
   @override
   void initState() {
     super.initState();
-    hideTabBar();
     _extractGenres();
   }
 
@@ -6793,12 +7034,10 @@ class _TvShowsFullPage extends ConsumerStatefulWidget {
   ConsumerState<_TvShowsFullPage> createState() => _TvShowsFullPageState();
 }
 
-class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage>
-    with ConsumerTabBarVisibilityMixin {
+class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
   @override
   void initState() {
     super.initState();
-    hideTabBar();
   }
 
   @override
@@ -6858,8 +7097,7 @@ class _MoviesPaginatedPage extends ConsumerStatefulWidget {
       _MoviesPaginatedPageState();
 }
 
-class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage>
-    with ConsumerTabBarVisibilityMixin {
+class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   final List<VideoMetadata> _movies = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -6881,7 +7119,6 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage>
   @override
   void initState() {
     super.initState();
-    hideTabBar();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -7597,8 +7834,7 @@ class _TvShowsPaginatedPage extends ConsumerStatefulWidget {
       _TvShowsPaginatedPageState();
 }
 
-class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage>
-    with ConsumerTabBarVisibilityMixin {
+class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   final List<VideoMetadata> _tvShows = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -7620,7 +7856,6 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage>
   @override
   void initState() {
     super.initState();
-    hideTabBar();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -8020,8 +8255,7 @@ class _OthersPaginatedPage extends ConsumerStatefulWidget {
       _OthersPaginatedPageState();
 }
 
-class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage>
-    with ConsumerTabBarVisibilityMixin {
+class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   final List<VideoMetadata> _videos = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -8036,7 +8270,6 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage>
   @override
   void initState() {
     super.initState();
-    hideTabBar();
     _loadCount();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -9362,8 +9595,7 @@ class _FilteredVideosPaginatedPage extends StatefulWidget {
 }
 
 class _FilteredVideosPaginatedPageState
-    extends State<_FilteredVideosPaginatedPage>
-    with TabBarVisibilityMixin {
+    extends State<_FilteredVideosPaginatedPage> {
   final List<VideoMetadata> _videos = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -9377,7 +9609,6 @@ class _FilteredVideosPaginatedPageState
   @override
   void initState() {
     super.initState();
-    hideTabBar();
     _loadMore();
     _scrollController.addListener(_onScroll);
   }

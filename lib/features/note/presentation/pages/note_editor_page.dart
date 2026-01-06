@@ -10,9 +10,9 @@ import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
 import 'package:my_nas/features/note/domain/entities/note_item.dart';
 import 'package:my_nas/features/note/presentation/widgets/task_list_widget.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 笔记编辑器状态
 final noteEditorProvider =

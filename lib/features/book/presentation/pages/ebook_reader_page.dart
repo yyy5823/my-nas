@@ -327,6 +327,44 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
     });
   }
 
+  /// 开始朗读当前章节
+  /// 注意: Foliate (WebView) 阅读器的文本提取有限
+  /// 建议用户切换到原生阅读器获得更好的 TTS 体验
+  Future<void> _startTTS() async {
+    // 显示建议对话框
+    final useNative = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('朗读功能'),
+        content: const Text(
+          '为获得最佳朗读体验（包括实时高亮、段落跟踪等功能），'
+          '建议切换到原生阅读器。\n\n'
+          '是否切换到原生阅读器？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('切换阅读器'),
+          ),
+        ],
+      ),
+    );
+
+    if (useNative == true && mounted) {
+      // 返回并提示用户在设置中切换阅读器
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请在阅读设置中将解析器切换为"原生"'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   /// 从 BookReaderSettings 创建 FoliateStyle
   FoliateStyle _createStyle(BookReaderSettings settings) => FoliateStyle.fromReaderSettings(
       fontSize: settings.fontSize,
@@ -1226,6 +1264,12 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                           _showToc = !_showToc;
                         });
                       },
+                    ),
+                    _BottomBarButton(
+                      icon: Icons.headphones,
+                      label: '朗读',
+                      isDark: isDark,
+                      onPressed: _startTTS,
                     ),
                     _BottomBarButton(
                       icon: isDark ? Icons.light_mode : Icons.dark_mode,
