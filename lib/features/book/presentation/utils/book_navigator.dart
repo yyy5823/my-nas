@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/data/services/manga_detector.dart';
@@ -12,7 +11,6 @@ import 'package:my_nas/features/book/presentation/pages/epub_comic_reader_page.d
 import 'package:my_nas/features/book/presentation/pages/native_ebook_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
-import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 
 /// 图书导航工具
 ///
@@ -135,18 +133,21 @@ class BookNavigator {
   /// 根据格式选择阅读器
   Future<void> _openByFormat(
     BuildContext context,
-    BookItem book, {
-    WidgetRef? ref,
-  }) async {
+    BookItem book,
+  ) async {
     if (!context.mounted) return;
 
     switch (book.format) {
       case BookFormat.epub:
       case BookFormat.mobi:
       case BookFormat.azw3:
-        // 根据设置选择阅读器引擎
-        final engine = ref?.read(bookReaderSettingsProvider).epubEngine
-            ?? EpubReaderEngine.foliate;
+        // 直接从设置服务读取阅读器引擎配置
+        final settingsService = ReaderSettingsService();
+        await settingsService.init();
+        final settings = settingsService.getBookSettings();
+        final engine = settings.epubEngine;
+
+        logger.d('BookNavigator: 使用 ${engine.name} 引擎打开 ${book.format.name}');
 
         if (engine == EpubReaderEngine.native) {
           // 使用原生 Flutter 阅读器

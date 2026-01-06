@@ -170,6 +170,9 @@ dependencies:
   flutter_tts:
     path: packages/flutter_tts_fixed
 
+  # Edge TTS (高品质在线语音合成)
+  web_socket_channel: ^2.4.0  # WebSocket 通信
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/features/book/data/services/tts/edge_tts_voices.dart';
+import 'package:my_nas/features/book/data/services/tts/tts_settings.dart';
 import 'package:my_nas/features/book/data/services/tts/tts_voice.dart';
 import 'package:my_nas/features/book/presentation/providers/tts_provider.dart';
 
@@ -19,12 +21,27 @@ class _TTSVoiceSelectorState extends ConsumerState<TTSVoiceSelector> {
     final ttsState = ref.watch(ttsProvider);
     final ttsNotifier = ref.read(ttsProvider.notifier);
     final theme = Theme.of(context);
+    final settings = ttsState.settings;
+    final isEdgeEngine = settings.engine == TTSEngine.edge;
+
+    // 根据引擎选择音色列表
+    List<TTSVoice> allVoices;
+    String? selectedVoiceId;
+    
+    if (isEdgeEngine) {
+      // Edge TTS 音色
+      allVoices = EdgeTTSVoices.chineseVoices.map((v) => v.toTTSVoice()).toList();
+      selectedVoiceId = settings.selectedEdgeVoiceId;
+    } else {
+      // 系统 TTS 音色
+      allVoices = ttsState.voices;
+      selectedVoiceId = settings.selectedVoiceId;
+    }
 
     // 过滤音色
-    List<TTSVoice> filteredVoices = ttsState.voices;
+    List<TTSVoice> filteredVoices = allVoices;
     if (_filterGender != null) {
-      filteredVoices =
-          ttsState.voices.where((v) => v.gender == _filterGender).toList();
+      filteredVoices = allVoices.where((v) => v.gender == _filterGender).toList();
     }
 
     return Container(
@@ -117,14 +134,19 @@ class _TTSVoiceSelectorState extends ConsumerState<TTSVoiceSelector> {
                     itemCount: filteredVoices.length,
                     itemBuilder: (context, index) {
                       final voice = filteredVoices[index];
-                      final isSelected =
-                          voice.id == ttsState.selectedVoice?.id;
+                      final isSelected = voice.id == selectedVoiceId;
 
                       return _buildVoiceTile(
                         context,
                         voice: voice,
                         isSelected: isSelected,
-                        onTap: () => ttsNotifier.setVoice(voice),
+                        onTap: () {
+                          if (isEdgeEngine) {
+                            ttsNotifier.setEdgeVoice(voice.id);
+                          } else {
+                            ttsNotifier.setVoice(voice);
+                          }
+                        },
                         onPreview: () => ttsNotifier.previewVoice(voice),
                       );
                     },

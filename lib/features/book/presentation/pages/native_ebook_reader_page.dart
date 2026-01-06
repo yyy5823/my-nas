@@ -25,6 +25,7 @@ import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:my_nas/features/book/presentation/providers/tts_provider.dart';
 import 'package:my_nas/features/book/presentation/widgets/tts_control_bar.dart';
+import 'package:my_nas/features/book/data/services/tts/tts_service.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// 原生电子书阅读器状态
@@ -243,6 +244,8 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
   void dispose() {
     _saveProgressTimer?.cancel();
     _saveProgressImmediately();
+    // 停止 TTS 播放 - 使用直接服务调用确保可靠停止
+    TTSService.instance.stop();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
     // 恢复原生 Tab Bar（iOS 玻璃风格）
@@ -409,6 +412,30 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
     final useFlutterFlip = settings.pageTurnMode == BookPageTurnMode.simulation ||
         settings.pageTurnMode == BookPageTurnMode.cover;
 
+    // 构建 PageView 内容
+    Widget pageView = PageView.builder(
+      controller: _pageController,
+      // 当使用 PageFlipEffect 时，禁用 PageView 的滑动（翻页由 PageFlipEffect 处理）
+      physics: useFlutterFlip ? const NeverScrollableScrollPhysics() : null,
+      itemCount: state.pages.length,
+      onPageChanged: (page) {
+        setState(() => _currentPage = page);
+        _saveProgressDebounced();
+      },
+      itemBuilder: (context, index) {
+        final page = state.pages[index];
+        return _buildPageContent(page, settings);
+      },
+    );
+
+    // 如果不使用 Flutter 翻页效果，用 GestureDetector 处理点击
+    if (!useFlutterFlip) {
+      pageView = GestureDetector(
+        onTap: _toggleControls,
+        child: pageView,
+      );
+    }
+
     Widget readerContent = ColoredBox(
       color: settings.theme.backgroundColor,
       child: SafeArea(
@@ -417,23 +444,7 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
             // 固定顶栏 - 显示书名
             _buildFixedHeader(state, settings),
             // 阅读器内容
-            Expanded(
-              child: GestureDetector(
-                onTap: _toggleControls,
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: state.pages.length,
-                  onPageChanged: (page) {
-                    setState(() => _currentPage = page);
-                    _saveProgressDebounced();
-                  },
-                  itemBuilder: (context, index) {
-                    final page = state.pages[index];
-                    return _buildPageContent(page, settings);
-                  },
-                ),
-              ),
-            ),
+            Expanded(child: pageView),
             // 固定底栏 - 显示进度
             if (settings.showProgress) _buildFixedFooter(state, settings),
           ],
@@ -458,6 +469,7 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
             _goToPage(_currentPage - 1);
           }
         },
+        onTap: (details) => _toggleControls(),
         child: readerContent,
       );
     }
@@ -591,7 +603,7 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
             children: [
               IconButton(
@@ -611,21 +623,6 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              IconButton(
-                onPressed: () => setState(() => _showToc = !_showToc),
-                icon: const Icon(Icons.menu_book_rounded, color: Colors.white),
-                tooltip: '目录',
-              ),
-              IconButton(
-                onPressed: _startTTS,
-                icon: const Icon(Icons.headphones_rounded, color: Colors.white),
-                tooltip: '朗读',
-              ),
-              IconButton(
-                onPressed: _showSettingsSheet,
-                icon: const Icon(Icons.settings_rounded, color: Colors.white),
-                tooltip: '设置',
-              ),
             ],
           ),
         ),
@@ -634,6 +631,8 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
   }
 
   Widget _buildBottomBar(NativeEbookLoaded state, BookReaderSettings settings) {
+    final isDark = settings.theme == BookReaderTheme.dark ||
+        settings.theme == BookReaderTheme.black;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -670,12 +669,44 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
                 ),
               ),
               // 页码
+              Text(
+                '${_currentPage + 1} / ${state.pages.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              // 控制按钮 - 与 Foliate 布局一致
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  Text(
-                    '${_currentPage + 1} / ${state.pages.length}',
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                  _BottomBarButton(
+                    icon: Icons.menu_book_rounded,
+                    label: '目录',
+                    isDark: isDark,
+                    onPressed: () => setState(() => _showToc = !_showToc),
+                  ),
+                  _BottomBarButton(
+                    icon: Icons.headphones_rounded,
+                    label: '朗读',
+                    isDark: isDark,
+                    onPressed: _startTTS,
+                  ),
+                  _BottomBarButton(
+                    icon: isDark ? Icons.light_mode : Icons.dark_mode,
+                    label: isDark ? '日间' : '夜间',
+                    isDark: isDark,
+                    onPressed: () {
+                      final notifier = ref.read(bookReaderSettingsProvider.notifier);
+                      final newTheme = isDark
+                          ? BookReaderTheme.light
+                          : BookReaderTheme.dark;
+                      notifier.setTheme(newTheme);
+                    },
+                  ),
+                  _BottomBarButton(
+                    icon: Icons.settings_rounded,
+                    label: '设置',
+                    isDark: isDark,
+                    onPressed: _showSettingsSheet,
                   ),
                 ],
               ),
@@ -925,6 +956,44 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 底部控制栏按钮（与 Foliate 阅读器一致）
+class _BottomBarButton extends StatelessWidget {
+  const _BottomBarButton({
+    required this.icon,
+    required this.label,
+    required this.isDark,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isDark;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Colors.white;
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(color: color, fontSize: 11),
+            ),
+          ],
+        ),
       ),
     );
   }

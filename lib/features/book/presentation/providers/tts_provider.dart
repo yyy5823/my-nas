@@ -80,6 +80,7 @@ class TTSNotifier extends StateNotifier<TTSState> {
   TTSNotifier() : super(const TTSState());
 
   final TTSService _service = TTSService.instance;
+  final TTSSettingsService _settingsService = TTSSettingsService();
 
   StreamSubscription<TTSPlayState>? _stateSubscription;
   StreamSubscription<TTSProgress>? _progressSubscription;
@@ -260,34 +261,115 @@ class TTSNotifier extends StateNotifier<TTSState> {
     }
   }
 
-  /// 设置音色
+  /// 设置音色（如果正在播放，会自动使用新音色重新朗读当前段落）
   Future<void> setVoice(TTSVoice voice) async {
+    final wasPlaying = state.isPlaying;
+    
+    // 先停止当前朗读
+    if (wasPlaying) {
+      await _service.stop();
+    }
+    
+    // 设置新音色
     await _service.setVoice(voice);
     state = state.copyWith(selectedVoice: voice);
+    
+    // 如果之前在播放，使用新音色重新朗读当前段落
+    if (wasPlaying && _paragraphs.isNotEmpty) {
+      await _speakCurrentParagraph();
+    }
   }
 
-  /// 设置语速
+  /// 设置 Edge TTS 音色
+  Future<void> setEdgeVoice(String voiceId) async {
+    final wasPlaying = state.isPlaying;
+    
+    if (wasPlaying) {
+      await _service.stop();
+    }
+    
+    state = state.copyWith(
+      settings: state.settings.copyWith(selectedEdgeVoiceId: voiceId),
+    );
+    await _settingsService.saveSettings(state.settings);
+    
+    // 如果之前在播放，使用新音色重新朗读当前段落
+    if (wasPlaying && _paragraphs.isNotEmpty) {
+      await _speakCurrentParagraph();
+    }
+  }
+
+  /// 设置语速（如果正在播放，会自动重新朗读当前段落）
   Future<void> setSpeechRate(double rate) async {
+    final wasPlaying = state.isPlaying;
+    
+    if (wasPlaying) {
+      await _service.stop();
+    }
+    
     await _service.setSpeechRate(rate);
     state = state.copyWith(
       settings: state.settings.copyWith(speechRate: rate),
     );
+    
+    if (wasPlaying && _paragraphs.isNotEmpty) {
+      await _speakCurrentParagraph();
+    }
   }
 
-  /// 设置音调
+  /// 设置音调（如果正在播放，会自动重新朗读当前段落）
   Future<void> setPitch(double pitch) async {
+    final wasPlaying = state.isPlaying;
+    
+    if (wasPlaying) {
+      await _service.stop();
+    }
+    
     await _service.setPitch(pitch);
     state = state.copyWith(
       settings: state.settings.copyWith(pitch: pitch),
     );
+    
+    if (wasPlaying && _paragraphs.isNotEmpty) {
+      await _speakCurrentParagraph();
+    }
   }
 
-  /// 设置音量
+  /// 设置音量（如果正在播放，会自动重新朗读当前段落）
   Future<void> setVolume(double volume) async {
+    final wasPlaying = state.isPlaying;
+    
+    if (wasPlaying) {
+      await _service.stop();
+    }
+    
     await _service.setVolume(volume);
     state = state.copyWith(
       settings: state.settings.copyWith(volume: volume),
     );
+    
+    if (wasPlaying && _paragraphs.isNotEmpty) {
+      await _speakCurrentParagraph();
+    }
+  }
+
+  /// 设置引擎
+  Future<void> setEngine(TTSEngine engine) async {
+    final wasPlaying = state.isPlaying;
+    
+    if (wasPlaying) {
+      await _service.stop();
+    }
+    
+    state = state.copyWith(
+      settings: state.settings.copyWith(engine: engine),
+    );
+    await _settingsService.saveSettings(state.settings);
+    
+    // 如果之前在播放，使用新引擎重新朗读
+    if (wasPlaying && _paragraphs.isNotEmpty) {
+      await _speakCurrentParagraph();
+    }
   }
 
   /// 更新设置

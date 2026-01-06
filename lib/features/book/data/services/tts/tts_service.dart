@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/tts/edge_tts_client.dart';
+import 'package:my_nas/features/book/data/services/tts/edge_tts_voices.dart';
 import 'package:my_nas/features/book/data/services/tts/tts_settings.dart';
 import 'package:my_nas/features/book/data/services/tts/tts_voice.dart';
 
@@ -40,6 +42,7 @@ class TTSService {
   static TTSService get instance => _instance ??= TTSService._();
 
   final FlutterTts _tts = FlutterTts();
+  final EdgeTTSClient _edgeTts = EdgeTTSClient.instance;
   final TTSSettingsService _settingsService = TTSSettingsService();
 
   // 状态
@@ -159,7 +162,7 @@ class TTSService {
         return;
       }
 
-      _availableVoices = voices
+      final voiceList = voices
           .cast<Map<dynamic, dynamic>>()
           .where((v) {
             final locale = v['locale'] as String? ?? '';
@@ -173,6 +176,14 @@ class TTSService {
           .map((v) => TTSVoice.fromSystemVoice(v))
           .toList();
 
+      // 去重：按 ID 去重（同一音色可能被系统重复返回）
+      final seenIds = <String>{};
+      _availableVoices = voiceList.where((voice) {
+        if (seenIds.contains(voice.id)) return false;
+        seenIds.add(voice.id);
+        return true;
+      }).toList();
+
       // 确保至少有一个默认音色
       if (_availableVoices.isEmpty) {
         _availableVoices = [VoicePresets.defaultChinese];
@@ -180,6 +191,8 @@ class TTSService {
 
       // 按性别排序
       _availableVoices.sort((a, b) => a.gender.index.compareTo(b.gender.index));
+      
+      logger.d('TTS: 加载 ${_availableVoices.length} 个中文音色');
     } on Exception catch (e) {
       logger.w('TTS: 加载音色失败', e);
       _availableVoices = [VoicePresets.defaultChinese];
@@ -188,7 +201,13 @@ class TTSService {
 
   /// 应用当前设置
   Future<void> _applySetting() async {
-    await _tts.setSpeechRate(_settings.speechRate);
+    // iOS TTS 语速范围是 0.0-1.0，其中 0.5 是正常速度
+    // Android TTS 语速范围是 0.5-2.0，其中 1.0 是正常速度
+    // 我们使用用户设置值 (0.5-2.0)，需要对 iOS 进行转换
+    final rate = Platform.isIOS
+        ? _convertRateForIOS(_settings.speechRate)
+        : _settings.speechRate;
+    await _tts.setSpeechRate(rate);
     await _tts.setPitch(_settings.pitch);
     await _tts.setVolume(_settings.volume);
 
@@ -221,7 +240,59 @@ class TTSService {
       return;
     }
 
-    await _tts.speak(text);
+    // 根据引擎设置选择 TTS 方式
+    if (_settings.engine == TTSEngine.edge) {
+      await _speakWithEdgeTTS(text);
+    } else {
+      await _tts.speak(text);
+    }
+  }
+
+  /// 使用 Edge TTS 朗读
+  Future<void> _speakWithEdgeTTS(String text) async {
+    try {
+      // 设置 Edge TTS 音色
+      if (_settings.selectedEdgeVoiceId != null) {
+        final voice = EdgeTTSVoices.getVoiceById(_settings.selectedEdgeVoiceId!);
+        if (voice != null) {
+          _edgeTts.setVoice(voice);
+        }
+      } else {
+        _edgeTts.setVoice(EdgeTTSVoices.defaultVoice);
+      }
+
+      // 设置语速/音调/音量 (转换为 Edge TTS 范围)
+      _edgeTts.setRate((_settings.speechRate - 1.0)); // 0.5-2.0 -> -0.5-1.0
+      _edgeTts.setPitch((_settings.pitch - 1.0)); // 0.5-2.0 -> -0.5-1.0
+      _edgeTts.setVolume(_settings.volume);
+
+      // 设置回调
+      _edgeTts.onStart = () {
+        _state = TTSPlayState.playing;
+        _stateController.add(_state);
+        logger.d('EdgeTTS: 开始朗读');
+      };
+
+      _edgeTts.onComplete = () {
+        _state = TTSPlayState.completed;
+        _stateController.add(_state);
+        _completionController.add(null);
+        logger.d('EdgeTTS: 朗读完成');
+      };
+
+      _edgeTts.onError = (error) {
+        logger.e('EdgeTTS: 错误 - $error');
+        // 降级到系统 TTS
+        logger.i('EdgeTTS: 降级到系统 TTS');
+        _tts.speak(text);
+      };
+
+      await _edgeTts.speak(text);
+    } on Exception catch (e, st) {
+      logger.e('EdgeTTS: 朗读失败，降级到系统 TTS', e, st);
+      // 网络错误时降级到系统 TTS
+      await _tts.speak(text);
+    }
   }
 
   /// 暂停
@@ -242,7 +313,9 @@ class TTSService {
 
   /// 停止
   Future<void> stop() async {
+    // 停止两种引擎
     await _tts.stop();
+    await _edgeTts.stop();
     _state = TTSPlayState.idle;
     _stateController.add(_state);
   }
@@ -266,9 +339,23 @@ class TTSService {
   /// 设置语速
   Future<void> setSpeechRate(double rate) async {
     final clampedRate = rate.clamp(0.5, 2.0);
-    await _tts.setSpeechRate(clampedRate);
+    // iOS 需要转换为 0-1 范围
+    final platformRate = Platform.isIOS
+        ? _convertRateForIOS(clampedRate)
+        : clampedRate;
+    await _tts.setSpeechRate(platformRate);
     _settings = _settings.copyWith(speechRate: clampedRate);
     await _settingsService.saveSettings(_settings);
+  }
+
+  /// 将用户设置的语速 (0.5-2.0) 转换为 iOS 语速 (0.0-1.0)
+  /// 用户设置 1.0 = iOS 0.5 (正常速度)
+  /// 用户设置 0.5 = iOS 0.25 (慢速)
+  /// 用户设置 2.0 = iOS 1.0 (快速)
+  double _convertRateForIOS(double userRate) {
+    // 线性映射: userRate 0.5->0.25, 1.0->0.5, 2.0->1.0
+    // 公式: (userRate - 0.5) / 1.5 * 0.75 + 0.25
+    return ((userRate - 0.5) / 1.5 * 0.75 + 0.25).clamp(0.0, 1.0);
   }
 
   /// 设置音调

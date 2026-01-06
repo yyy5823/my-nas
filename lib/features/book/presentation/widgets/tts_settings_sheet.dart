@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/features/book/data/services/tts/tts_settings.dart';
 import 'package:my_nas/features/book/presentation/providers/tts_provider.dart';
 
 /// TTS 设置面板
@@ -20,127 +21,164 @@ class TTSSettingsSheet extends ConsumerWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 拖动指示器
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // 标题
-            Row(
-              children: [
-                Icon(
-                  Icons.settings,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '朗读设置',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 拖动指示器
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ],
-            ),
+              ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-            // 语速
-            _buildSliderSetting(
-              context,
-              label: '语速',
-              value: settings.speechRate,
-              min: 0.5,
-              max: 2.0,
-              divisions: 15,
-              valueLabel: '${settings.speechRate.toStringAsFixed(1)}x',
-              onChanged: (value) => ttsNotifier.setSpeechRate(value),
-            ),
+              // 标题
+              Row(
+                children: [
+                  Icon(
+                    Icons.settings,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '朗读设置',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-            // 音调
-            _buildSliderSetting(
-              context,
-              label: '音调',
-              value: settings.pitch,
-              min: 0.5,
-              max: 2.0,
-              divisions: 15,
-              valueLabel: settings.pitch.toStringAsFixed(1),
-              onChanged: (value) => ttsNotifier.setPitch(value),
-            ),
+              // 引擎选择
+              Text(
+                '语音引擎',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _EngineCard(
+                      title: '系统 TTS',
+                      subtitle: '离线可用',
+                      icon: Icons.smartphone,
+                      isSelected: settings.engine == TTSEngine.system,
+                      onTap: () => ttsNotifier.setEngine(TTSEngine.system),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _EngineCard(
+                      title: 'Edge TTS',
+                      subtitle: '在线高品质',
+                      icon: Icons.cloud,
+                      isSelected: settings.engine == TTSEngine.edge,
+                      isRecommended: true,
+                      onTap: () => ttsNotifier.setEngine(TTSEngine.edge),
+                    ),
+                  ),
+                ],
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 24),
 
-            // 音量
-            _buildSliderSetting(
-              context,
-              label: '音量',
-              value: settings.volume,
-              min: 0.0,
-              max: 1.0,
-              divisions: 10,
-              valueLabel: '${(settings.volume * 100).toInt()}%',
-              onChanged: (value) => ttsNotifier.setVolume(value),
-            ),
+              // 语速
+              _buildSliderSetting(
+                context,
+                label: '语速',
+                value: settings.speechRate,
+                min: 0.5,
+                max: 2.0,
+                divisions: 15,
+                valueLabel: '${settings.speechRate.toStringAsFixed(1)}x',
+                onChanged: (value) => ttsNotifier.setSpeechRate(value),
+              ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-            // 开关选项
-            _buildSwitchSetting(
-              context,
-              icon: Icons.format_line_spacing,
-              label: '自动滚动跟随',
-              subtitle: '朗读时自动滚动到当前段落',
-              value: settings.autoScrollFollow,
-              onChanged: (value) {
-                ttsNotifier.updateSettings(
-                  settings.copyWith(autoScrollFollow: value),
-                );
-              },
-            ),
+              // 音调
+              _buildSliderSetting(
+                context,
+                label: '音调',
+                value: settings.pitch,
+                min: 0.5,
+                max: 2.0,
+                divisions: 15,
+                valueLabel: settings.pitch.toStringAsFixed(1),
+                onChanged: (value) => ttsNotifier.setPitch(value),
+              ),
 
-            _buildSwitchSetting(
-              context,
-              icon: Icons.highlight,
-              label: '朗读高亮',
-              subtitle: '高亮显示当前朗读位置',
-              value: settings.highlightEnabled,
-              onChanged: (value) {
-                ttsNotifier.updateSettings(
-                  settings.copyWith(highlightEnabled: value),
-                );
-              },
-            ),
+              const SizedBox(height: 16),
 
-            _buildSwitchSetting(
-              context,
-              icon: Icons.skip_next,
-              label: '自动播放下一章',
-              subtitle: '当前章节结束后自动播放下一章',
-              value: settings.autoPlayNextChapter,
-              onChanged: (value) {
-                ttsNotifier.updateSettings(
-                  settings.copyWith(autoPlayNextChapter: value),
-                );
-              },
-            ),
+              // 音量
+              _buildSliderSetting(
+                context,
+                label: '音量',
+                value: settings.volume,
+                min: 0.0,
+                max: 1.0,
+                divisions: 10,
+                valueLabel: '${(settings.volume * 100).toInt()}%',
+                onChanged: (value) => ttsNotifier.setVolume(value),
+              ),
 
-            const SizedBox(height: 16),
-          ],
+              const SizedBox(height: 24),
+
+              // 开关选项
+              _buildSwitchSetting(
+                context,
+                icon: Icons.format_line_spacing,
+                label: '自动滚动跟随',
+                subtitle: '朗读时自动滚动到当前段落',
+                value: settings.autoScrollFollow,
+                onChanged: (value) {
+                  ttsNotifier.updateSettings(
+                    settings.copyWith(autoScrollFollow: value),
+                  );
+                },
+              ),
+
+              _buildSwitchSetting(
+                context,
+                icon: Icons.highlight,
+                label: '朗读高亮',
+                subtitle: '高亮显示当前朗读位置',
+                value: settings.highlightEnabled,
+                onChanged: (value) {
+                  ttsNotifier.updateSettings(
+                    settings.copyWith(highlightEnabled: value),
+                  );
+                },
+              ),
+
+              _buildSwitchSetting(
+                context,
+                icon: Icons.skip_next,
+                label: '自动播放下一章',
+                subtitle: '当前章节结束后自动播放下一章',
+                value: settings.autoPlayNextChapter,
+                onChanged: (value) {
+                  ttsNotifier.updateSettings(
+                    settings.copyWith(autoPlayNextChapter: value),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );
@@ -247,6 +285,106 @@ class TTSSettingsSheet extends ConsumerWidget {
             onChanged: onChanged,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 引擎选择卡片
+class _EngineCard extends StatelessWidget {
+  const _EngineCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+    this.isRecommended = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool isSelected;
+  final bool isRecommended;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.colorScheme.primaryContainer
+              : theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? theme.colorScheme.primary
+                : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                Icon(
+                  icon,
+                  size: 32,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                if (isRecommended)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.tertiary,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '推荐',
+                        style: TextStyle(
+                          fontSize: 8,
+                          color: theme.colorScheme.onTertiary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: isSelected ? FontWeight.w600 : null,
+                color: isSelected
+                    ? theme.colorScheme.onPrimaryContainer
+                    : null,
+              ),
+            ),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isSelected
+                    ? theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

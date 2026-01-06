@@ -255,7 +255,8 @@ class GlassMenuViewController: UIViewController {
         scrollView.showsVerticalScrollIndicator = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.delaysContentTouches = false
-        scrollView.canCancelContentTouches = true
+        // 关键修复：禁止取消内容触摸，确保菜单项点击能够正常触发
+        scrollView.canCancelContentTouches = false
 
         glassBackgroundView.contentView.addSubview(scrollView)
 

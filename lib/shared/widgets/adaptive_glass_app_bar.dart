@@ -870,11 +870,13 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
   }
 
   void _handleButtonTap(int index) {
+    debugPrint('GlassButtonGroup._handleButtonTap: index=$index');
     // 找到对应的按钮并调用其 onPressed
     var buttonIndex = 0;
     for (final child in widget.children) {
       if (child is GlassGroupIconButton) {
         if (buttonIndex == index) {
+          debugPrint('GlassButtonGroup._handleButtonTap: calling GlassGroupIconButton.onPressed');
           child.onPressed?.call();
           return;
         }
@@ -882,30 +884,45 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
       } else if (child is GlassGroupPopupMenuButton) {
         if (buttonIndex == index) {
           // 对于 PopupMenu，需要手动显示菜单
-          // 使用 context 调用 _showGlassMenu
-          _showPopupMenuForButton(child);
+          debugPrint('GlassButtonGroup._handleButtonTap: showing popup menu for index $index');
+          _showPopupMenuForButtonUntyped(child);
           return;
         }
         buttonIndex++;
       } else if (child is GlassGroupDynamicButton) {
         if (buttonIndex == index) {
+          debugPrint('GlassButtonGroup._handleButtonTap: calling GlassGroupDynamicButton.onPressed');
           child.onPressed?.call();
           return;
         }
         buttonIndex++;
       }
     }
+    debugPrint('GlassButtonGroup._handleButtonTap: no matching button found for index $index');
   }
 
-  /// 为 PopupMenuButton 显示菜单
-  void _showPopupMenuForButton<T>(GlassGroupPopupMenuButton<T> button) {
+  /// 为 PopupMenuButton 显示菜单 - 使用 dynamic 类型处理，避免泛型推断问题
+  Future<void> _showPopupMenuForButtonUntyped(GlassGroupPopupMenuButton button) async {
+    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: called');
+    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: button.onSelected=${button.onSelected}');
+
+    // 在类型检查后立即保存回调引用
+    final onSelectedCallback = button.onSelected;
+    final itemBuilderCallback = button.itemBuilder;
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final uiStyle = ref.read(uiStyleProvider);
     final renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
+    if (renderBox == null) {
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: renderBox is null');
+      return;
+    }
 
     final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
-    if (overlay == null) return;
+    if (overlay == null) {
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: overlay is null');
+      return;
+    }
 
     // 计算按钮组的位置
     final position = RelativeRect.fromRect(
@@ -915,20 +932,29 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
       ),
       Offset.zero & overlay.size,
     );
+    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: position=$position');
 
-    final items = button.itemBuilder(context);
+    final items = itemBuilderCallback(context);
+    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: ${items.length} items');
 
-    showGlassPopupMenu<T>(
+    final value = await showGlassPopupMenu<dynamic>(
       context: context,
       position: position,
       items: items,
       isDark: isDark,
       isGlassMode: uiStyle.isGlass,
-    ).then((value) {
-      if (value != null && button.onSelected != null) {
-        button.onSelected!(value);
-      }
-    });
+    );
+
+    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: returned value: $value (type: ${value.runtimeType})');
+    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: onSelectedCallback=$onSelectedCallback');
+
+    if (value != null && onSelectedCallback != null) {
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: calling onSelected with value: $value');
+      // ignore: avoid_dynamic_calls
+      (onSelectedCallback as Function)(value);
+    } else {
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: NOT calling onSelected - value=$value, onSelectedCallback=$onSelectedCallback');
+    }
   }
 
   void _setupChannel(int viewId) {
@@ -1004,8 +1030,10 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
           );
         } else if (child is GlassGroupPopupMenuButton) {
           // 经典模式的弹出菜单按钮
+          // 保存引用避免闭包问题
+          final button = child;
           return IconButton(
-            onPressed: () => _showClassicPopupMenu(child, isDark),
+            onPressed: () => _showClassicPopupMenuUntyped(button, isDark),
             icon: Icon(
               child.icon,
               size: classicIconSize,
@@ -1019,9 +1047,15 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
     );
   }
 
-  /// 经典模式下显示标准弹出菜单
-  void _showClassicPopupMenu<T>(GlassGroupPopupMenuButton<T> button, bool isDark) {
-    debugPrint('GlassButtonGroup._showClassicPopupMenu: called');
+  /// 经典模式下显示标准弹出菜单 - 使用 dynamic 类型处理
+  Future<void> _showClassicPopupMenuUntyped(GlassGroupPopupMenuButton button, bool isDark) async {
+    debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: called');
+    debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: button.onSelected=${button.onSelected}');
+
+    // 保存回调引用
+    final onSelectedCallback = button.onSelected;
+    final itemBuilderCallback = button.itemBuilder;
+
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
@@ -1040,23 +1074,24 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
       0,
     );
 
-    final items = button.itemBuilder(context);
-    debugPrint('GlassButtonGroup._showClassicPopupMenu: ${items.length} items');
+    final items = itemBuilderCallback(context);
+    debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: ${items.length} items');
 
     // 使用 showGlassPopupMenu 以获得正确的点击处理（IgnorePointer）
-    showGlassPopupMenu<T>(
+    final value = await showGlassPopupMenu<dynamic>(
       context: context,
       position: position,
       items: items,
       isDark: isDark,
       isGlassMode: false, // 经典模式但使用玻璃菜单的点击处理
-    ).then((value) {
-      debugPrint('GlassButtonGroup._showClassicPopupMenu: returned value: $value');
-      if (value != null && button.onSelected != null) {
-        debugPrint('GlassButtonGroup._showClassicPopupMenu: calling onSelected');
-        button.onSelected!(value);
-      }
-    });
+    );
+
+    debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: returned value: $value');
+    if (value != null && onSelectedCallback != null) {
+      debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: calling onSelected');
+      // ignore: avoid_dynamic_calls
+      (onSelectedCallback as Function)(value);
+    }
   }
 
   Widget _buildNativeGlassButtonGroup(bool isDark) {

@@ -58,6 +58,7 @@ class TTSControlBar extends ConsumerWidget {
                   icon: Icons.close,
                   label: '关闭',
                   onTap: () {
+                    debugPrint('TTS Control: 关闭按钮点击');
                     ttsNotifier.stop();
                     onClose?.call();
                   },
@@ -68,7 +69,10 @@ class TTSControlBar extends ConsumerWidget {
                   context,
                   icon: Icons.skip_previous_rounded,
                   label: '上一段',
-                  onTap: () => ttsNotifier.previousParagraph(),
+                  onTap: () {
+                    debugPrint('TTS Control: 上一段按钮点击');
+                    ttsNotifier.previousParagraph();
+                  },
                 ),
 
                 // 播放/暂停 (大按钮)
@@ -79,7 +83,10 @@ class TTSControlBar extends ConsumerWidget {
                   context,
                   icon: Icons.skip_next_rounded,
                   label: '下一段',
-                  onTap: () => ttsNotifier.nextParagraph(),
+                  onTap: () {
+                    debugPrint('TTS Control: 下一段按钮点击');
+                    ttsNotifier.nextParagraph();
+                  },
                 ),
 
                 // 音色选择
@@ -147,7 +154,7 @@ class TTSControlBar extends ConsumerWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
