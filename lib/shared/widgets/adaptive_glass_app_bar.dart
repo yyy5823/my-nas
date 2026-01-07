@@ -904,56 +904,66 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
   /// 为 PopupMenuButton 显示菜单 - 使用 dynamic 类型处理，避免泛型推断问题
   Future<void> _showPopupMenuForButtonUntyped(GlassGroupPopupMenuButton button) async {
     debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: called');
-    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: button.onSelected=${button.onSelected}');
-
-    // 在类型检查后立即保存回调引用
-    final onSelectedCallback = button.onSelected;
-    final itemBuilderCallback = button.itemBuilder;
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final uiStyle = ref.read(uiStyleProvider);
-    final renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) {
-      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: renderBox is null');
-      return;
-    }
-
-    final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
-    if (overlay == null) {
-      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: overlay is null');
-      return;
-    }
-
-    // 计算按钮组的位置
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        renderBox.localToGlobal(Offset.zero, ancestor: overlay),
-        renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
-    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: position=$position');
-
-    final items = itemBuilderCallback(context);
-    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: ${items.length} items');
-
-    final value = await showGlassPopupMenu<dynamic>(
-      context: context,
-      position: position,
-      items: items,
-      isDark: isDark,
-      isGlassMode: uiStyle.isGlass,
-    );
-
-    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: returned value: $value (type: ${value.runtimeType})');
-    debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: onSelectedCallback=$onSelectedCallback');
-
-    if (value != null && onSelectedCallback != null) {
-      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: calling onSelected with value: $value');
+    
+    try {
+      // 使用 dynamic 完全绕过泛型类型检查
       // ignore: avoid_dynamic_calls
-      (onSelectedCallback as Function)(value);
-    } else {
-      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: NOT calling onSelected - value=$value, onSelectedCallback=$onSelectedCallback');
+      final dynamic dynamicButton = button;
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: button.onSelected=${dynamicButton.onSelected}');
+
+      // ignore: avoid_dynamic_calls
+      final onSelectedCallback = dynamicButton.onSelected as Function?;
+      // ignore: avoid_dynamic_calls
+      final itemBuilderCallback = dynamicButton.itemBuilder as List<PopupMenuEntry<dynamic>> Function(BuildContext);
+
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final uiStyle = ref.read(uiStyleProvider);
+      final renderBox = context.findRenderObject() as RenderBox?;
+      if (renderBox == null) {
+        debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: renderBox is null');
+        return;
+      }
+
+      final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
+      if (overlay == null) {
+        debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: overlay is null');
+        return;
+      }
+
+      // 计算按钮组的位置
+      final position = RelativeRect.fromRect(
+        Rect.fromPoints(
+          renderBox.localToGlobal(Offset.zero, ancestor: overlay),
+          renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero), ancestor: overlay),
+        ),
+        Offset.zero & overlay.size,
+      );
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: position=$position');
+
+      final items = itemBuilderCallback(context);
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: ${items.length} items');
+
+      final value = await showGlassPopupMenu<dynamic>(
+        context: context,
+        position: position,
+        items: items,
+        isDark: isDark,
+        isGlassMode: uiStyle.isGlass,
+      );
+
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: returned value: $value (type: ${value.runtimeType})');
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: onSelectedCallback=$onSelectedCallback');
+
+      if (value != null && onSelectedCallback != null) {
+        debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: calling onSelected with value: $value');
+        // ignore: avoid_dynamic_calls
+        (onSelectedCallback as Function)(value);
+      } else {
+        debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: NOT calling onSelected - value=$value, onSelectedCallback=$onSelectedCallback');
+      }
+    } catch (e, st) {
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: EXCEPTION: $e');
+      debugPrint('GlassButtonGroup._showPopupMenuForButtonUntyped: stackTrace: $st');
     }
   }
 
@@ -993,6 +1003,13 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
     // 经典模式使用标准大小的图标
     const classicIconSize = 22.0;
 
+    debugPrint('GlassButtonGroup._buildClassicButtonGroup: ${widget.children.length} children');
+    for (var i = 0; i < widget.children.length; i++) {
+      final child = widget.children[i];
+      debugPrint('GlassButtonGroup._buildClassicButtonGroup: child[$i] = ${child.runtimeType}');
+      debugPrint('GlassButtonGroup._buildClassicButtonGroup: child[$i] is GlassGroupPopupMenuButton = ${child is GlassGroupPopupMenuButton}');
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: widget.children.map((child) {
@@ -1030,10 +1047,18 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
           );
         } else if (child is GlassGroupPopupMenuButton) {
           // 经典模式的弹出菜单按钮
-          // 保存引用避免闭包问题
           final button = child;
+          debugPrint('GlassButtonGroup._buildClassicButtonGroup: creating IconButton for PopupMenuButton');
+          
+          // 创建 GlobalKey 来追踪按钮位置
+          final buttonKey = GlobalKey();
+          
           return IconButton(
-            onPressed: () => _showClassicPopupMenuUntyped(button, isDark),
+            key: buttonKey,
+            onPressed: () {
+              debugPrint('GlassButtonGroup: classic PopupMenuButton tapped!');
+              _showClassicPopupMenuWithKey(button, isDark, buttonKey);
+            },
             icon: Icon(
               child.icon,
               size: classicIconSize,
@@ -1047,50 +1072,71 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
     );
   }
 
-  /// 经典模式下显示标准弹出菜单 - 使用 dynamic 类型处理
-  Future<void> _showClassicPopupMenuUntyped(GlassGroupPopupMenuButton button, bool isDark) async {
-    debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: called');
-    debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: button.onSelected=${button.onSelected}');
+  /// 经典模式下显示标准弹出菜单 - 使用 GlobalKey 定位按钮
+  Future<void> _showClassicPopupMenuWithKey(
+    // ignore: strict_raw_type
+    GlassGroupPopupMenuButton button,
+    bool isDark,
+    GlobalKey buttonKey,
+  ) async {
+    debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: called');
 
-    // 保存回调引用
-    final onSelectedCallback = button.onSelected;
-    final itemBuilderCallback = button.itemBuilder;
-
-    final renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-
-    final overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
-    if (overlay == null) return;
-
-    // 计算按钮组的位置
-    final buttonPosition = renderBox.localToGlobal(Offset.zero, ancestor: overlay);
-    final buttonSize = renderBox.size;
-
-    // 菜单显示在按钮下方，右对齐
-    final position = RelativeRect.fromLTRB(
-      buttonPosition.dx - 120, // 菜单宽度约 180，右对齐需要左移
-      buttonPosition.dy + buttonSize.height + 4, // 按钮下方 4px
-      overlay.size.width - buttonPosition.dx - buttonSize.width,
-      0,
-    );
-
-    final items = itemBuilderCallback(context);
-    debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: ${items.length} items');
-
-    // 使用 showGlassPopupMenu 以获得正确的点击处理（IgnorePointer）
-    final value = await showGlassPopupMenu<dynamic>(
-      context: context,
-      position: position,
-      items: items,
-      isDark: isDark,
-      isGlassMode: false, // 经典模式但使用玻璃菜单的点击处理
-    );
-
-    debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: returned value: $value');
-    if (value != null && onSelectedCallback != null) {
-      debugPrint('GlassButtonGroup._showClassicPopupMenuUntyped: calling onSelected');
+    try {
+      // 使用 dynamic 完全绕过泛型类型检查
       // ignore: avoid_dynamic_calls
-      (onSelectedCallback as Function)(value);
+      final dynamic dynamicButton = button;
+      // ignore: avoid_dynamic_calls
+      final onSelectedCallback = dynamicButton.onSelected as Function?;
+      // ignore: avoid_dynamic_calls
+      final itemBuilderCallback = dynamicButton.itemBuilder as List<PopupMenuEntry<dynamic>> Function(BuildContext);
+
+      // 使用 GlobalKey 获取 RenderBox
+      final renderBox = buttonKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox == null) {
+        debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: renderBox is null');
+        return;
+      }
+
+      final navigatorState = Navigator.of(context);
+      final overlay = navigatorState.overlay?.context.findRenderObject() as RenderBox?;
+      if (overlay == null) {
+        debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: overlay is null');
+        return;
+      }
+
+      // 计算按钮的实际位置
+      final buttonPosition = renderBox.localToGlobal(Offset.zero, ancestor: overlay);
+      final buttonSize = renderBox.size;
+
+      debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: buttonPosition=$buttonPosition, buttonSize=$buttonSize');
+
+      // 菜单显示在按钮下方
+      final position = RelativeRect.fromLTRB(
+        buttonPosition.dx + buttonSize.width - 200, // 菜单宽度约 200，右对齐
+        buttonPosition.dy + buttonSize.height + 4,   // 按钮下方 4px
+        overlay.size.width - (buttonPosition.dx + buttonSize.width),
+        0,
+      );
+
+      final items = itemBuilderCallback(context);
+      debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: ${items.length} items');
+
+      // 使用标准 Flutter showMenu
+      final value = await showMenu<dynamic>(
+        context: context,
+        position: position,
+        items: items,
+      );
+
+      debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: returned value: $value');
+      if (value != null && onSelectedCallback != null) {
+        debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: calling onSelected');
+        // ignore: avoid_dynamic_calls
+        (onSelectedCallback as Function)(value);
+      }
+    } catch (e, st) {
+      debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: EXCEPTION: $e');
+      debugPrint('GlassButtonGroup._showClassicPopupMenuWithKey: stackTrace: $st');
     }
   }
 
@@ -1429,11 +1475,13 @@ class _GlassGroupPopupMenuButtonState<T>
     final buttonSize = button.size;
 
     // 菜单显示在按钮下方，右对齐
+    // 使用 fromLTRB: left, top, right, bottom
+    // right 和 bottom 是相对于屏幕右下角的距离
     final position = RelativeRect.fromLTRB(
-      buttonPosition.dx - 120, // 菜单宽度约 180，右对齐需要左移
-      buttonPosition.dy + buttonSize.height + 4, // 按钮下方 4px
-      overlay.size.width - buttonPosition.dx - buttonSize.width,
-      0,
+      buttonPosition.dx + buttonSize.width - 200, // 假设菜单宽度约 200，尝试右对齐
+      buttonPosition.dy + buttonSize.height,      // 按钮正下方
+      overlay.size.width - (buttonPosition.dx + buttonSize.width),
+      overlay.size.height - (buttonPosition.dy + buttonSize.height + 300), // 给足够的高度空间
     );
 
     final items = widget.itemBuilder(context);
@@ -1588,6 +1636,8 @@ Future<T?> _showNativeIOSPopupMenu<T>({
 
     if (result != null && valueMap.containsKey(result)) {
       return valueMap[result];
+    } else if (result != null) {
+      debugPrint('Warning: Native popup returned result "$result" which was not found in valueMap keys: ${valueMap.keys}');
     }
   } catch (e) {
     // 如果原生调用失败，回退到 Flutter 实现

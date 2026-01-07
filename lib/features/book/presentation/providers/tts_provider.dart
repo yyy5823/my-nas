@@ -288,10 +288,9 @@ class TTSNotifier extends StateNotifier<TTSState> {
       await _service.stop();
     }
     
-    state = state.copyWith(
-      settings: state.settings.copyWith(selectedEdgeVoiceId: voiceId),
-    );
-    await _settingsService.saveSettings(state.settings);
+    final newSettings = state.settings.copyWith(selectedEdgeVoiceId: voiceId);
+    state = state.copyWith(settings: newSettings);
+    await _service.updateSettings(newSettings);
     
     // 如果之前在播放，使用新音色重新朗读当前段落
     if (wasPlaying && _paragraphs.isNotEmpty) {
@@ -361,10 +360,9 @@ class TTSNotifier extends StateNotifier<TTSState> {
       await _service.stop();
     }
     
-    state = state.copyWith(
-      settings: state.settings.copyWith(engine: engine),
-    );
-    await _settingsService.saveSettings(state.settings);
+    final newSettings = state.settings.copyWith(engine: engine);
+    state = state.copyWith(settings: newSettings);
+    await _service.updateSettings(newSettings);
     
     // 如果之前在播放，使用新引擎重新朗读
     if (wasPlaying && _paragraphs.isNotEmpty) {
