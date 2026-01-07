@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -86,6 +89,20 @@ class MusicTrackEntity {
       return parts[parts.length - 2];
     }
     return '根目录';
+  }
+
+  /// 显示封面路径
+  /// 优先使用数据库中的 coverPath，如果无效则动态计算
+  /// 仿照影视模块的 displayPosterUrl 实现
+  String? get displayCoverPath {
+    // 1. 如果有存储的路径且文件存在，直接使用
+    if (coverPath != null && coverPath!.isNotEmpty) {
+      if (File(coverPath!).existsSync()) {
+        return coverPath;
+      }
+    }
+    // 2. 动态尝试从缓存服务获取
+    return MusicCoverCacheService().getCachedCoverPathSync(uniqueKey);
   }
 
   MusicTrackEntity copyWith({

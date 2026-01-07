@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 
 /// 音乐收藏项
@@ -73,9 +76,28 @@ class MusicFavoriteItem {
         sourceId: sourceId,
         artist: artist,
         album: album,
-        coverUrl: coverUrl,
+        coverUrl: _resolveEffectiveCoverUrl(),
         duration: duration,
       );
+
+  /// 动态解析有效的封面 URL
+  String? _resolveEffectiveCoverUrl() {
+    // 1. 如果有存储的 coverUrl 且文件存在，使用它
+    if (coverUrl != null && coverUrl!.isNotEmpty) {
+      if (coverUrl!.startsWith('file://')) {
+        final path = coverUrl!.replaceFirst('file://', '');
+        if (File(path).existsSync()) {
+          return coverUrl;
+        }
+      } else {
+        return coverUrl; // 网络URL直接返回
+      }
+    }
+    // 2. 尝试从缓存服务动态获取
+    final coverCache = MusicCoverCacheService();
+    final uniqueKey = '${sourceId ?? ''}_$musicPath';
+    return coverCache.getCachedCoverUrl(uniqueKey);
+  }
 }
 
 /// 音乐播放历史项
@@ -156,10 +178,29 @@ class MusicHistoryItem {
         sourceId: sourceId,
         artist: artist,
         album: album,
-        coverUrl: coverUrl,
+        coverUrl: _resolveEffectiveCoverUrl(),
         duration: duration,
         lastPosition: lastPosition ?? Duration.zero,
       );
+
+  /// 动态解析有效的封面 URL
+  String? _resolveEffectiveCoverUrl() {
+    // 1. 如果有存储的 coverUrl 且文件存在，使用它
+    if (coverUrl != null && coverUrl!.isNotEmpty) {
+      if (coverUrl!.startsWith('file://')) {
+        final path = coverUrl!.replaceFirst('file://', '');
+        if (File(path).existsSync()) {
+          return coverUrl;
+        }
+      } else {
+        return coverUrl; // 网络URL直接返回
+      }
+    }
+    // 2. 尝试从缓存服务动态获取
+    final coverCache = MusicCoverCacheService();
+    final uniqueKey = '${sourceId ?? ''}_$musicPath';
+    return coverCache.getCachedCoverUrl(uniqueKey);
+  }
 }
 
 /// 音乐收藏和历史服务

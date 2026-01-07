@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/music/presentation/widgets/animated_components.dart';
 
@@ -202,10 +203,11 @@ class _ModernTrackCardState extends State<_ModernTrackCard> {
 
   Widget _buildCover(double size) {
     Widget coverImage;
-    if (widget.track.coverPath != null && widget.track.coverPath!.isNotEmpty) {
+    final effectiveCoverPath = _getEffectiveCoverPath();
+    if (effectiveCoverPath != null && effectiveCoverPath.isNotEmpty) {
       // 本地文件封面
       coverImage = Image.file(
-        File(widget.track.coverPath!),
+        File(effectiveCoverPath),
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
@@ -338,6 +340,19 @@ class _ModernTrackCardState extends State<_ModernTrackCard> {
         size: 48,
       ),
     );
+
+  /// 动态获取有效的封面路径
+  String? _getEffectiveCoverPath() {
+    // 1. 检查直接存储的路径
+    if (widget.track.coverPath != null && widget.track.coverPath!.isNotEmpty) {
+      if (File(widget.track.coverPath!).existsSync()) {
+        return widget.track.coverPath;
+      }
+    }
+    // 2. 动态从缓存服务获取
+    final uniqueKey = '${widget.track.sourceId}_${widget.track.path}';
+    return MusicCoverCacheService().getCachedCoverPathSync(uniqueKey);
+  }
 }
 
 /// 热门歌曲区域 - 现代列表设计
@@ -637,10 +652,11 @@ class _ModernTrackItem extends StatelessWidget {
 
   Widget _buildCover() {
     Widget coverImage;
-    if (track.coverPath != null && track.coverPath!.isNotEmpty) {
+    final effectiveCoverPath = _getEffectiveCoverPath();
+    if (effectiveCoverPath != null && effectiveCoverPath.isNotEmpty) {
       // 本地文件封面
       coverImage = Image.file(
-        File(track.coverPath!),
+        File(effectiveCoverPath),
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
@@ -689,4 +705,17 @@ class _ModernTrackItem extends StatelessWidget {
         size: 24,
       ),
     );
+
+  /// 动态获取有效的封面路径
+  String? _getEffectiveCoverPath() {
+    // 1. 检查直接存储的路径
+    if (track.coverPath != null && track.coverPath!.isNotEmpty) {
+      if (File(track.coverPath!).existsSync()) {
+        return track.coverPath;
+      }
+    }
+    // 2. 动态从缓存服务获取
+    final uniqueKey = '${track.sourceId}_${track.path}';
+    return MusicCoverCacheService().getCachedCoverPathSync(uniqueKey);
+  }
 }

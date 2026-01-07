@@ -178,6 +178,28 @@ class MusicCoverCacheService {
     return null;
   }
 
+  /// 获取缓存的封面路径（同步方法，动态检查文件存在性）
+  /// 仿照影视模块的 getCachedPosterPath 实现
+  /// 这个方法可以在沙盒目录 UUID 变化后仍然正确找到缓存文件
+  String? getCachedCoverPathSync(String uniqueKey) {
+    if (!_initialized || _cacheDir == null) return null;
+    final path = _getCoverPath(uniqueKey);
+    if (File(path).existsSync()) {
+      return path;
+    }
+    return null;
+  }
+
+  /// 获取缓存的封面 URL (file:// 格式)
+  /// 如果封面文件存在，返回 file:// URL
+  String? getCachedCoverUrl(String uniqueKey) {
+    final path = getCachedCoverPathSync(uniqueKey);
+    if (path != null) {
+      return Uri.file(path).toString();
+    }
+    return null;
+  }
+
   /// 删除封面
   Future<void> deleteCover(String uniqueKey) async {
     if (!_initialized) await init();
