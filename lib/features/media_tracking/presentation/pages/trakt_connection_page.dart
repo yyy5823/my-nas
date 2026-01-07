@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
-import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_sync_provider.dart';
 import 'package:my_nas/features/video/data/services/trakt_scrobble_service.dart';
+import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
 import 'package:my_nas/service_adapters/trakt/trakt_config.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 
 /// Trakt 连接页面
 ///
@@ -444,97 +447,163 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage>
     // 添加来源标识
     final sourceLabel = item.source == ContinueWatchingSource.trakt ? 'Trakt' : '本地';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          // 进度圆环
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CircularProgressIndicator(
-                  value: item.progress / 100,
-                  strokeWidth: 3,
-                  backgroundColor: colorScheme.surfaceContainerHighest,
-                  color: colorScheme.primary,
-                ),
-                Text(
-                  '${item.progress.round()}%',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+    return InkWell(
+      onTap: item.isPlayable ? () => _playContinueWatchingItem(context, item) : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          children: [
+            // 进度圆环
+            SizedBox(
+              width: 40,
+              height: 40,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    value: item.progress / 100,
+                    strokeWidth: 3,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    color: colorScheme.primary,
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // 标题和副标题
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (subtitle != null)
                   Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                    '${item.progress.round()}%',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            // 标题和副标题
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-              ],
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
             ),
-          ),
-          // 来源标识
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: item.source == ContinueWatchingSource.trakt
-                  ? const Color(0xFFED1C24).withValues(alpha: 0.1)
-                  : colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              sourceLabel,
-              style: theme.textTheme.labelSmall?.copyWith(
+            // 播放图标（可播放时显示）
+            if (item.isPlayable)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(
+                  Icons.play_arrow_rounded,
+                  size: 20,
+                  color: colorScheme.primary,
+                ),
+              ),
+            // 来源标识
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
                 color: item.source == ContinueWatchingSource.trakt
-                    ? const Color(0xFFED1C24)
-                    : colorScheme.primary,
-                fontSize: 10,
+                    ? const Color(0xFFED1C24).withValues(alpha: 0.1)
+                    : colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                sourceLabel,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: item.source == ContinueWatchingSource.trakt
+                      ? const Color(0xFFED1C24)
+                      : colorScheme.primary,
+                  fontSize: 10,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          // 删除按钮（仅 Trakt 进度可删除）
-          if (item.traktProgress != null)
-            IconButton(
-              icon: Icon(
-                Icons.close,
-                size: 18,
-                color: colorScheme.onSurfaceVariant,
+            const SizedBox(width: 8),
+            // 删除按钮（仅 Trakt 进度可删除）
+            if (item.traktProgress != null)
+              IconButton(
+                icon: Icon(
+                  Icons.close,
+                  size: 18,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onPressed: () {
+                  ref.read(traktSyncProvider.notifier).deleteProgress(item.traktProgress!.id);
+                  ref.invalidate(combinedContinueWatchingProvider);
+                },
+                tooltip: '删除进度',
+                visualDensity: VisualDensity.compact,
               ),
-              onPressed: () {
-                ref.read(traktSyncProvider.notifier).deleteProgress(item.traktProgress!.id);
-                ref.invalidate(combinedContinueWatchingProvider);
-              },
-              tooltip: '删除进度',
-              visualDensity: VisualDensity.compact,
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
+  /// 播放继续观看项
+  Future<void> _playContinueWatchingItem(BuildContext context, ContinueWatchingItem item) async {
+    // 优先使用本地历史记录播放
+    if (item.localHistoryItem != null) {
+      final historyItem = item.localHistoryItem!;
+      final videoItem = VideoItem(
+        name: item.displayTitle,
+        path: historyItem.videoPath,
+        url: historyItem.videoUrl,
+        sourceId: historyItem.sourceId,
+        size: historyItem.size,
+        thumbnailUrl: historyItem.thumbnailUrl,
+        lastPosition: historyItem.lastPosition,
+      );
+
+      if (!context.mounted) return;
+
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoPlayerPage(video: videoItem),
+        ),
+      );
+
+      if (!context.mounted) return;
+      ref.invalidate(combinedContinueWatchingProvider);
+      return;
+    }
+
+    // 使用元数据播放
+    if (item.metadata != null && item.videoPath != null) {
+      final videoItem = VideoItem(
+        name: item.displayTitle,
+        path: item.videoPath!,
+        url: '', // URL 需要通过 VideoPlayerPage 内部获取
+        sourceId: item.sourceId,
+        thumbnailUrl: item.metadata!.displayPosterUrl,
+      );
+
+      if (!context.mounted) return;
+
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoPlayerPage(video: videoItem),
+        ),
+      );
+
+      if (!context.mounted) return;
+      ref.invalidate(combinedContinueWatchingProvider);
+    }
+  }
+
 
   Widget _buildStatItem(BuildContext context, IconData icon, String label, String value) {
     final theme = Theme.of(context);
