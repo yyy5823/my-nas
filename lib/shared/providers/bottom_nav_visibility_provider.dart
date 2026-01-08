@@ -34,12 +34,15 @@ class BottomNavVisibilityNotifier extends StateNotifier<bool> {
   /// 大于 0 表示有页面请求隐藏导航栏
   int _hideRequestCount = 0;
 
+  /// 是否已经安排了延迟更新
+  bool _pendingUpdate = false;
+
   /// 隐藏底部导航栏
   ///
   /// 增加隐藏请求计数
   void hide() {
     _hideRequestCount++;
-    _updateVisibility();
+    _scheduleUpdate();
     debugPrint('BottomNavVisibility: hide() called, count=$_hideRequestCount');
   }
 
@@ -51,17 +54,29 @@ class BottomNavVisibilityNotifier extends StateNotifier<bool> {
       _hideRequestCount--;
     }
     debugPrint('BottomNavVisibility: show() called, count=$_hideRequestCount');
-    _updateVisibility();
+    _scheduleUpdate();
+  }
 
-    // 确保在页面过渡完成后再次更新状态
-    // 这解决了从 dispose 调用时 UI 可能不立即重建的问题
-    SchedulerBinding.instance.scheduleFrameCallback((_) {
+  /// 安排更新可见性状态
+  ///
+  /// 使用 addPostFrameCallback 延迟状态更新，确保不在构建阶段修改状态
+  /// 这避免了 "Tried to modify a provider while the widget tree was building" 错误
+  void _scheduleUpdate() {
+    if (_pendingUpdate) return;
+    _pendingUpdate = true;
+
+    // 使用 addPostFrameCallback 确保状态更新在构建完成后执行
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _pendingUpdate = false;
       _updateVisibility();
     });
   }
 
   /// 更新可见性状态
   void _updateVisibility() {
+    // 检查是否已被 dispose
+    if (!mounted) return;
+
     final shouldBeVisible = _hideRequestCount <= 0;
     if (state != shouldBeVisible) {
       state = shouldBeVisible;
@@ -72,7 +87,11 @@ class BottomNavVisibilityNotifier extends StateNotifier<bool> {
   /// 重置状态（用于热重载或异常恢复）
   void reset() {
     _hideRequestCount = 0;
-    state = true;
+    _pendingUpdate = false;
+    // 直接设置状态，因为 reset 通常在安全的时机调用
+    if (mounted) {
+      state = true;
+    }
     debugPrint('BottomNavVisibility: reset');
   }
 
@@ -83,6 +102,6 @@ class BottomNavVisibilityNotifier extends StateNotifier<bool> {
     } else {
       _hideRequestCount = 1;
     }
-    state = visible;
+    _scheduleUpdate();
   }
 }

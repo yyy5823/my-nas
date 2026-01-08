@@ -119,7 +119,9 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     // 恢复原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(true);
     // 恢复 Flutter 导航栏（经典风格）
-    BottomNavVisibilityNotifier.instance?.show();
+    // 使用 Future.microtask 延迟到下一个微任务执行
+    // 避免在 dispose 过程中修改 provider 状态导致错误
+    Future.microtask(() => BottomNavVisibilityNotifier.instance?.show());
     super.dispose();
   }
 
