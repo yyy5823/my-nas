@@ -5,8 +5,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/app/theme/ui_style.dart';
+import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
 
 /// 显示播放队列
 void showMusicQueueSheet(BuildContext context) {
@@ -27,6 +30,7 @@ class MusicQueueSheet extends ConsumerWidget {
     final queue = ref.watch(playQueueProvider);
     final playerState = ref.watch(musicPlayerControllerProvider);
     final currentMusic = ref.watch(currentMusicProvider);
+    final uiStyle = ref.watch(uiStyleProvider);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -97,6 +101,7 @@ class MusicQueueSheet extends ConsumerWidget {
                           currentMusic,
                           scrollController,
                           isDark,
+                          uiStyle,
                         ),
                 ),
               ],
@@ -296,9 +301,19 @@ class MusicQueueSheet extends ConsumerWidget {
     MusicItem? currentMusic,
     ScrollController scrollController,
     bool isDark,
-  ) => ReorderableListView.builder(
+    UIStyle uiStyle,
+  ) {
+    // 计算经典模式下的底部 padding
+    final classicBottomPadding = _getClassicBottomPadding(context, uiStyle);
+
+    return ReorderableListView.builder(
       scrollController: scrollController,
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      padding: EdgeInsets.only(
+        top: 8,
+        bottom: 8 + classicBottomPadding,
+        left: 12,
+        right: 12,
+      ),
       itemCount: queue.length,
       proxyDecorator: (child, index, animation) => AnimatedBuilder(
         animation: animation,
@@ -347,6 +362,22 @@ class MusicQueueSheet extends ConsumerWidget {
         );
       },
     );
+  }
+}
+
+/// 计算经典模式下的底部 padding
+///
+/// 经典模式下 Flutter 渲染导航栏，需要为底部弹框预留导航栏高度
+/// 玻璃模式下原生导航栏悬浮在内容之上，不需要额外 padding
+double _getClassicBottomPadding(BuildContext context, UIStyle uiStyle) {
+  // 玻璃模式不需要额外 padding
+  if (uiStyle.isGlass) return 0;
+
+  // 经典模式：添加导航栏高度 + 安全区域
+  final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+  const navBarHeight = kBottomNavigationBarHeight;
+
+  return navBarHeight + bottomPadding;
 }
 
 class _QueueItem extends StatelessWidget {
@@ -475,6 +506,7 @@ class _QueueItem extends StatelessWidget {
     final coverUrl = track.coverUrl;
     Widget coverImage;
 
+    // 1. 优先使用内存中的封面数据
     if (coverData != null && coverData.isNotEmpty) {
       coverImage = Image.memory(
         Uint8List.fromList(coverData),
@@ -482,26 +514,42 @@ class _QueueItem extends StatelessWidget {
         gaplessPlayback: true,
         errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
-    } else if (coverUrl != null && coverUrl.isNotEmpty) {
-      // 支持 file:// URL 和网络 URL
-      if (coverUrl.startsWith('file://')) {
-        final filePath = coverUrl.substring(7); // 移除 'file://' 前缀
-        coverImage = Image.file(
-          File(filePath),
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => _buildDefaultCover(),
-        );
-      } else {
-        coverImage = Image.network(
-          coverUrl,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => _buildDefaultCover(),
-        );
-      }
     } else {
-      coverImage = _buildDefaultCover();
+      // 2. 尝试从缓存服务动态获取封面路径（解决 iOS 沙盒 UUID 变化问题）
+      final effectiveCoverPath = _getEffectiveCoverPath();
+      if (effectiveCoverPath != null && effectiveCoverPath.isNotEmpty) {
+        coverImage = Image.file(
+          File(effectiveCoverPath),
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildDefaultCover(),
+        );
+      } else if (coverUrl != null && coverUrl.isNotEmpty) {
+        // 3. 回退到 coverUrl
+        if (coverUrl.startsWith('file://')) {
+          final filePath = coverUrl.substring(7);
+          // 检查文件是否存在
+          if (File(filePath).existsSync()) {
+            coverImage = Image.file(
+              File(filePath),
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (_, _, _) => _buildDefaultCover(),
+            );
+          } else {
+            coverImage = _buildDefaultCover();
+          }
+        } else {
+          coverImage = Image.network(
+            coverUrl,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, _, _) => _buildDefaultCover(),
+          );
+        }
+      } else {
+        coverImage = _buildDefaultCover();
+      }
     }
 
     return Container(
@@ -552,4 +600,17 @@ class _QueueItem extends StatelessWidget {
         size: 24,
       ),
     );
+
+  /// 动态获取有效的封面路径
+  /// 参考 recent_tracks_section.dart 中的实现
+  String? _getEffectiveCoverPath() {
+    // 从 MusicItem 获取 sourceId 和 path
+    final sourceId = track.sourceId;
+    final path = track.path;
+    if (sourceId == null || path.isEmpty) return null;
+    
+    // 从缓存服务动态获取
+    final uniqueKey = '${sourceId}_$path';
+    return MusicCoverCacheService().getCachedCoverPathSync(uniqueKey);
+  }
 }

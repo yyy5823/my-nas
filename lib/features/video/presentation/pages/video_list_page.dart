@@ -2176,6 +2176,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 _getGreeting(),

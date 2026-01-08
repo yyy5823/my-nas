@@ -4,11 +4,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_category_config.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
 
 /// 视频分类设置弹窗
 ///
@@ -118,11 +120,16 @@ class _VideoCategorySettingsSheetState
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final settings = ref.watch(videoCategorySettingsProvider);
+    final uiStyle = ref.watch(uiStyleProvider);
 
     // 只获取基础分类（非动态分类）
     final basicSections = settings.sortedSections
         .where((s) => !s.category.isDynamic)
         .toList();
+
+    // 计算经典模式下的底部 padding
+    // 经典模式使用 Flutter 渲染的导航栏，需要额外预留空间
+    final classicBottomPadding = _getClassicBottomPadding(context, uiStyle);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
@@ -180,7 +187,7 @@ class _VideoCategorySettingsSheetState
             Expanded(
               child: ListView(
                 controller: scrollController,
-                padding: const EdgeInsets.only(bottom: 24),
+                padding: EdgeInsets.only(bottom: 24 + classicBottomPadding),
                 children: [
                   // 基础分类区域
                   _buildSectionHeader(isDark, '基础分类', '拖动调整顺序，开关控制显示'),
@@ -509,6 +516,22 @@ class _VideoCategorySettingsSheetState
           ),
         ),
       );
+}
+
+/// 计算经典模式下的底部 padding
+///
+/// 经典模式下 Flutter 渲染导航栏，需要为底部弹框预留导航栏高度
+/// 玻璃模式下原生导航栏悬浮在内容之上，由 _getBottomPadding 处理
+double _getClassicBottomPadding(BuildContext context, UIStyle uiStyle) {
+  // 玻璃模式不需要额外 padding（已由原生导航栏的安全区域处理）
+  if (uiStyle.isGlass) return 0;
+
+  // 经典模式：添加导航栏高度 + 安全区域
+  final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+  // 标准导航栏高度为 56，移动端约 kBottomNavigationBarHeight
+  const navBarHeight = kBottomNavigationBarHeight;
+
+  return navBarHeight + bottomPadding;
 }
 
 /// 基础分类项 Tile

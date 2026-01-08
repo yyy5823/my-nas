@@ -184,7 +184,10 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
     // 隐藏原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(false);
     // 隐藏 Flutter 导航栏（经典风格）
-    BottomNavVisibilityNotifier.instance?.hide();
+    // 使用 addPostFrameCallback 延迟执行，避免在 widget 树构建期间修改 provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      BottomNavVisibilityNotifier.instance?.hide();
+    });
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
     _loadProgress();

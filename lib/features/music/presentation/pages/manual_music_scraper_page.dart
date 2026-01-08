@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_favorites_service.dart';
@@ -18,6 +20,7 @@ import 'package:my_nas/features/music/presentation/providers/music_favorites_pro
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
+import 'package:my_nas/main.dart' show audioHandler;
 import 'package:my_nas/features/music/presentation/providers/music_tag_write_queue_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -431,6 +434,29 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
           duration: widget.music.duration?.inMilliseconds,
           lastUpdated: DateTime.now(),
         ));
+      }
+
+      // 如果当前正在播放这首歌，更新 Now Playing 和灵动岛封面
+      final currentMusic = ref.read(currentMusicProvider);
+      if (currentMusic?.id == widget.music.id) {
+        // 更新 Now Playing / 锁屏控制中心的封面
+        await audioHandler.updateArtwork(coverData);
+
+        // 更新灵动岛的封面（仅 iOS）
+        if (Platform.isIOS) {
+          final updatedMusic = currentMusic!.copyWith(
+            coverData: coverData.toList(),
+            coverUrl: 'file://$localCoverPath',
+          );
+          await LiveActivityService().updateCoverImage(updatedMusic, coverData);
+        }
+
+        // 更新播放队列中的封面
+        ref.read(playQueueProvider.notifier).updateTrackCover(
+          widget.music.id,
+          coverData: coverData,
+          coverUrl: 'file://$localCoverPath',
+        );
       }
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '同步封面到本地缓存失败');

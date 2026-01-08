@@ -40,6 +40,7 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -269,6 +270,21 @@ enum MusicSourceFilter {
 
 /// 判断是否为本机源
 bool _isLocalMusicSource(SourceType type) => type == SourceType.local;
+
+/// 动态获取有效的封面路径
+/// 参考 recent_tracks_section.dart 中的实现
+/// 这个方法可以在沙盒目录 UUID 变化后仍然正确找到缓存文件
+String? _getEffectiveCoverPath(MusicFileWithSource track) {
+  // 1. 检查直接存储的路径
+  if (track.coverPath != null && track.coverPath!.isNotEmpty) {
+    if (File(track.coverPath!).existsSync()) {
+      return track.coverPath;
+    }
+  }
+  // 2. 动态从缓存服务获取
+  final uniqueKey = '${track.sourceId}_${track.path}';
+  return MusicCoverCacheService().getCachedCoverPathSync(uniqueKey);
+}
 
 sealed class MusicListState {}
 
@@ -3047,17 +3063,19 @@ class _MusicCategoryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
-      appBar: AppBar(
-        title: Text(category.label),
-        backgroundColor: isDark ? AppColors.darkSurface : null,
-      ),
-      body: Column(
-        children: [
-          Expanded(child: _buildContent(context, ref, isDark)),
-          const MiniPlayer(),
-        ],
+    return HideBottomNavWrapper(
+      child: Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+        appBar: AppBar(
+          title: Text(category.label),
+          backgroundColor: isDark ? AppColors.darkSurface : null,
+        ),
+        body: Column(
+          children: [
+            Expanded(child: _buildContent(context, ref, isDark)),
+            const MiniPlayer(),
+          ],
+        ),
       ),
     );
   }
@@ -3090,13 +3108,15 @@ class AllSongsPage extends ConsumerStatefulWidget {
   ConsumerState<AllSongsPage> createState() => _AllSongsPageState();
 }
 
-class _AllSongsPageState extends ConsumerState<AllSongsPage> {
+class _AllSongsPageState extends ConsumerState<AllSongsPage>
+    with ConsumerTabBarVisibilityMixin {
   final _scrollController = ScrollController();
   bool _isTableView = false; // 桌面端表格视图模式
 
   @override
   void initState() {
     super.initState();
+    hideTabBar(); // 隐藏底部导航栏
     _scrollController.addListener(_onScroll);
     // 桌面端默认使用表格视图
     _isTableView = PlatformCapabilities.isDesktop;
@@ -4842,12 +4862,14 @@ class CategoryDetailPage extends ConsumerStatefulWidget {
   ConsumerState<CategoryDetailPage> createState() => _CategoryDetailPageState();
 }
 
-class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage> {
+class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage>
+    with ConsumerTabBarVisibilityMixin {
   final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    hideTabBar(); // 隐藏底部导航栏
   }
 
   @override
@@ -7275,7 +7297,8 @@ class _ModernMusicTile extends ConsumerWidget {
     final isPlaying = currentMusic?.path == track.path;
     final title = track.displayTitle;
     final artist = track.displayArtist;
-    final coverFile = track.coverFile;
+    // 动态获取有效的封面路径（解决 iOS 沙盒 UUID 变化问题）
+    final effectiveCoverPath = _getEffectiveCoverPath(track);
     final coverData = track.coverData;
 
     // 检查源是否已连接
@@ -7319,7 +7342,7 @@ class _ModernMusicTile extends ConsumerWidget {
                 ),
                 const SizedBox(width: 12),
                 // 封面
-                _buildCover(coverFile, coverData, title, isPlaying, isConnected),
+                _buildCover(effectiveCoverPath, coverData, title, isPlaying, isConnected),
                 const SizedBox(width: 14),
                 // 标题和艺术家
                 Expanded(
@@ -7412,9 +7435,8 @@ class _ModernMusicTile extends ConsumerWidget {
     );
   }
 
-  Widget _buildCover(File? coverFile, List<int>? coverData, String title, bool isPlaying, bool isConnected) {
+  Widget _buildCover(String? coverPath, List<int>? coverData, String title, bool isPlaying, bool isConnected) {
     final size = 52.0;
-    final _ = coverFile != null || coverData != null;
 
     return Container(
       width: size,
@@ -7433,9 +7455,9 @@ class _ModernMusicTile extends ConsumerWidget {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: coverFile != null
+      child: coverPath != null && coverPath.isNotEmpty
           ? Image.file(
-              coverFile,
+              File(coverPath),
               fit: BoxFit.cover,
               gaplessPlayback: true,
               errorBuilder: (_, _, _) => _buildFallbackCover(title, isConnected),
@@ -8012,7 +8034,8 @@ class _CompactMusicTile extends ConsumerWidget {
     // 使用元数据（如已提取）或从文件名解析
     final title = track.displayTitle;
     final artist = track.displayArtist;
-    final coverFile = track.coverFile;
+    // 动态获取有效的封面路径（解决 iOS 沙盒 UUID 变化问题）
+    final effectiveCoverPath = _getEffectiveCoverPath(track);
     final coverData = track.coverData;
 
     // 检查源是否已连接
@@ -8041,9 +8064,9 @@ class _CompactMusicTile extends ConsumerWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             clipBehavior: Clip.antiAlias,
-            child: coverFile != null
+            child: effectiveCoverPath != null && effectiveCoverPath.isNotEmpty
                 ? Image.file(
-                    coverFile,
+                    File(effectiveCoverPath),
                     fit: BoxFit.cover,
                     width: 40,
                     height: 40,
