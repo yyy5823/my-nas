@@ -16,6 +16,7 @@ import 'package:my_nas/features/music/presentation/widgets/lyric_view.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_progress_bar.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
+import 'package:my_nas/features/music/presentation/widgets/unsupported_format_dialog.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
@@ -92,7 +93,17 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     // 隐藏原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(false);
     // 隐藏 Flutter 导航栏（经典风格）
-    BottomNavVisibilityNotifier.instance?.hide();
+    // 使用 Future 延迟到构建完成后再修改 provider 状态
+    // 避免 "Tried to modify a provider while the widget tree was building" 错误
+    Future(() {
+      BottomNavVisibilityNotifier.instance?.hide();
+      // iOS 不支持格式检测回调：当使用 just_audio 引擎播放 FLAC 等格式时
+      // 显示切换引擎的提示对话框
+      if (mounted) {
+        ref.read(musicPlayerControllerProvider.notifier)
+            .setupUnsupportedFormatCallback(context);
+      }
+    });
     _rotationController = AnimationController(
       duration: const Duration(seconds: 20),
       vsync: this,
@@ -101,6 +112,9 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
 
   @override
   void dispose() {
+    // 清理 iOS 不支持格式检测回调
+    ref.read(musicPlayerControllerProvider.notifier)
+        .removeUnsupportedFormatCallback();
     _rotationController.dispose();
     // 恢复原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(true);

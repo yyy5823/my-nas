@@ -267,6 +267,49 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   final AndroidDynamicIslandService _dynamicIslandService = AndroidDynamicIslandService();
   bool _dynamicIslandEnabled = true; // 默认开启，不在 UI 上显示开关
 
+  /// iOS 不支持的音频格式回调
+  /// 当在 iOS 上使用 just_audio 引擎播放 FLAC 等不支持的格式时触发
+  /// UI 层可以设置此回调来显示切换引擎的提示对话框
+  void Function(String formatName)? onUnsupportedFormatDetected;
+
+  /// iOS 上 just_audio 引擎（原生 AVFoundation）不支持的音频格式
+  /// 这些格式需要使用 MediaKit（FFmpeg 解码器）才能播放
+  static const _iosUnsupportedFormats = {
+    '.flac', // Free Lossless Audio Codec
+    '.ape',  // Monkey's Audio
+    '.tta',  // True Audio
+    '.wma',  // Windows Media Audio
+    '.dsd',  // Direct Stream Digital
+    '.dsf',  // DSD Stream File
+    '.dff',  // DSD Interchange File Format
+    '.mka',  // Matroska Audio
+    '.ogg',  // Ogg Vorbis（iOS 部分支持，但不稳定）
+    '.opus', // Opus（iOS 14+ 支持，但早期版本不支持）
+  };
+
+  /// 检查文件是否为 iOS 上 just_audio 引擎不支持的格式
+  static bool isUnsupportedOnIosWithJustAudio(String filePath) {
+    if (!Platform.isIOS) return false;
+    final ext = p.extension(filePath).toLowerCase();
+    return _iosUnsupportedFormats.contains(ext);
+  }
+
+  /// 获取格式的显示名称
+  static String _getFormatDisplayName(String filePath) {
+    final ext = p.extension(filePath).toLowerCase();
+    return switch (ext) {
+      '.flac' => 'FLAC',
+      '.ape' => 'APE',
+      '.tta' => 'TTA',
+      '.wma' => 'WMA',
+      '.dsd' || '.dsf' || '.dff' => 'DSD',
+      '.mka' => 'MKA',
+      '.ogg' => 'OGG',
+      '.opus' => 'Opus',
+      _ => ext.toUpperCase().substring(1),
+    };
+  }
+
   AudioPlayer get player => _player;
 
   /// 初始化媒体代理服务器
@@ -1057,6 +1100,15 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     logger..i('MusicPlayer: 开始播放 ${music.name}')
     ..d('MusicPlayer: URL => ${music.url}')
     ..d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
+
+    // iOS 不支持格式检测：当使用 just_audio 引擎在 iOS 上播放 FLAC 等格式时
+    // 通知 UI 层显示切换引擎的提示
+    if (_isJustAudioEngine && isUnsupportedOnIosWithJustAudio(music.path)) {
+      final formatName = _getFormatDisplayName(music.path);
+      logger.w('MusicPlayer: 检测到 iOS 不支持的格式 $formatName，当前使用 just_audio 引擎');
+      onUnsupportedFormatDetected?.call(formatName);
+      // 继续尝试播放，可能会失败（让用户看到错误信息以便理解问题）
+    }
 
     try {
       // 重要：在播放开始前显式激活 Audio Session
