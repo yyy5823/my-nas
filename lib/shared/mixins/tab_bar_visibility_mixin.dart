@@ -68,15 +68,26 @@ mixin ConsumerTabBarVisibilityMixin<T extends ConsumerStatefulWidget>
   /// 隐藏底部导航栏
   void hideTabBar() {
     _didHideTabBar = true;
+    // 同步隐藏原生 Tab Bar（不涉及 Provider）
     NativeTabBarService.instance.setTabBarVisible(false);
-    ref.read(bottomNavVisibleProvider.notifier).hide();
+    // 延迟 Provider 修改到下一帧，避免在 initState/build 中修改 Provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(bottomNavVisibleProvider.notifier).hide();
+      }
+    });
   }
 
   /// 显示底部导航栏
   void showTabBar() {
     _didHideTabBar = false;
     NativeTabBarService.instance.setTabBarVisible(true);
-    ref.read(bottomNavVisibleProvider.notifier).show();
+    // 延迟 Provider 修改到下一帧
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(bottomNavVisibleProvider.notifier).show();
+      }
+    });
   }
 
   @override
@@ -119,11 +130,14 @@ class _HideBottomNavWrapperState extends ConsumerState<HideBottomNavWrapper> {
   @override
   void initState() {
     super.initState();
-    // 同步隐藏导航栏，避免闪烁
+    // 同步隐藏原生导航栏（不涉及 Provider）
     NativeTabBarService.instance.setTabBarVisible(false);
-    // 直接调用 hide()，不使用 addPostFrameCallback
-    // 这样可以在页面显示前就隐藏导航栏
-    ref.read(bottomNavVisibleProvider.notifier).hide();
+    // 延迟 Provider 修改到下一帧，避免在 initState 中修改 Provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(bottomNavVisibleProvider.notifier).hide();
+      }
+    });
   }
 
   @override
