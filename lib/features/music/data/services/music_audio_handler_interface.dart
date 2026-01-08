@@ -31,6 +31,19 @@ abstract class IMusicAudioHandler extends BaseAudioHandler {
 
   // ==================== 音频源设置 ====================
 
+  /// 设置音频源
+  ///
+  /// [url] 音频文件 URL（支持 file://, http://, https://）
+  /// [headers] HTTP 请求头（可选，用于 NAS 认证等）
+  /// 返回音频时长（如果可用）
+  Future<Duration?> setAudioSource(String url, {Map<String, String>? headers});
+
+  /// 停止播放并释放当前音频源
+  Future<void> stopPlayer();
+
+  /// 跳转到指定位置
+  Future<void> seekTo(Duration position);
+
   /// 设置当前播放的音乐
   ///
   /// [music] 音乐项

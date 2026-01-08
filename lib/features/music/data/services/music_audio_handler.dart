@@ -706,8 +706,41 @@ class MusicAudioHandler extends BaseAudioHandler
   @override
   double get volume => _volume;
 
-  /// 设置音频源
-  Future<Duration?> setAudioSource(AudioSource source) => _player.setAudioSource(source);
+  /// 设置音频源（接口方法）
+  ///
+  /// [url] 音频文件 URL（支持 file://, http://, https://）
+  /// [headers] HTTP 请求头（可选）
+  @override
+  Future<Duration?> setAudioSource(String url, {Map<String, String>? headers}) async {
+    final uri = Uri.parse(url);
+    AudioSource audioSource;
+
+    if (uri.scheme == 'file') {
+      audioSource = AudioSource.uri(uri);
+    } else if (uri.scheme == 'http' || uri.scheme == 'https') {
+      if (headers != null && headers.isNotEmpty) {
+        audioSource = AudioSource.uri(uri, headers: headers);
+      } else {
+        // ignore: experimental_member_use
+        audioSource = LockCachingAudioSource(uri);
+      }
+    } else {
+      audioSource = AudioSource.uri(uri);
+    }
+
+    return _player.setAudioSource(audioSource);
+  }
+
+  /// 设置音频源（内部方法，直接使用 AudioSource）
+  Future<Duration?> setAudioSourceRaw(AudioSource source) => _player.setAudioSource(source);
+
+  /// 停止播放器
+  @override
+  Future<void> stopPlayer() => _player.stop();
+
+  /// 跳转到指定位置
+  @override
+  Future<void> seekTo(Duration position) => _player.seek(position);
 
   // ==================== Stream 访问器 ====================
 

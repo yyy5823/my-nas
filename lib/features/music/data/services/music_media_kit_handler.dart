@@ -435,6 +435,7 @@ class MusicMediaKitAudioHandler extends BaseAudioHandler
   ///
   /// [url] 音频文件 URL（支持 file://, http://, https://）
   /// [headers] HTTP 请求头（可选）
+  @override
   Future<Duration?> setAudioSource(String url, {Map<String, String>? headers}) async {
     logger.i('MusicMediaKitHandler: setAudioSource($url)');
 
@@ -461,6 +462,20 @@ class MusicMediaKitAudioHandler extends BaseAudioHandler
       logger.e('MusicMediaKitHandler: 设置音频源失败', e, st);
       rethrow;
     }
+  }
+
+  /// 停止播放器
+  @override
+  Future<void> stopPlayer() async {
+    logger.d('MusicMediaKitHandler: stopPlayer()');
+    await _player.stop();
+  }
+
+  /// 跳转到指定位置
+  @override
+  Future<void> seekTo(Duration position) async {
+    logger.d('MusicMediaKitHandler: seekTo($position)');
+    await _player.seek(position);
   }
 
   /// 设置当前播放的音乐

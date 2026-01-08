@@ -578,21 +578,21 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           switch (event.type) {
             case AudioInterruptionType.duck:
               // 降低音量（其他应用短暂播放）
-              _player.setVolume(state.volume * 0.3);
+              _audioHandler.setVolume(state.volume * 0.3);
             case AudioInterruptionType.pause:
             case AudioInterruptionType.unknown:
               // 暂停播放
-              _player.pause();
+              _audioHandler.pause();
           }
         } else {
           // 中断结束
           switch (event.type) {
             case AudioInterruptionType.duck:
               // 恢复音量
-              _player.setVolume(state.volume);
+              _audioHandler.setVolume(state.volume);
             case AudioInterruptionType.pause:
               // 可选：恢复播放（某些应用可能不希望自动恢复）
-              // _player.play();
+              // _audioHandler.play();
               break;
             case AudioInterruptionType.unknown:
               break;
@@ -603,7 +603,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 监听音频设备变化（如耳机拔出）
       session.becomingNoisyEventStream.listen((_) {
         logger.d('MusicPlayer: 音频设备变化（耳机拔出），暂停播放');
-        _player.pause();
+        _audioHandler.pause();
       });
 
       logger.i('MusicPlayer: 音频会话中断处理已初始化');
@@ -616,7 +616,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   Future<void> _applySettings() async {
     final settings = _ref.read(musicSettingsProvider);
     _targetVolume = settings.volume;
-    await _player.setVolume(settings.volume);
+    await _audioHandler.setVolume(settings.volume);
     state = state.copyWith(
       volume: settings.volume,
       playMode: settings.playMode,
@@ -896,7 +896,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         final fadeInGain = math.sin(t * math.pi / 2);
 
         await Future.wait([
-          _player.setVolume((_targetVolume * fadeOutGain).clamp(0.0, 1.0)),
+          _audioHandler.setVolume((_targetVolume * fadeOutGain).clamp(0.0, 1.0)),
           _crossfadePlayer!.setVolume((_targetVolume * fadeInGain).clamp(0.0, 1.0)),
         ]);
 
@@ -913,7 +913,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       logger.e('MusicPlayer: 交叉淡化失败，回退到普通播放', e, st);
       // 重置状态
       _isCrossfading = false;
-      await _player.setVolume(_targetVolume);
+      await _audioHandler.setVolume(_targetVolume);
       // 清理预加载
       await _cleanupPreload();
       // 尝试直接播放下一首
@@ -932,8 +932,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     logger.i('MusicPlayer: 交叉淡化完成，切换到 ${nextMusic.name}');
 
     // 停止主播放器
-    await _player.stop();
-    await _player.setVolume(_targetVolume);
+    await _audioHandler.stopPlayer();
+    await _audioHandler.setVolume(_targetVolume);
 
     // 停止辅助播放器（我们需要用主播放器继续播放以支持系统媒体控制）
     final crossfadePosition = _crossfadePlayer?.position ?? Duration.zero;
@@ -972,14 +972,14 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       final t = i / steps;
       final gain = math.cos(t * math.pi / 2);
       final volume = _targetVolume * gain;
-      await _player.setVolume(volume.clamp(0.0, 1.0));
+      await _audioHandler.setVolume(volume.clamp(0.0, 1.0));
       if (i < steps) {
         await Future<void>.delayed(Duration(milliseconds: stepMs));
       }
     }
 
     if (_isFadingOut) {
-      await _player.setVolume(0);
+      await _audioHandler.setVolume(0);
     }
     _isFadingOut = false;
   }
@@ -1040,7 +1040,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     // 如果淡入淡出未启用，直接设置目标音量
     if (crossfadeDuration <= 0) {
-      await _player.setVolume(_targetVolume);
+      await _audioHandler.setVolume(_targetVolume);
       return;
     }
 
@@ -1048,7 +1048,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _isFadingOut = false; // 取消任何正在进行的淡出
 
     // 从0开始淡入
-    await _player.setVolume(0);
+    await _audioHandler.setVolume(0);
 
     final fadeMs = crossfadeDuration * 1000;
     // 使用更多步数获得更平滑的效果（约60步/秒）
@@ -1064,7 +1064,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // t=0 时 sin(0)=0，t=1 时 sin(π/2)=1
       final gain = math.sin(t * math.pi / 2);
       final volume = _targetVolume * gain;
-      await _player.setVolume(volume.clamp(0.0, 1.0));
+      await _audioHandler.setVolume(volume.clamp(0.0, 1.0));
       if (i < steps) {
         await Future<void>.delayed(Duration(milliseconds: stepMs));
       }
@@ -1072,7 +1072,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     // 确保最终音量为目标音量
     if (_isFadingIn) {
-      await _player.setVolume(_targetVolume);
+      await _audioHandler.setVolume(_targetVolume);
     }
     _isFadingIn = false;
   }
@@ -1121,7 +1121,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       await _audioHandler.prepareForNewTrack();
 
       // 停止播放器并清理资源
-      await _player.stop();
+      await _audioHandler.stopPlayer();
       _cleanupCurrentProxy();
       state = state.copyWith(position: Duration.zero, duration: Duration.zero);
       logger.d('MusicPlayer: 已停止当前播放并重置状态');
@@ -1135,6 +1135,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       // 根据音频来源选择合适的播放方式
       AudioSource audioSource;
+      String audioSourceUrl; // 用于 MediaKit 模式
 
       // 检查是否为 NCM 文件，需要先解密
       if (_isNcmFile(music.path) || _isNcmFile(music.name)) {
@@ -1144,6 +1145,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           throw Exception('NCM 文件解密失败');
         }
         logger.i('MusicPlayer: 使用解密后的文件播放: ${decryptedFile.path}');
+        audioSourceUrl = Uri.file(decryptedFile.path).toString();
         audioSource = AudioSource.uri(Uri.file(decryptedFile.path));
       } else if (music.sourceId != null) {
         // NAS 源：优先检查本地缓存，避免重复下载
@@ -1156,6 +1158,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         if (isCached) {
           // 已有缓存，直接播放本地文件
           logger.i('MusicPlayer: 使用本地缓存播放 ${cacheFile.path}');
+          audioSourceUrl = Uri.file(cacheFile.path).toString();
           audioSource = AudioSource.uri(Uri.file(cacheFile.path));
         } else {
           // 无缓存，使用流式播放并缓存
@@ -1186,6 +1189,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           logger..i('MusicPlayer: 使用流式播放模式 (边下边播并缓存到 ${cacheFile.path})')
           ..d('MusicPlayer: 代理URL => $proxyUrl');
 
+          audioSourceUrl = proxyUrl;
           // 使用 LockCachingAudioSource 实现边下边播并自动缓存到指定文件
           // 这样下次播放相同歌曲时可以直接使用缓存
           // ignore: experimental_member_use
@@ -1197,10 +1201,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       } else if (uri.scheme == 'file') {
         // 本地文件：直接使用 URI
         logger.d('MusicPlayer: 本地文件');
+        audioSourceUrl = uri.toString();
         audioSource = AudioSource.uri(uri);
       } else if (uri.scheme == 'http' || uri.scheme == 'https') {
         // HTTP/HTTPS URL：使用 LockCachingAudioSource 边下边播
         logger.d('MusicPlayer: 使用 HTTP/HTTPS URL (流式播放)');
+        audioSourceUrl = uri.toString();
         // ignore: experimental_member_use
         audioSource = LockCachingAudioSource(uri);
       } else {
@@ -1209,11 +1215,17 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       // 设置音频源
       logger.d('MusicPlayer: 设置音频源...');
-      await _player.setAudioSource(audioSource);
+      Duration? playerDuration;
+      if (_isJustAudioEngine && audioHandler is MusicAudioHandler) {
+        // just_audio 模式：使用原始 AudioSource（支持 cacheFile 等特殊功能）
+        playerDuration = await (audioHandler as MusicAudioHandler).setAudioSourceRaw(audioSource);
+      } else {
+        // MediaKit 模式：使用 URL 字符串
+        playerDuration = await _audioHandler.setAudioSource(audioSourceUrl);
+      }
       logger.d('MusicPlayer: 音频源设置成功');
 
       // 获取播放器时长
-      final playerDuration = _player.duration;
       logger.i('MusicPlayer: 播放器时长 => $playerDuration');
 
       // 使用播放器时长或 MusicItem 的元数据时长
@@ -1232,7 +1244,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 跳转到指定位置
       if (startPosition != null && startPosition > Duration.zero) {
         logger.d('MusicPlayer: 跳转到位置 $startPosition');
-        await _player.seek(startPosition);
+        await _audioHandler.seekTo(startPosition);
       }
 
       // 获取淡入淡出设置
@@ -1241,11 +1253,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       // 如果启用了淡入淡出且不跳过，先将音量设为0，播放后再淡入
       if (hasCrossfade) {
-        await _player.setVolume(0);
+        await _audioHandler.setVolume(0);
         logger.d('MusicPlayer: 淡入淡出已启用，初始音量设为0');
       } else {
         // 确保音量正确（交叉淡化完成后或未启用淡入淡出时）
-        await _player.setVolume(_targetVolume);
+        await _audioHandler.setVolume(_targetVolume);
         state = state.copyWith(volume: _targetVolume);
       }
 
@@ -1605,8 +1617,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 播放/暂停切换
   Future<void> playOrPause() async {
-    // 使用 audioHandler 而不是直接操作 player，确保正确广播状态到系统
-    if (_player.playing) {
+    // 使用 state.isPlaying 而不是 _player.playing
+    // 这样可以同时支持 just_audio 和 MediaKit 引擎
+    if (state.isPlaying) {
       await _audioHandler.pause();
     } else {
       await _audioHandler.play();
@@ -1680,7 +1693,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 设置音量 (0.0 - 1.0)
   Future<void> setVolume(double volume) async {
     _targetVolume = volume;
-    await _player.setVolume(volume);
+    await _audioHandler.setVolume(volume);
     state = state.copyWith(volume: volume);
     // 同步保存到设置
     await _ref.read(musicSettingsProvider.notifier).setVolume(volume);
