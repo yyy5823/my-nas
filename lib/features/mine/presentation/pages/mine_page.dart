@@ -12,6 +12,7 @@ import 'package:my_nas/features/downloader/presentation/pages/downloader_list_pa
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
 import 'package:my_nas/features/media_tracking/presentation/pages/media_tracking_list_page.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
+import 'package:my_nas/features/music/presentation/pages/music_player_settings_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_sites_list_page.dart';
@@ -138,6 +139,19 @@ class MinePage extends ConsumerWidget {
                   isDark,
                   uiStyle,
                   children: [
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.play_circle_rounded,
+                      iconColor: AppColors.primary,
+                      title: '播放器设置',
+                      subtitle: '播放引擎、音量、淡入淡出等',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(builder: (_) => const MusicPlayerSettingsPage()),
+                      ),
+                    ),
+                    _buildDivider(isDark),
                     _MusicScraperSourcesTile(isDark: isDark),
                   ],
                 ),
