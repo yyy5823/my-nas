@@ -124,8 +124,8 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
     final clampedVolume = volume.clamp(0.0, 1.0);
     state = state.copyWith(volume: clampedVolume);
     await _save();
-    // 同步到播放器
-    unawaited(_ref.read(musicPlayerControllerProvider.notifier).player.setVolume(clampedVolume));
+    // 同步到播放器（使用 setVolumeInternal 方法，避免循环调用）
+    unawaited(_ref.read(musicPlayerControllerProvider.notifier).setVolumeInternal(clampedVolume));
   }
 
   /// 设置播放模式

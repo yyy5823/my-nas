@@ -1699,6 +1699,15 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     await _ref.read(musicSettingsProvider.notifier).setVolume(volume);
   }
 
+  /// 设置音量（内部使用，不回调设置 provider）
+  /// 由 MusicSettingsNotifier.setVolume 调用，避免循环调用
+  Future<void> setVolumeInternal(double volume) async {
+    final clampedVolume = volume.clamp(0.0, 1.0);
+    _targetVolume = clampedVolume;
+    await _audioHandler.setVolume(clampedVolume);
+    state = state.copyWith(volume: clampedVolume);
+  }
+
   /// 切换播放模式
   void togglePlayMode() {
     final modes = PlayMode.values;
@@ -1716,6 +1725,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 注意：不要在这里调用 musicSettingsProvider.notifier.setPlayMode
     // 否则会形成循环调用导致无限闪烁
   }
+
 
   /// 更新当前索引（用于队列重排序后同步）
   void updateCurrentIndex(int index) {

@@ -304,6 +304,7 @@ class HeroPlayerCard extends ConsumerWidget {
   Widget _buildMusicInfo(MusicItem currentMusic, MusicPlayerState playerState) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min, // 防止 Column 强制占用最大高度
       children: [
         // 播放状态标签
         Container(
@@ -335,26 +336,26 @@ class HeroPlayerCard extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        // 歌曲名
+        const SizedBox(height: 6),
+        // 歌曲名（限制为1行防止溢出）
         Text(
           currentMusic.displayTitle,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
             letterSpacing: -0.3,
           ),
-          maxLines: 2,
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         // 艺术家
         Text(
           currentMusic.displayArtist,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.8),
-            fontSize: 13,
+            fontSize: 12,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
