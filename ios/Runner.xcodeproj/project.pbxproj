@@ -18,14 +18,14 @@
 		65CD6C022F00EA95003CEDC6 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 653E4EFE2EE3AF770080E2C6 /* WidgetKit.framework */; };
 		65CD6C032F00EA95003CEDC6 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 653E4F002EE3AF770080E2C6 /* SwiftUI.framework */; };
 		65CD6C142F00EA97003CEDC6 /* MyNasWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 65CD6C012F00EA95003CEDC6 /* MyNasWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		65GLSBG01E5F6A7B8C9D0E40 /* GlassButtonGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSBG02E5F6A7B8C9D0E41 /* GlassButtonGroup.swift */; };
+		65GLSBS01E5F6A7B8C9D0E70 /* GlassBottomSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSBS02E5F6A7B8C9D0E71 /* GlassBottomSheet.swift */; };
+		65GLSPM01E5F6A7B8C9D0E60 /* GlassPopupMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSPM02E5F6A7B8C9D0E61 /* GlassPopupMenu.swift */; };
+		65GLSSR01E5F6A7B8C9D0E50 /* GlassSearchBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSSR02E5F6A7B8C9D0E51 /* GlassSearchBar.swift */; };
 		65IOSAUDC01E5F6A7B8C9D0E3 /* AudioCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65IOSAUDC02E5F6A7B8C9D0E4 /* AudioCapabilityChannel.swift */; };
 		65IOSDSPC01E5F6A7B8C9D0E1 /* DisplayCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65IOSDSPC02E5F6A7B8C9D0E2 /* DisplayCapabilityChannel.swift */; };
 		65LQGLC01E5F6A7B8C9D0E22 /* LiquidGlassChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */; };
 		65LQGLS01E5F6A7B8C9D0E20 /* LiquidGlassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */; };
-		65GLSBG01E5F6A7B8C9D0E40 /* GlassButtonGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSBG02E5F6A7B8C9D0E41 /* GlassButtonGroup.swift */; };
-		65GLSSR01E5F6A7B8C9D0E50 /* GlassSearchBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSSR02E5F6A7B8C9D0E51 /* GlassSearchBar.swift */; };
-		65GLSPM01E5F6A7B8C9D0E60 /* GlassPopupMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSPM02E5F6A7B8C9D0E61 /* GlassPopupMenu.swift */; };
-		65GLSBS01E5F6A7B8C9D0E70 /* GlassBottomSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLSBS02E5F6A7B8C9D0E71 /* GlassBottomSheet.swift */; };
 		65NBLUR02E5F6A7B8C9D0E11 /* NativeBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */; };
 		65NTBC01E5F6A7B8C9D0E30 /* NativeTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NTBC02E5F6A7B8C9D0E31 /* NativeTabBarController.swift */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
@@ -108,14 +108,14 @@
 		653E4EFE2EE3AF770080E2C6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		653E4F002EE3AF770080E2C6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		65CD6C012F00EA95003CEDC6 /* MyNasWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MyNasWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		65GLSBG02E5F6A7B8C9D0E41 /* GlassButtonGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButtonGroup.swift; sourceTree = "<group>"; };
+		65GLSBS02E5F6A7B8C9D0E71 /* GlassBottomSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassBottomSheet.swift; sourceTree = "<group>"; };
+		65GLSPM02E5F6A7B8C9D0E61 /* GlassPopupMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassPopupMenu.swift; sourceTree = "<group>"; };
+		65GLSSR02E5F6A7B8C9D0E51 /* GlassSearchBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassSearchBar.swift; sourceTree = "<group>"; };
 		65IOSAUDC02E5F6A7B8C9D0E4 /* AudioCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapabilityChannel.swift; sourceTree = "<group>"; };
 		65IOSDSPC02E5F6A7B8C9D0E2 /* DisplayCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayCapabilityChannel.swift; sourceTree = "<group>"; };
 		65LQGLC02E5F6A7B8C9D0E23 /* LiquidGlassChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassChannel.swift; sourceTree = "<group>"; };
 		65LQGLS02E5F6A7B8C9D0E21 /* LiquidGlassView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassView.swift; sourceTree = "<group>"; };
-		65GLSBG02E5F6A7B8C9D0E41 /* GlassButtonGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButtonGroup.swift; sourceTree = "<group>"; };
-		65GLSSR02E5F6A7B8C9D0E51 /* GlassSearchBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassSearchBar.swift; sourceTree = "<group>"; };
-		65GLSPM02E5F6A7B8C9D0E61 /* GlassPopupMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassPopupMenu.swift; sourceTree = "<group>"; };
-		65GLSBS02E5F6A7B8C9D0E71 /* GlassBottomSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassBottomSheet.swift; sourceTree = "<group>"; };
 		65NBLUR01E5F6A7B8C9D0E10 /* NativeBlurView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBlurView.swift; sourceTree = "<group>"; };
 		65NTBC02E5F6A7B8C9D0E31 /* NativeTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTabBarController.swift; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -410,7 +410,7 @@
 				653E4F132EE3AF790080E2C6 /* Embed Foundation Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				5ED426514113D62512DB9D0A /* [CP] Embed Pods Frameworks */,
-				3D80A5D7DD6E8CB92216B100 /* [CP] Copy Pods Resources */,
+				835D8286145CC9BC374DE2E7 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -542,23 +542,6 @@
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
 		};
-		3D80A5D7DD6E8CB92216B100 /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Copy Pods Resources";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 		5ED426514113D62512DB9D0A /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -596,6 +579,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		835D8286145CC9BC374DE2E7 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		9740EEB61CF901F6004384FC /* Run Script */ = {

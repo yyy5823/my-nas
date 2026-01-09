@@ -119,8 +119,10 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     // 恢复原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(true);
     // 恢复 Flutter 导航栏（经典风格）
-    // 直接同步调用，与 ConsumerTabBarVisibilityMixin 保持一致
-    BottomNavVisibilityNotifier.instance?.show();
+    // 使用 setVisible(true) 而不是 show()，因为 show() 只是减少引用计数
+    // setVisible(true) 会直接将计数重置为 0 并强制显示导航栏
+    // 这确保无论用户通过什么方式离开（返回按钮、滑动手势、系统导航），导航栏都能正确恢复
+    BottomNavVisibilityNotifier.instance?.setVisible(true);
     super.dispose();
   }
 
@@ -133,9 +135,10 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   /// 此时直接 pop 会导致黑屏，需要改为导航到音乐主页
   void _handleBack(BuildContext context) {
     // 在导航前先恢复导航栏可见性
-    // 这确保无论使用 pop 还是 go 导航，导航栏都能正确显示
+    // 使用 setVisible(true) 而不是 show()，因为 show() 只是减少引用计数
+    // setVisible(true) 会直接将计数重置为 0 并强制显示导航栏
     NativeTabBarService.instance.setTabBarVisible(true);
-    BottomNavVisibilityNotifier.instance?.show();
+    BottomNavVisibilityNotifier.instance?.setVisible(true);
 
     // 检查是否可以 pop（栈中是否有其他页面）
     final navigator = Navigator.of(context);

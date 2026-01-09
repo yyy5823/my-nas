@@ -75,7 +75,10 @@ class MusicAudioCacheService {
   }
 
   /// 检查缓存文件是否存在且完整
-  /// 完整性检查：文件存在且大小 > 0
+  /// 完整性检查：
+  /// 1. 文件存在且大小 > 0
+  /// 2. 没有对应的 .part 文件（表示下载已完成）
+  /// 注意：LockCachingAudioSource 在下载时使用 .part 文件
   Future<bool> isCached(String? sourceId, String filePath) async {
     if (!_initialized) await init();
 
@@ -83,13 +86,24 @@ class MusicAudioCacheService {
       final file = await getCacheFile(sourceId, filePath);
       if (await file.exists()) {
         final size = await file.length();
-        return size > 0;
+        if (size <= 0) return false;
+
+        // 检查是否存在 .part 文件（表示下载未完成）
+        // LockCachingAudioSource 在下载完成后会删除 .part 文件
+        final partFile = File('${file.path}.part');
+        if (await partFile.exists()) {
+          logger.d('MusicAudioCache: 缓存文件存在但下载未完成 (.part 文件存在): ${file.path}');
+          return false;
+        }
+
+        return true;
       }
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '检查缓存失败，非关键功能');
     }
     return false;
   }
+
 
   /// 检查缓存文件是否正在下载中（有 .part 文件）
   Future<bool> isDownloading(String? sourceId, String filePath) async {

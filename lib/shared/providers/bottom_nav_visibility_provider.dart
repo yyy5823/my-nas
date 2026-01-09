@@ -95,13 +95,21 @@ class BottomNavVisibilityNotifier extends StateNotifier<bool> {
     debugPrint('BottomNavVisibility: reset');
   }
 
-  /// 设置可见性（直接设置，不影响计数）
+  /// 设置可见性（直接设置，强制更新）
+  /// 
+  /// 与 hide()/show() 不同，此方法会强制设置可见性状态
+  /// 不经过 _scheduleUpdate()，避免被 _pendingUpdate 检查阻塞
+  /// 用于页面 dispose 时确保导航栏恢复可见
   void setVisible(bool visible) {
     if (visible) {
       _hideRequestCount = 0;
     } else {
       _hideRequestCount = 1;
     }
-    _scheduleUpdate();
+    debugPrint('BottomNavVisibility: setVisible($visible) called, count=$_hideRequestCount');
+    // 直接更新状态，不经过 _scheduleUpdate()
+    // 这样即使之前有待处理的更新，也能正确设置状态
+    _pendingUpdate = false; // 清除待处理标志，确保下次 hide()/show() 能正常工作
+    _updateVisibility();
   }
 }
