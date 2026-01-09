@@ -274,8 +274,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// iOS 上 just_audio 引擎（原生 AVFoundation）不支持的音频格式
   /// 这些格式需要使用 MediaKit（FFmpeg 解码器）才能播放
+  ///
+  /// 注意：FLAC 自 iOS 11 起已被 AVFoundation 原生支持，因此不在此列表中
+  /// 参考：https://developer.apple.com/documentation/avfoundation/audio_track_engineering/audio_format_support
   static const _iosUnsupportedFormats = {
-    '.flac', // Free Lossless Audio Codec
     '.ape',  // Monkey's Audio
     '.tta',  // True Audio
     '.wma',  // Windows Media Audio
@@ -283,8 +285,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     '.dsf',  // DSD Stream File
     '.dff',  // DSD Interchange File Format
     '.mka',  // Matroska Audio
-    '.ogg',  // Ogg Vorbis（iOS 部分支持，但不稳定）
-    '.opus', // Opus（iOS 14+ 支持，但早期版本不支持）
+    // 以下格式在现代 iOS 上通常支持，但可能存在兼容性问题
+    // '.ogg',  // Ogg Vorbis（iOS 部分支持）
+    // '.opus', // Opus（iOS 14+ 支持）
   };
 
   /// 检查文件是否为 iOS 上 just_audio 引擎不支持的格式

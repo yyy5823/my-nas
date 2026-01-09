@@ -132,7 +132,11 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   /// 当从灵动岛深度链接打开时，导航栈可能只有当前页面
   /// 此时直接 pop 会导致黑屏，需要改为导航到音乐主页
   void _handleBack(BuildContext context) {
-    // 首先尝试使用 Navigator 的 pop
+    // 在导航前先恢复导航栏可见性
+    // 这确保无论使用 pop 还是 go 导航，导航栏都能正确显示
+    NativeTabBarService.instance.setTabBarVisible(true);
+    BottomNavVisibilityNotifier.instance?.show();
+
     // 检查是否可以 pop（栈中是否有其他页面）
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
