@@ -82,7 +82,12 @@ class _FloatingTTSControlState extends ConsumerState<FloatingTTSControl>
           ),
         ),
       ),
-      child: _buildControlBar(ttsState, ttsNotifier, isDark),
+      // 使用 GestureDetector 包裹，阻止点击事件穿透到下层（如翻页）
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {}, // 吸收点击事件，不传递到下层
+        child: _buildControlBar(ttsState, ttsNotifier, isDark),
+      ),
     );
   }
 
@@ -182,7 +187,7 @@ class _FloatingTTSControlState extends ConsumerState<FloatingTTSControl>
     required bool isDark,
     String? tooltip,
   }) {
-    final iconColor = isDark ? Colors.white70 : Colors.black87;
+    // 按钮使用半透明黑色背景 + 白色图标，确保在任何阅读器背景下可见
 
     Widget button = Material(
       key: key,
@@ -190,12 +195,16 @@ class _FloatingTTSControlState extends ConsumerState<FloatingTTSControl>
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
+        child: Container(
           padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Icon(
             icon,
             size: 20,
-            color: iconColor,
+            color: Colors.white,
           ),
         ),
       ),
@@ -296,41 +305,43 @@ class _FloatingTTSControlState extends ConsumerState<FloatingTTSControl>
 
     showDialog<void>(
       context: context,
-      barrierColor: Colors.transparent,
-      builder: (context) => Stack(
-        children: [
-          // 点击空白处关闭
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(color: Colors.transparent),
-            ),
-          ),
-          // 弹框
-          Positioned(
-            left: left.clamp(16.0, screenWidth - popupWidth - 16),
-            top: top.clamp(80.0, MediaQuery.of(context).size.height - maxHeight - 50),
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: popupWidth,
-                constraints: BoxConstraints(maxHeight: maxHeight),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      offset: const Offset(0, 4),
+      barrierColor: Colors.black.withValues(alpha: 0.3),
+      barrierDismissible: true,
+      builder: (context) => GestureDetector(
+        // 阻止点击事件穿透到弹框下层
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.pop(context),
+        child: Stack(
+          children: [
+            // 弹框（包裹在 GestureDetector 中阻止点击传递到外层）
+            Positioned(
+              left: left.clamp(16.0, screenWidth - popupWidth - 16),
+              top: top.clamp(80.0, MediaQuery.of(context).size.height - maxHeight - 50),
+              child: GestureDetector(
+                onTap: () {}, // 阻止点击穿透
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: popupWidth,
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                  ],
+                    child: child,
+                  ),
                 ),
-                child: child,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

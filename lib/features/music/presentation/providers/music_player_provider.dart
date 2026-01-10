@@ -365,10 +365,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     });
 
     // 监听播放完成（使用接口提供的流）
-    _audioHandler.completedStream.listen((completed) {
-      if (completed) {
-        _onTrackCompleted();
-      }
+    // 使用 distinct 确保只有状态变化时才触发，避免重复触发
+    _audioHandler.completedStream
+        .distinct()
+        .where((completed) => completed)
+        .listen((_) {
+      _onTrackCompleted();
     });
 
     // 监听播放位置（使用播放器原生的 positionStream，无需定时器）
@@ -656,11 +658,36 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     }
   }
 
+  /// 上次开始交叉淡化的时间，用于超时检测
+  DateTime? _crossfadeStartTime;
+
+  /// 交叉淡化超时时间（秒）
+  static const int _crossfadeTimeoutSeconds = 30;
+
   void _onTrackCompleted() {
-    // 如果正在交叉淡化或刚完成交叉淡化，不需要额外处理
+    final currentMusic = _ref.read(currentMusicProvider);
+    logger.i('MusicPlayer: _onTrackCompleted 触发, '
+        'isCrossfading=$_isCrossfading, '
+        'currentMusic=${currentMusic?.name}');
+
+    // 如果正在交叉淡化，检查是否超时
     if (_isCrossfading) {
-      logger.d('MusicPlayer: 歌曲结束，交叉淡化已在处理中');
-      return;
+      // 检查交叉淡化是否超时
+      if (_crossfadeStartTime != null) {
+        final elapsed = DateTime.now().difference(_crossfadeStartTime!).inSeconds;
+        if (elapsed > _crossfadeTimeoutSeconds) {
+          logger.w('MusicPlayer: 交叉淡化超时 (${elapsed}s > ${_crossfadeTimeoutSeconds}s)，强制重置状态');
+          _isCrossfading = false;
+          _crossfadeStartTime = null;
+          // 继续执行后续逻辑，播放下一首
+        } else {
+          logger.d('MusicPlayer: 歌曲结束，交叉淡化已在处理中 (elapsed=${elapsed}s)');
+          return;
+        }
+      } else {
+        logger.d('MusicPlayer: 歌曲结束，交叉淡化已在处理中');
+        return;
+      }
     }
 
     logger.i('MusicPlayer: 歌曲播放完成，准备切换到下一首');
@@ -886,6 +913,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     }
 
     _isCrossfading = true;
+    _crossfadeStartTime = DateTime.now();
     _isFadingOut = false;
     _isFadingIn = false;
 
@@ -928,6 +956,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       logger.e('MusicPlayer: 交叉淡化失败，回退到普通播放', e, st);
       // 重置状态
       _isCrossfading = false;
+      _crossfadeStartTime = null;
       await _audioHandler.setVolume(_targetVolume);
       // 清理预加载
       await _cleanupPreload();
@@ -938,7 +967,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 完成交叉淡化，切换到新歌曲
   Future<void> _completeCrossfade() async {
-    if (_preloadedMusic == null) return;
+    if (_preloadedMusic == null) {
+      logger.w('MusicPlayer: _completeCrossfade 被调用但 _preloadedMusic 为 null');
+      _isCrossfading = false;
+      _crossfadeStartTime = null;
+      return;
+    }
 
     final nextMusic = _preloadedMusic!;
     final queue = _ref.read(playQueueProvider);
@@ -946,30 +980,47 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     logger.i('MusicPlayer: 交叉淡化完成，切换到 ${nextMusic.name}');
 
-    // 停止主播放器
-    await _audioHandler.stopPlayer();
-    await _audioHandler.setVolume(_targetVolume);
+    try {
+      // 停止主播放器
+      await _audioHandler.stopPlayer();
+      await _audioHandler.setVolume(_targetVolume);
 
-    // 停止辅助播放器（我们需要用主播放器继续播放以支持系统媒体控制）
-    final crossfadePosition = _crossfadePlayer?.position ?? Duration.zero;
-    await _crossfadePlayer?.stop();
-    await _crossfadePlayer?.dispose();
-    _crossfadePlayer = null;
+      // 停止辅助播放器（我们需要用主播放器继续播放以支持系统媒体控制）
+      final crossfadePosition = _crossfadePlayer?.position ?? Duration.zero;
+      await _crossfadePlayer?.stop();
+      await _crossfadePlayer?.dispose();
+      _crossfadePlayer = null;
 
-    // 更新状态
-    _ref.read(currentMusicProvider.notifier).state = nextMusic;
-    if (nextIndex >= 0) {
-      state = state.copyWith(currentIndex: nextIndex);
+      // 更新状态
+      _ref.read(currentMusicProvider.notifier).state = nextMusic;
+      if (nextIndex >= 0) {
+        state = state.copyWith(currentIndex: nextIndex);
+      }
+
+      // 标记交叉淡化结束前清理状态
+      _preloadedMusic = null;
+
+      // 用主播放器从当前位置继续播放，跳过淡入效果（因为已经是满音量了）
+      await play(nextMusic, startPosition: crossfadePosition, skipFadeIn: true);
+
+      logger.i('MusicPlayer: 交叉淡化后播放成功: ${nextMusic.name}');
+    } on Exception catch (e, st) {
+      logger.e('MusicPlayer: 交叉淡化后播放失败，尝试重新播放', e, st);
+      // 确保清理状态
+      _preloadedMusic = null;
+      await _cleanupPreload();
+      
+      // 尝试使用 playNextWithRetry 重新播放
+      try {
+        await _playNextWithRetry();
+      } on Exception catch (e2, st2) {
+        logger.e('MusicPlayer: 交叉淡化重试也失败了', e2, st2);
+      }
+    } finally {
+      // 确保交叉淡化状态被重置
+      _isCrossfading = false;
+      _crossfadeStartTime = null;
     }
-
-    // 标记交叉淡化结束前清理状态
-    _preloadedMusic = null;
-
-    // 用主播放器从当前位置继续播放，跳过淡入效果（因为已经是满音量了）
-    await play(nextMusic, startPosition: crossfadePosition, skipFadeIn: true);
-
-    // 交叉淡化完成
-    _isCrossfading = false;
   }
 
   /// 简单淡出（当没有预加载时使用）

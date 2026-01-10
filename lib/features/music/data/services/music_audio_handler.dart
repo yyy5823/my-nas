@@ -767,9 +767,12 @@ class MusicAudioHandler extends BaseAudioHandler
       state == ProcessingState.buffering || state == ProcessingState.loading);
 
   /// 播放完成流
+  /// 使用 distinct 确保只有状态变化时才发出事件
+  /// 这避免了快速的状态变化（completed -> idle）导致事件丢失
   @override
   Stream<bool> get completedStream => _player.processingStateStream
-      .map((state) => state == ProcessingState.completed);
+      .map((state) => state == ProcessingState.completed)
+      .distinct();
 
   // ==================== 刷新 Now Playing ====================
 

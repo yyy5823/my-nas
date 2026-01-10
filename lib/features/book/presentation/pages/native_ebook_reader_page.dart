@@ -194,6 +194,7 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
   bool _showControls = false;
   bool _showToc = false;
   bool _showTTS = false;
+  bool _userClosedTTS = false; // 用户手动关闭 TTS，防止自动重启
 
   // 进度保存防抖
   Timer? _saveProgressTimer;
@@ -328,6 +329,8 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
         .where((p) => p.trim().isNotEmpty)
         .toList();
 
+    // 用户开始 TTS，清除用户关闭标志
+    _userClosedTTS = false;
     setState(() => _showTTS = true);
 
     await ttsNotifier.speakParagraphs(
@@ -339,7 +342,8 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
       onAllComplete: () {
         // 朗读完成，检查是否自动播放下一页
         final settings = ref.read(ttsProvider).settings;
-        if (settings.autoPlayNextChapter && _currentPage < state.pages.length - 1) {
+        // 如果用户已手动关闭，不自动播放下一页
+        if (!_userClosedTTS && settings.autoPlayNextChapter && _currentPage < state.pages.length - 1) {
           _goToPage(_currentPage + 1);
           Future.delayed(const Duration(milliseconds: 300), _startTTS);
         }
@@ -512,7 +516,10 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
         // TTS 浮动控制栏（新设计，不遮挡内容）
         if (_showTTS)
           FloatingTTSControl(
-            onClose: () => setState(() => _showTTS = false),
+            onClose: () {
+              _userClosedTTS = true; // 标记用户手动关闭
+              setState(() => _showTTS = false);
+            },
             backgroundColor: settings.theme.backgroundColor,
           ),
       ],
