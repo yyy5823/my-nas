@@ -95,9 +95,13 @@ abstract class SmbConnect {
     bool debugPrintLowLevel = false,
     bool forceSmb1 = false,
     Function(SmbConnect)? onDisconnect,
+    /// 是否启用心跳保活（默认启用）
+    bool enableHeartbeat = true,
+    /// 心跳间隔（默认 3 分钟）
+    Duration heartbeatInterval = const Duration(minutes: 3),
   }) async {
     final creds = _buildCredentials(username, password, domain);
-    return await connect(
+    final conn = await connect(
         BaseConfiguration(
           credentials: creds,
           username: username,
@@ -113,6 +117,13 @@ abstract class SmbConnect {
         ),
         host,
         onDisconnect: onDisconnect);
+
+    // 启用心跳保活
+    if (enableHeartbeat) {
+      conn.startHeartbeat(heartbeatInterval);
+    }
+
+    return conn;
   }
 
   final Configuration configuration;
@@ -150,6 +161,29 @@ abstract class SmbConnect {
     }
     await transport.close();
   }
+
+  /// 启动心跳定时器
+  ///
+  /// 定期发送 SMB2 ECHO 请求来保持连接活跃。
+  /// [interval] 心跳间隔，默认 3 分钟
+  void startHeartbeat([Duration? interval]) {
+    transport.startHeartbeat(interval);
+  }
+
+  /// 停止心跳定时器
+  void stopHeartbeat() {
+    transport.stopHeartbeat();
+  }
+
+  /// 发送 ECHO 请求检测连接是否活跃
+  ///
+  /// 返回 true 表示连接正常，false 表示连接已断开
+  Future<bool> sendEcho() async {
+    return await transport.sendEcho();
+  }
+
+  /// 检查连接是否已关闭
+  bool get isClosed => transport.isClosed;
 
   Future<SmbFile> file(String path);
 

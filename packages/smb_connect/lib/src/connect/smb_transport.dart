@@ -24,6 +24,7 @@ import 'package:smb_connect/src/connect/impl/smb2/nego/smb2_negotiate_response.d
 import 'package:smb_connect/src/connect/impl/smb2/server_message_block2_request.dart';
 import 'package:smb_connect/src/connect/impl/smb2/server_message_block2_response.dart';
 import 'package:smb_connect/src/connect/impl/smb2/smb2_constants.dart';
+import 'package:smb_connect/src/connect/impl/smb2/smb2_echo_request.dart';
 import 'package:smb_connect/src/connect/transport/request.dart';
 import 'package:smb_connect/src/connect/transport/response.dart';
 import 'package:smb_connect/src/crypto/crypto.dart';
@@ -86,6 +87,18 @@ class SmbTransport {
   /// 缓冲区池（懒加载单例）
   BufferCacheImpl? _bufferCache;
 
+  /// 心跳定时器
+  Timer? _heartbeatTimer;
+
+  /// 心跳间隔（默认 3 分钟，比大多数服务器的 idle timeout 短）
+  Duration heartbeatInterval = const Duration(minutes: 3);
+
+  /// 上次活动时间
+  DateTime _lastActivityTime = DateTime.now();
+
+  /// 心跳是否启用
+  bool _heartbeatEnabled = false;
+
   SmbTransport(
     this.config,
     this.host, [
@@ -97,6 +110,9 @@ class SmbTransport {
   Future close() async {
     if (_closed) return;
     _closed = true;
+
+    // 停止心跳
+    stopHeartbeat();
 
     if (config.debugPrint) {
       print("Smb transport close called");
@@ -112,6 +128,96 @@ class SmbTransport {
     } catch (_) {
       // 忽略关闭时的错误
     }
+  }
+
+  /// 启动心跳定时器
+  ///
+  /// 定期发送 SMB2 ECHO 请求来保持连接活跃。
+  /// 只有在空闲时才发送心跳，如果最近有活动则跳过。
+  void startHeartbeat([Duration? interval]) {
+    if (_heartbeatEnabled) return;
+    if (!isSMB2()) {
+      // SMB1 不支持 ECHO，暂不实现
+      return;
+    }
+
+    _heartbeatEnabled = true;
+    if (interval != null) {
+      heartbeatInterval = interval;
+    }
+
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(heartbeatInterval, (_) async {
+      if (_closed || !_heartbeatEnabled) {
+        stopHeartbeat();
+        return;
+      }
+
+      // 如果最近有活动，跳过本次心跳
+      final idleTime = DateTime.now().difference(_lastActivityTime);
+      if (idleTime < heartbeatInterval - const Duration(seconds: 30)) {
+        if (config.debugPrint) {
+          print("Heartbeat skipped, recent activity ${idleTime.inSeconds}s ago");
+        }
+        return;
+      }
+
+      try {
+        await sendEcho();
+        if (config.debugPrint) {
+          print("Heartbeat sent successfully");
+        }
+      } catch (e) {
+        if (config.debugPrint) {
+          print("Heartbeat failed: $e");
+        }
+        // 心跳失败可能意味着连接已断开
+        // 不主动关闭，让下次实际操作时发现并处理
+      }
+    });
+
+    if (config.debugPrint) {
+      print("Heartbeat started with interval ${heartbeatInterval.inSeconds}s");
+    }
+  }
+
+  /// 停止心跳定时器
+  void stopHeartbeat() {
+    _heartbeatEnabled = false;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    if (config.debugPrint) {
+      print("Heartbeat stopped");
+    }
+  }
+
+  /// 发送 SMB2 ECHO 请求
+  ///
+  /// 用于保持连接活跃或检测连接是否仍然有效。
+  Future<bool> sendEcho() async {
+    if (_closed) return false;
+    if (!isSMB2()) {
+      throw SmbException("ECHO is only supported for SMB2");
+    }
+
+    try {
+      final request = Smb2EchoRequest(config);
+      await sendrecv(request);
+      _lastActivityTime = DateTime.now();
+      return true;
+    } catch (e) {
+      if (config.debugPrint) {
+        print("ECHO failed: $e");
+      }
+      return false;
+    }
+  }
+
+  /// 更新最后活动时间
+  ///
+  /// 在任何成功的操作后调用，用于优化心跳频率
+  void updateActivityTime() {
+    _lastActivityTime = DateTime.now();
   }
 
   SmbNegotiationResponse? getNegotiatedResponse() => _negotiated;
