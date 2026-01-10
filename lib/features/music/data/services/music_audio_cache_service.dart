@@ -103,6 +103,64 @@ class MusicAudioCacheService {
     }
     return false;
   }
+  
+  /// 检查缓存文件是否存在、完整且大小大致正确
+  /// 
+  /// [expectedSize] 期望的文件大小（从 MusicItem 元数据获取）
+  /// [tolerancePercent] 允许的大小误差百分比（默认 5%）
+  /// 
+  /// 使用百分比容差而非精确匹配的原因：
+  /// 1. MusicItem 元数据可能来自自动/手动刮削，与实际文件大小有偏差
+  /// 2. 真正损坏的文件通常会有显著的大小差异（如 50%+）
+  /// 3. 小范围误差（<5%）通常表示元数据过时，而非文件损坏
+  Future<bool> isCachedWithSizeCheck(
+    String? sourceId,
+    String filePath,
+    int expectedSize, {
+    double tolerancePercent = 5.0,
+  }) async {
+    if (!_initialized) await init();
+    if (expectedSize <= 0) {
+      // 没有预期大小时退回到普通检查
+      return isCached(sourceId, filePath);
+    }
+
+    try {
+      final file = await getCacheFile(sourceId, filePath);
+      if (await file.exists()) {
+        final actualSize = await file.length();
+        if (actualSize <= 0) return false;
+
+        // 检查是否存在 .part 文件
+        final partFile = File('${file.path}.part');
+        if (await partFile.exists()) {
+          logger.d('MusicAudioCache: 缓存文件存在但下载未完成');
+          return false;
+        }
+
+        // 使用百分比容差检查文件大小
+        // 允许 tolerancePercent% 的误差，处理元数据不精确的情况
+        final sizeDiffPercent = ((actualSize - expectedSize).abs() / expectedSize) * 100;
+        if (sizeDiffPercent > tolerancePercent) {
+          // 大小差异超过容差，可能是真正的损坏或完全不同的文件
+          logger.w('MusicAudioCache: 缓存文件大小差异过大! '
+              '期望=$expectedSize, 实际=$actualSize, 差异=${sizeDiffPercent.toStringAsFixed(1)}%');
+          // 不自动删除，因为大小不匹配可能是元数据问题而非缓存损坏
+          // 返回 false 让播放逻辑使用流式播放
+          return false;
+        }
+
+        // 大小在容差范围内，记录日志供诊断
+        if (sizeDiffPercent > 0.1) {
+          logger.d('MusicAudioCache: 缓存大小有小偏差 (${sizeDiffPercent.toStringAsFixed(1)}%)，在容差范围内');
+        }
+        return true;
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '检查缓存失败，非关键功能');
+    }
+    return false;
+  }
 
 
   /// 检查缓存文件是否正在下载中（有 .part 文件）

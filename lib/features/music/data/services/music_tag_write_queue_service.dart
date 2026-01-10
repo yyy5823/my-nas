@@ -252,6 +252,7 @@ class MusicTagWriteQueueService {
         fileSystem,
         task.musicPath,
         tagDataWithCover,
+        sourceId: task.sourceId,
       );
 
       if (!result.success) {

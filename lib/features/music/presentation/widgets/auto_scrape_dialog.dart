@@ -677,7 +677,12 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         coverMimeType: coverMimeType,
       );
 
-      final result = await _tagWriter.writeToNasFile(fileSystem, musicPath, tagData);
+      final result = await _tagWriter.writeToNasFile(
+        fileSystem, 
+        musicPath, 
+        tagData,
+        sourceId: widget.music.sourceId,
+      );
 
       if (!result.success) {
         throw Exception(result.error);

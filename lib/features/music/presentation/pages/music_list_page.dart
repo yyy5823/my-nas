@@ -18,6 +18,7 @@ import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/background_task_pool.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
@@ -1558,6 +1559,8 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   Future<void> forceRefresh() async {
     await _db.clearAll();
     await _coverCache.clearAll();
+    // 同时清除音频文件缓存，避免播放过时的缓存文件
+    await MusicAudioCacheService().clearAll();
     await loadMusic(forceRefresh: true);
   }
 
@@ -2053,6 +2056,8 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             onPressed: () {
               _searchController.clear();
               ref.read(musicListProvider.notifier).setSearchQuery('');
+              // 同时关闭搜索界面
+              setState(() => _showSearch = false);
             },
             icon: Icon(Icons.close, color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
           ),
@@ -2532,7 +2537,29 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       );
     }
 
-    return _buildMusicContent(context, ref, state, isDark);
+    // 搜索结果不使用 RefreshIndicator，避免下拉触发重新扫描
+    return CustomScrollView(
+      slivers: [
+        // 音乐列表
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => AnimatedListItem(
+                index: index,
+                child: _MusicListTile(
+                  track: state.filteredTracks[index],
+                  index: index,
+                  isDark: isDark,
+                ),
+              ),
+              childCount: state.filteredTracks.length,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 80)),
+      ],
+    );
   }
 
   void _navigateToCategory(BuildContext context, MusicCategory category, MusicListLoaded state) {
@@ -3014,37 +3041,6 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       ),
     );
   }
-
-  Widget _buildMusicContent(
-    BuildContext context,
-    WidgetRef ref,
-    MusicListLoaded state,
-    bool isDark,
-  ) => RefreshIndicator(
-      onRefresh: () => ref.read(musicListProvider.notifier).forceRefresh(),
-      child: CustomScrollView(
-        slivers: [
-          // 音乐列表
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => AnimatedListItem(
-                  index: index,
-                  child: _MusicListTile(
-                    track: state.filteredTracks[index],
-                    index: index,
-                    isDark: isDark,
-                  ),
-                ),
-                childCount: state.filteredTracks.length,
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 80)),
-        ],
-      ),
-    );
 }
 
 // ==================== 新版首页组件 ====================

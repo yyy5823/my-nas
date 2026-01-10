@@ -12,6 +12,7 @@ import 'package:audio_metadata_reader/audio_metadata_reader.dart'
         PictureType,
         updateMetadata;
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -320,11 +321,13 @@ class MusicTagWriterService {
   /// 注意：这需要下载文件、修改、再上传
   /// 对于 NCM 文件，会解密并保存为新的 MP3/FLAC 文件
   /// [convertedPath] 用于返回 NCM 转换后的新文件路径
+  /// [sourceId] 用于删除对应的音频缓存（修改文件后旧缓存无效）
   Future<MusicTagWriteResult> writeToNasFile(
     NasFileSystem fileSystem,
     String remotePath,
     MusicTagData tagData, {
     void Function(String newPath)? onConverted,
+    String? sourceId,
   }) async {
     if (!_initialized) await init();
 
@@ -339,7 +342,7 @@ class MusicTagWriterService {
 
     // NCM 文件需要特殊处理
     if (format == SupportedAudioFormat.ncm) {
-      return _writeToNcmFile(fileSystem, remotePath, tagData, onConverted);
+      return _writeToNcmFile(fileSystem, remotePath, tagData, onConverted, sourceId);
     }
 
     File? tempFile;
@@ -372,6 +375,17 @@ class MusicTagWriterService {
       final modifiedData = await tempFile.readAsBytes();
       await fileSystem.writeFile(remotePath, modifiedData);
 
+      // 文件已被修改，删除对应的本地音频缓存
+      // 这样下次播放时会重新从 NAS 获取新文件
+      if (sourceId != null) {
+        try {
+          await MusicAudioCacheService().deleteCache(sourceId, remotePath);
+          logger.i('MusicTagWriterService: 已删除音频缓存 (文件已修改)');
+        } on Exception catch (e) {
+          logger.w('MusicTagWriterService: 删除音频缓存失败: $e');
+        }
+      }
+
       logger.i('MusicTagWriterService: NAS 文件标签写入成功');
       return result;
     } on Exception catch (e, st) {
@@ -398,6 +412,7 @@ class MusicTagWriterService {
     String remotePath,
     MusicTagData tagData,
     void Function(String newPath)? onConverted,
+    String? sourceId,
   ) async {
     File? tempNcmFile;
     File? tempAudioFile;
@@ -455,6 +470,17 @@ class MusicTagWriterService {
       final modifiedData = await tempAudioFile.readAsBytes();
       await fileSystem.writeFile(newPath, modifiedData);
 
+      // 删除原 NCM 文件和新文件的音频缓存
+      if (sourceId != null) {
+        try {
+          await MusicAudioCacheService().deleteCache(sourceId, remotePath);
+          await MusicAudioCacheService().deleteCache(sourceId, newPath);
+          logger.i('MusicTagWriterService: 已删除 NCM 相关音频缓存');
+        } on Exception catch (e) {
+          logger.w('MusicTagWriterService: 删除音频缓存失败: $e');
+        }
+      }
+
       // 通知调用者新文件路径
       onConverted?.call(newPath);
 
@@ -507,10 +533,12 @@ class MusicTagWriterService {
   }
 
   /// 批量写入标签
+  /// [sourceId] 用于删除音频缓存（可选，如果所有文件来自同一个源）
   Future<Map<String, MusicTagWriteResult>> writeBatch(
     NasFileSystem fileSystem,
-    Map<String, MusicTagData> files,
-  ) async {
+    Map<String, MusicTagData> files, {
+    String? sourceId,
+  }) async {
     final results = <String, MusicTagWriteResult>{};
 
     for (final entry in files.entries) {
@@ -519,7 +547,7 @@ class MusicTagWriterService {
 
       logger.d('MusicTagWriterService: 批量写入 ${files.keys.toList().indexOf(path) + 1}/${files.length}: $path');
 
-      results[path] = await writeToNasFile(fileSystem, path, tagData);
+      results[path] = await writeToNasFile(fileSystem, path, tagData, sourceId: sourceId);
 
       // 添加小延迟避免过快
       await Future<void>.delayed(const Duration(milliseconds: 100));
