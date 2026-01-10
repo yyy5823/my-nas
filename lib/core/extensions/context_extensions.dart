@@ -44,11 +44,20 @@ extension BuildContextExtensions on BuildContext {
         if (uiStyle.isGlass) {
           // UITabBar 标准高度约 49pt
           padding += 49;
+        } else {
+          // 经典模式：Flutter 底部导航栏高度（56 + SafeArea）
+          // 由于 MainScaffold 使用 extendBody: true，需要添加导航栏高度
+          padding += 56;
         }
       } on Exception catch (_) {
-        // 如果无法访问 provider，使用默认值
+        // 如果无法访问 provider，使用默认值（经典模式假设）
+        padding += 56;
       }
+    } else if (!kIsWeb && Platform.isAndroid) {
+      // Android 经典模式也需要添加导航栏高度
+      padding += 56;
     }
+    // 桌面端使用侧边导航栏，不需要额外底部 padding
 
     return padding;
   }

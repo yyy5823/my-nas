@@ -7,6 +7,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
@@ -1743,9 +1744,43 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   final _searchController = TextEditingController();
   bool _showSearch = false;
 
+  /// 上一次 didChangeDependencies 时的路由路径
+  /// 用于检测路由变化并在必要时重置搜索状态
+  String? _lastRoutePath;
+
   @override
   void initState() {
     super.initState();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // 检测路由变化，当从其他 Tab 返回时重置搜索模式
+    try {
+      final currentPath = GoRouterState.of(context).uri.path;
+      final previousPath = _lastRoutePath;
+      _lastRoutePath = currentPath;
+
+      // 如果之前在其他 Tab（非音乐页面），现在回到音乐页面，且搜索模式开启
+      // 则重置搜索状态，让用户看到主界面
+      if (previousPath != null &&
+          previousPath != currentPath &&
+          currentPath == '/music' &&
+          _showSearch) {
+        // 使用 addPostFrameCallback 避免在 build 过程中调用 setState
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _showSearch) {
+            setState(() => _showSearch = false);
+            _searchController.clear();
+            ref.read(musicListProvider.notifier).setSearchQuery('');
+          }
+        });
+      }
+    } catch (_) {
+      // GoRouterState.of 可能在某些情况下抛出异常，忽略
+    }
   }
 
   @override
@@ -1753,6 +1788,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     _searchController.dispose();
     super.dispose();
   }
+
 
   /// 获取问候语
   String _getGreeting() {
@@ -3230,26 +3266,42 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage>
             ),
             // 标题和歌曲数量
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '所有歌曲',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      flex: 0,
+                      child: Text(
+                        '所有歌曲',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                          height: 1.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  Text(
-                    '共 $trackCount 首',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                    Flexible(
+                      flex: 0,
+                      child: Text(
+                        '共 $trackCount 首',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                          height: 1.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             // 视图切换按钮（仅桌面端显示）
