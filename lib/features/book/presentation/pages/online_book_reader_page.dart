@@ -7,7 +7,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/book/domain/entities/book_source.dart';
 import 'package:my_nas/features/book/presentation/providers/book_search_provider.dart';
 import 'package:my_nas/features/book/presentation/providers/tts_provider.dart';
-import 'package:my_nas/features/book/presentation/widgets/tts_control_bar.dart';
+import 'package:my_nas/features/book/presentation/widgets/floating_tts_control.dart';
 import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// 在线书籍阅读页面
@@ -118,16 +118,11 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
                 child: _buildBottomBar(isDark),
               ),
             ],
-            // TTS 控制栏
+            // TTS 浮动控制栏
             if (_showTTS)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: TTSControlBar(
-                  onClose: () => setState(() => _showTTS = false),
-                  backgroundColor: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5DC),
-                ),
+              FloatingTTSControl(
+                onClose: () => setState(() => _showTTS = false),
+                backgroundColor: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5DC),
               ),
           ],
         ),
@@ -375,6 +370,10 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
 
     await ttsNotifier.speakParagraphs(
       paragraphs,
+      onParagraphChanged: (paragraphIndex) {
+        // TTS 段落变化时的回调
+        debugPrint('TTS: 当前段落 $paragraphIndex');
+      },
       onAllComplete: () {
         // 朗读完成，检查是否自动播放下一章
         final settings = ref.read(ttsProvider).settings;

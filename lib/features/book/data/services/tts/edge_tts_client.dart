@@ -7,7 +7,9 @@ import 'dart:typed_data';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/tts/edge_tts_voices.dart';
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+
 
 /// Edge TTS 客户端
 ///
@@ -54,7 +56,18 @@ class EdgeTTSClient {
         '$_wsUrl?TrustedClientToken=$_trustedClientToken&ConnectionId=$connectionId',
       );
 
-      _channel = WebSocketChannel.connect(uri);
+      // 使用 IOWebSocketChannel 并添加必要的请求头模拟 Edge 浏览器
+      _channel = IOWebSocketChannel.connect(
+        uri,
+        headers: {
+          'Pragma': 'no-cache',
+          'Cache-Control': 'no-cache',
+          'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+        },
+      );
       await _channel!.ready;
 
       _isConnected = true;
@@ -82,6 +95,7 @@ class EdgeTTSClient {
       rethrow;
     }
   }
+
 
   /// 断开连接
   void _disconnect() {

@@ -93,6 +93,7 @@ class TTSNotifier extends StateNotifier<TTSState> {
   // 段落完成回调
   void Function()? _onParagraphComplete;
   void Function()? _onAllComplete;
+  void Function(int paragraphIndex)? _onParagraphChanged;
 
   /// 初始化
   Future<void> init() async {
@@ -162,6 +163,7 @@ class TTSNotifier extends StateNotifier<TTSState> {
     int startIndex = 0,
     void Function()? onParagraphComplete,
     void Function()? onAllComplete,
+    void Function(int paragraphIndex)? onParagraphChanged,
   }) async {
     if (!state.isInitialized) await init();
 
@@ -169,6 +171,7 @@ class TTSNotifier extends StateNotifier<TTSState> {
     _currentParagraphIndex = startIndex.clamp(0, paragraphs.length - 1);
     _onParagraphComplete = onParagraphComplete;
     _onAllComplete = onAllComplete;
+    _onParagraphChanged = onParagraphChanged;
 
     state = state.copyWith(
       currentParagraphIndex: _currentParagraphIndex,
@@ -235,6 +238,7 @@ class TTSNotifier extends StateNotifier<TTSState> {
       _currentParagraphIndex--;
       state = state.copyWith(currentParagraphIndex: _currentParagraphIndex);
       state = state.clearHighlight();
+      _onParagraphChanged?.call(_currentParagraphIndex);
       await _speakCurrentParagraph();
     }
   }
@@ -246,6 +250,7 @@ class TTSNotifier extends StateNotifier<TTSState> {
       _currentParagraphIndex++;
       state = state.copyWith(currentParagraphIndex: _currentParagraphIndex);
       state = state.clearHighlight();
+      _onParagraphChanged?.call(_currentParagraphIndex);
       await _speakCurrentParagraph();
     }
   }

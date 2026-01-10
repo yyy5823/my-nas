@@ -241,9 +241,17 @@ class MobiHeaderParser {
           fullNameOffset + fullNameLength,
         );
         if (nameBytes.isNotEmpty) {
-          title = encoding == MobiEncoding.utf8
-              ? String.fromCharCodes(nameBytes)
-              : readFixedString(nameBytes, 0, nameBytes.length);
+          // 正确解码 UTF-8 文本
+          if (encoding == MobiEncoding.utf8) {
+            try {
+              title = utf8Decode(nameBytes);
+            } on FormatException {
+              // 解码失败，尝试作为 Latin-1 处理
+              title = String.fromCharCodes(nameBytes);
+            }
+          } else {
+            title = readFixedString(nameBytes, 0, nameBytes.length);
+          }
         }
       }
 

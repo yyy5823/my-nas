@@ -24,7 +24,7 @@ import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:my_nas/features/book/presentation/providers/tts_provider.dart';
-import 'package:my_nas/features/book/presentation/widgets/tts_control_bar.dart';
+import 'package:my_nas/features/book/presentation/widgets/floating_tts_control.dart';
 import 'package:my_nas/features/book/data/services/tts/tts_service.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -240,10 +240,14 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
 
   NativeEpubPaginator get _paginator => NativeEpubPaginator.instance;
 
+  // 缓存最后的阅读状态用于 dispose 时保存
+  NativeEbookLoaded? _lastLoadedState;
+
   @override
   void dispose() {
     _saveProgressTimer?.cancel();
-    _saveProgressImmediately();
+    // 使用缓存的状态保存进度，避免 ref.read() 错误
+    _saveProgressImmediatelyWithState(_lastLoadedState);
     // 停止 TTS 播放 - 使用直接服务调用确保可靠停止
     TTSService.instance.stop();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -262,8 +266,15 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
   }
 
   Future<void> _saveProgressImmediately() async {
+    if (!mounted) return;
     final state = ref.read(nativeEbookReaderProvider(widget.book));
     if (state is! NativeEbookLoaded) return;
+    _lastLoadedState = state; // 缓存状态
+    await _saveProgressImmediatelyWithState(state);
+  }
+
+  Future<void> _saveProgressImmediatelyWithState(NativeEbookLoaded? state) async {
+    if (state == null) return;
 
     final itemId = _progressService.generateItemId(
       widget.book.sourceId ?? 'local',
@@ -321,6 +332,10 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
 
     await ttsNotifier.speakParagraphs(
       paragraphs,
+      onParagraphChanged: (paragraphIndex) {
+        // TTS 段落变化时的回调（可用于滚动到对应位置）
+        debugPrint('TTS: 当前段落 $paragraphIndex');
+      },
       onAllComplete: () {
         // 朗读完成，检查是否自动播放下一页
         final settings = ref.read(ttsProvider).settings;
@@ -494,16 +509,11 @@ class _NativeEbookReaderPageState extends ConsumerState<NativeEbookReaderPage> {
         ],
         // 目录抽屉
         if (_showToc) _buildTocDrawer(state, settings),
-        // TTS 控制栏
+        // TTS 浮动控制栏（新设计，不遮挡内容）
         if (_showTTS)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: TTSControlBar(
-              onClose: () => setState(() => _showTTS = false),
-              backgroundColor: settings.theme.backgroundColor,
-            ),
+          FloatingTTSControl(
+            onClose: () => setState(() => _showTTS = false),
+            backgroundColor: settings.theme.backgroundColor,
           ),
       ],
     );

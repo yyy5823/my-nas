@@ -166,6 +166,11 @@ class SharedLogger {
     func readPendingLogs() -> [LogEntry] {
         guard isMainApp, let fileURL = logFileURL else { return [] }
 
+        // 检查文件是否存在，避免不必要的错误日志
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            return []
+        }
+
         do {
             let content = try String(contentsOf: fileURL, encoding: .utf8)
             let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
@@ -182,6 +187,7 @@ class SharedLogger {
             return []
         }
     }
+
 
     /// 清空已上传的日志（主 App 调用）
     func clearLogs() {

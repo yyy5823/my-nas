@@ -6,6 +6,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+/// UTF-8 解码辅助函数
+String utf8Decode(List<int> bytes) => utf8.decode(bytes);
+
 /// 读取大端序 16 位无符号整数
 int readUint16BE(List<int> bytes, int offset) {
   if (offset + 2 > bytes.length) return 0;

@@ -1283,7 +1283,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         Row(
           children: [
             // 左侧问候语和统计
-            Expanded(
+            Flexible(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -1294,28 +1294,33 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                       fontWeight: FontWeight.bold,
                       color: isDark ? Colors.white : Colors.black87,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
                   if (state is BookListLoaded)
-                    Row(
-                      children: [
-                        _buildStatChip(
-                          icon: Icons.menu_book_rounded,
-                          label: '${state.totalCount} 本图书',
-                          color: _themeColor,
-                          isDark: isDark,
-                        ),
-                        if (isWideScreen && state.formatStats.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          ...state.formatStats.entries.take(2).map(
-                                (entry) => Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: _buildFormatChip(
-                                      entry.key, entry.value, isDark),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildStatChip(
+                            icon: Icons.menu_book_rounded,
+                            label: '${state.totalCount} 本图书',
+                            color: _themeColor,
+                            isDark: isDark,
+                          ),
+                          if (isWideScreen && state.formatStats.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            ...state.formatStats.entries.take(2).map(
+                                  (entry) => Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: _buildFormatChip(
+                                        entry.key, entry.value, isDark),
+                                  ),
                                 ),
-                              ),
+                          ],
                         ],
-                      ],
+                      ),
                     )
                   else
                     Text(

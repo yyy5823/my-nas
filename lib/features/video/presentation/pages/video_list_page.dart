@@ -2173,7 +2173,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
 
     return Row(
       children: [
-        Expanded(
+        Flexible(
+          // 使用 Flexible 替代 Expanded，允许内容在空间不足时收缩
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -2184,6 +2185,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
               if (videoCount > 0 || isScraping)
