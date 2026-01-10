@@ -17,6 +17,7 @@ import 'package:my_nas/features/music/data/services/music_audio_handler_interfac
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_favorites_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
+import 'package:my_nas/features/music/data/services/ffmpeg_audio_tag_service.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
@@ -50,6 +51,16 @@ enum PlayMode {
 
   /// 随机播放
   shuffle,
+}
+
+/// FLAC 文件已修复，需要重试播放的异常
+/// 用于内部通知 play() 方法重新尝试
+ class FlacRepairedNeedRetryException implements Exception {
+  FlacRepairedNeedRetryException(this.music);
+  final MusicItem music;
+
+  @override
+  String toString() => 'FlacRepairedNeedRetryException: FLAC 文件已修复，需要重试播放';
 }
 
 /// 播放器状态
@@ -1083,10 +1094,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 播放指定音乐
   /// [skipFadeIn] 如果为 true，跳过淡入效果（用于交叉淡化完成后）
-  Future<void> play(MusicItem music, {Duration? startPosition, bool skipFadeIn = false}) async {
+  Future<void> play(MusicItem music, {Duration? startPosition, bool skipFadeIn = false, bool isRetryAfterRepair = false}) async {
     // 防止并发播放操作
     // 如果已有播放操作进行中，等待一小段时间后再尝试
-    if (_isPlayOperationInProgress) {
+    if (_isPlayOperationInProgress && !isRetryAfterRepair) {
       logger.w('MusicPlayer: 播放操作进行中，跳过本次请求: ${music.name}');
       return;
     }
@@ -1102,8 +1113,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     state = state.copyWith(isBuffering: true);
 
     logger..i('MusicPlayer: 开始播放 ${music.name}')
-    ..d('MusicPlayer: URL => ${music.url}')
-    ..d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
+      ..d('MusicPlayer: URL => ${music.url}')
+      ..d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
 
     // iOS 不支持格式检测：当使用 just_audio 引擎在 iOS 上播放 FLAC 等格式时
     // 通知 UI 层显示切换引擎的提示
@@ -1179,11 +1190,40 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
             'isCached=$isCached');
 
         if (isCached) {
-          // 已有缓存，直接播放本地文件
-          logger.i('MusicPlayer: 使用本地缓存播放 ${cacheFile.path}');
-          audioSourceUrl = Uri.file(cacheFile.path).toString();
-          audioSource = AudioSource.uri(Uri.file(cacheFile.path));
-          isCachedLocalFile = true; // 标记使用了缓存文件，用于失败时的回退处理
+          // iOS 上使用 LockCachingAudioSource 播放缓存的 FLAC 文件
+          // 因为 AudioSource.uri(file://) 无法正确解码 LockCachingAudioSource 生成的 FLAC 缓存
+          // LockCachingAudioSource 会自动检测缓存是否存在并使用其内部机制读取
+          if (Platform.isIOS && _isFlacFile(music.path)) {
+            logger.i('MusicPlayer: iOS FLAC 使用 LockCachingAudioSource 播放缓存');
+            final connections = _ref.read(activeConnectionsProvider);
+            final connection = connections[music.sourceId];
+            if (connection != null) {
+              final proxyUrl = await _mediaProxyServer.registerFile(
+                sourceId: music.sourceId!,
+                filePath: music.path,
+                fileSize: music.size ?? 0,
+              );
+              _currentProxyId = proxyUrl.split('/').last;
+              audioSourceUrl = proxyUrl;
+              // ignore: experimental_member_use
+              audioSource = LockCachingAudioSource(
+                Uri.parse(proxyUrl),
+                cacheFile: cacheFile,
+              );
+            } else {
+              // 连接不可用，回退到直接文件播放
+              logger.w('MusicPlayer: iOS FLAC 连接不可用，使用直接文件播放');
+              audioSourceUrl = Uri.file(cacheFile.path).toString();
+              audioSource = AudioSource.uri(Uri.file(cacheFile.path));
+              isCachedLocalFile = true;
+            }
+          } else {
+            // 其他平台或非 FLAC 文件直接播放本地缓存
+            logger.i('MusicPlayer: 使用本地缓存播放 ${cacheFile.path}');
+            audioSourceUrl = Uri.file(cacheFile.path).toString();
+            audioSource = AudioSource.uri(Uri.file(cacheFile.path));
+            isCachedLocalFile = true; // 标记使用了缓存文件，用于失败时的回退处理
+          }
         } else {
           // 无缓存，使用流式播放并缓存
           final connections = _ref.read(activeConnectionsProvider);
@@ -1290,7 +1330,25 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
             rethrow;
           }
         } else {
-          // 非缓存文件播放失败，直接抛出
+          // 非缓存文件播放失败
+          // 检查是否是 iOS FLAC -11800 错误，尝试自动修复
+          final errorMessage = e.toString();
+          if (Platform.isIOS && 
+              _isFlacFile(music.path) && 
+              errorMessage.contains('-11800')) {
+            logger.w('MusicPlayer: iOS FLAC -11800 错误检测，尝试自动修复文件');
+            
+            // 尝试修复文件
+            final repaired = await _tryRepairFlacFile(music);
+            if (repaired) {
+              // 修复成功，递归重试播放（设置标志防止无限循环）
+              logger.i('MusicPlayer: FLAC 文件修复成功，重新尝试播放');
+              // 注意：这里不递归调用 play()，而是抛出特殊异常让外层处理
+              // 以避免递归调用导致的栈溢出风险
+              throw FlacRepairedNeedRetryException(music);
+            }
+          }
+          
           AppError.handle(e, st, 'MusicPlayer.play.setAudioSource');
           rethrow;
         }
@@ -1386,6 +1444,17 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         _extractMetadataInBackground(music),
         action: 'extractMusicMetadata',
       );
+    } on FlacRepairedNeedRetryException catch (e) {
+      // FLAC 文件已修复，需要重试播放
+      if (!isRetryAfterRepair) {
+        logger.i('MusicPlayer: FLAC 文件已修复，重新尝试播放');
+        _isPlayOperationInProgress = false;
+        return play(e.music, startPosition: startPosition, skipFadeIn: skipFadeIn, isRetryAfterRepair: true);
+      } else {
+        // 已经是重试了，不再继续
+        logger.e('MusicPlayer: FLAC 修复后仍然无法播放');
+        state = state.copyWith(errorMessage: '播放失败: FLAC 文件兼容性问题', isBuffering: false);
+      }
     } on Exception catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
@@ -1405,6 +1474,87 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 检查是否为 NCM 文件
   bool _isNcmFile(String path) => p.extension(path).toLowerCase() == '.ncm';
+
+  /// 检查是否为 FLAC 文件
+  bool _isFlacFile(String path) => p.extension(path).toLowerCase() == '.flac';
+
+  /// 尝试修复损坏的 FLAC 文件
+  ///
+  /// 使用 FFmpeg 重新复制文件以修复结构问题。
+  /// 这对于被 audio_metadata_reader 修改后无法在 iOS 播放的文件特别有用。
+  ///
+  /// 参数:
+  /// - [music]: 要修复的音乐文件
+  ///
+  /// 返回 true 表示修复成功，需要重新尝试播放
+  Future<bool> _tryRepairFlacFile(MusicItem music) async {
+    if (!Platform.isIOS || !_isFlacFile(music.path)) {
+      return false;
+    }
+
+    try {
+      logger.i('MusicPlayer: 尝试修复 FLAC 文件: ${music.path}');
+
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[music.sourceId];
+      if (connection == null) {
+        logger.w('MusicPlayer: 无法获取连接，无法修复文件');
+        return false;
+      }
+
+      final fileSystem = connection.adapter.fileSystem;
+      final ffmpegService = FfmpegAudioTagService();
+
+      // 确保 FFmpeg 可用
+      if (!await ffmpegService.isAvailable()) {
+        logger.w('MusicPlayer: FFmpeg 不可用，无法修复文件');
+        return false;
+      }
+
+      // 下载原文件到临时目录
+      final tempDir = await Directory.systemTemp.createTemp('flac_repair_');
+      final tempInput = File('${tempDir.path}/input.flac');
+      final tempOutput = File('${tempDir.path}/output.flac');
+
+      try {
+        // 下载文件
+        logger.d('MusicPlayer: 下载 FLAC 文件用于修复...');
+        final stream = await fileSystem.getFileStream(music.path);
+        final sink = tempInput.openWrite();
+        await for (final chunk in stream) {
+          sink.add(chunk);
+        }
+        await sink.close();
+        logger.d('MusicPlayer: FLAC 文件下载完成，大小: ${await tempInput.length()} 字节');
+
+        // 使用 FFmpeg 修复
+        final success = await ffmpegService.repairFlacFile(tempInput, tempOutput);
+        if (!success) {
+          logger.w('MusicPlayer: FFmpeg 修复失败');
+          return false;
+        }
+
+        // 上传修复后的文件
+        logger.d('MusicPlayer: 上传修复后的文件...');
+        final repairedData = await tempOutput.readAsBytes();
+        await fileSystem.writeFile(music.path, repairedData);
+
+        // 删除本地缓存（文件已修改）
+        await _audioCacheService.deleteCache(music.sourceId, music.path);
+
+        logger.i('MusicPlayer: FLAC 文件修复完成');
+        return true;
+      } finally {
+        // 清理临时文件
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'FLAC 文件修复失败');
+      return false;
+    }
+  }
 
   /// 获取 NCM 解密后的缓存文件
   /// 如果已有缓存则直接返回，否则解密并缓存

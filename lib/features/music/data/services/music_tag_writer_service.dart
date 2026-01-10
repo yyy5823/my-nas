@@ -12,6 +12,7 @@ import 'package:audio_metadata_reader/audio_metadata_reader.dart'
         PictureType,
         updateMetadata;
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/ffmpeg_audio_tag_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
@@ -193,6 +194,13 @@ class MusicTagWriterService {
         ..i('MusicTagWriterService: 开始写入标签到 ${file.path}')
         ..d('MusicTagWriterService: 格式=${format.displayName}, 标签类型=${format.tagType}');
 
+      // FLAC 文件使用 FFmpeg 写入以保持 iOS AVFoundation 兼容性
+      // audio_metadata_reader 写入的 FLAC 文件会导致 iOS 播放失败（-11800 错误）
+      if (format == SupportedAudioFormat.flac) {
+        logger.i('MusicTagWriterService: FLAC 文件使用 FFmpeg 写入以确保 iOS 兼容性');
+        return _writeFlacWithFfmpeg(file, tagData);
+      }
+
       final updatedFields = <String>[];
 
       // 尝试使用 updateMetadata（需要文件已有元数据）
@@ -315,6 +323,45 @@ class MusicTagWriterService {
 
     logger.i('MusicTagWriterService: 创建新 ID3v2 标签成功, 更新字段: $updatedFields');
     return MusicTagWriteResult.success(updatedFields);
+  }
+
+  /// 使用 FFmpeg 写入 FLAC 标签
+  ///
+  /// 这个方法使用 FFmpeg 而不是 audio_metadata_reader 来写入 FLAC 标签，
+  /// 因为 audio_metadata_reader 写入的 FLAC 文件会导致 iOS AVFoundation
+  /// 播放失败（错误码 -11800）。
+  Future<MusicTagWriteResult> _writeFlacWithFfmpeg(
+    File file,
+    MusicTagData tagData,
+  ) async {
+    try {
+      final ffmpegService = FfmpegAudioTagService();
+
+      // 如果有封面数据，先保存到临时文件
+      File? coverFile;
+      final coverData = tagData.coverData;
+      if (coverData != null && coverData.isNotEmpty) {
+        final coverExt = tagData.coverMimeType?.contains('png') == true ? 'png' : 'jpg';
+        coverFile = File(p.join(_tempDir.path, 'cover_${DateTime.now().millisecondsSinceEpoch}.$coverExt'));
+        await coverFile.writeAsBytes(coverData);
+      }
+
+      try {
+        return await ffmpegService.writeFlacTags(
+          file,
+          tagData,
+          coverFile: coverFile,
+        );
+      } finally {
+        // 清理封面临时文件
+        if (coverFile != null && await coverFile.exists()) {
+          await coverFile.delete();
+        }
+      }
+    } on Exception catch (e, st) {
+      logger.e('MusicTagWriterService: FFmpeg FLAC 写入失败', e, st);
+      return MusicTagWriteResult.failure('FFmpeg FLAC 写入失败: $e');
+    }
   }
 
   /// 写入标签到 NAS 文件
