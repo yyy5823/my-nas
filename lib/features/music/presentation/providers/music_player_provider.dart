@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
@@ -1139,6 +1140,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 根据音频来源选择合适的播放方式
       AudioSource audioSource;
       String audioSourceUrl; // 用于 MediaKit 模式
+      var isCachedLocalFile = false; // 标记是否使用缓存文件播放，用于失败回退
 
       // 检查是否为 NCM 文件，需要先解密
       if (_isNcmFile(music.path) || _isNcmFile(music.name)) {
@@ -1154,15 +1156,34 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         // NAS 源：优先检查本地缓存，避免重复下载
         logger.d('MusicPlayer: 检测到 NAS 源 (sourceId=${music.sourceId})');
 
-        // 检查是否已有完整缓存
+        // 检查是否已有完整缓存（包含文件大小验证）
+        // 注意：LockCachingAudioSource 可能在缓存时混入额外数据导致大小不匹配
         final cacheFile = await _audioCacheService.getCacheFile(music.sourceId, music.path);
-        final isCached = await _audioCacheService.isCached(music.sourceId, music.path);
+        final isCached = await _audioCacheService.isCachedWithSizeCheck(
+          music.sourceId, 
+          music.path,
+          music.size ?? 0,
+        );
+        
+        // 诊断日志：缓存状态
+        final cacheExists = await cacheFile.exists();
+        final cacheSize = cacheExists ? await cacheFile.length() : 0;
+        final partFile = File('${cacheFile.path}.part');
+        final partExists = await partFile.exists();
+        logger.d('MusicPlayer: 缓存诊断 => '
+            'file=${cacheFile.path}, '
+            'exists=$cacheExists, '
+            'cacheSize=$cacheSize, '
+            'expectedSize=${music.size}, '
+            'partExists=$partExists, '
+            'isCached=$isCached');
 
         if (isCached) {
           // 已有缓存，直接播放本地文件
           logger.i('MusicPlayer: 使用本地缓存播放 ${cacheFile.path}');
           audioSourceUrl = Uri.file(cacheFile.path).toString();
           audioSource = AudioSource.uri(Uri.file(cacheFile.path));
+          isCachedLocalFile = true; // 标记使用了缓存文件，用于失败时的回退处理
         } else {
           // 无缓存，使用流式播放并缓存
           final connections = _ref.read(activeConnectionsProvider);
@@ -1219,13 +1240,62 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 设置音频源
       logger.d('MusicPlayer: 设置音频源...');
       Duration? playerDuration;
-      if (_isJustAudioEngine && audioHandler is MusicAudioHandler) {
-        // just_audio 模式：使用原始 AudioSource（支持 cacheFile 等特殊功能）
-        playerDuration = await (audioHandler as MusicAudioHandler).setAudioSourceRaw(audioSource);
-      } else {
-        // MediaKit 模式：使用 URL 字符串
-        playerDuration = await _audioHandler.setAudioSource(audioSourceUrl);
+      
+      // 标记是否使用了缓存文件（用于失败时的回退处理）
+      final usedCacheFile = isCachedLocalFile && music.sourceId != null;
+      
+      try {
+        if (_isJustAudioEngine && audioHandler is MusicAudioHandler) {
+          // just_audio 模式：使用原始 AudioSource（支持 cacheFile 等特殊功能）
+          playerDuration = await (audioHandler as MusicAudioHandler).setAudioSourceRaw(audioSource);
+        } else {
+          // MediaKit 模式：使用 URL 字符串
+          playerDuration = await _audioHandler.setAudioSource(audioSourceUrl);
+        }
+      } on Exception catch (e, st) {
+        // 如果使用缓存文件播放失败（常见于 iOS FLAC 偶发的 -11800 错误）
+        // 注意：just_audio 会将 PlatformException 包装成 PlayerException
+        // 删除可能损坏的缓存并使用流式播放重试
+        if (usedCacheFile) {
+          logger.w('MusicPlayer: 缓存播放失败 ($e)，删除缓存并重试流式播放');
+          await _audioCacheService.deleteCache(music.sourceId, music.path);
+          
+          // 重新使用流式播放模式
+          final connections = _ref.read(activeConnectionsProvider);
+          final connection = connections[music.sourceId];
+          if (connection != null) {
+            final fileInfo = await connection.adapter.fileSystem.getFileInfo(music.path);
+            final proxyUrl = await _mediaProxyServer.registerFile(
+              sourceId: music.sourceId!,
+              filePath: music.path,
+              fileSize: fileInfo.size,
+            );
+            final cacheFile = await _audioCacheService.getCacheFile(music.sourceId, music.path);
+            
+            logger.i('MusicPlayer: 回退到流式播放模式');
+            // ignore: experimental_member_use
+            final streamingSource = LockCachingAudioSource(
+              Uri.parse(proxyUrl),
+              cacheFile: cacheFile,
+            );
+            
+            if (_isJustAudioEngine && audioHandler is MusicAudioHandler) {
+              playerDuration = await (audioHandler as MusicAudioHandler).setAudioSourceRaw(streamingSource);
+            } else {
+              playerDuration = await _audioHandler.setAudioSource(proxyUrl);
+            }
+          } else {
+            // 无法获取连接，重新抛出原始异常
+            AppError.handle(e, st, 'MusicPlayer.play.cachePlaybackFailed');
+            rethrow;
+          }
+        } else {
+          // 非缓存文件播放失败，直接抛出
+          AppError.handle(e, st, 'MusicPlayer.play.setAudioSource');
+          rethrow;
+        }
       }
+      
       logger.d('MusicPlayer: 音频源设置成功');
 
       // 获取播放器时长

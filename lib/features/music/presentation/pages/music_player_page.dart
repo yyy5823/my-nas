@@ -113,8 +113,14 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   @override
   void dispose() {
     // 清理 iOS 不支持格式检测回调
-    ref.read(musicPlayerControllerProvider.notifier)
-        .removeUnsupportedFormatCallback();
+    // 注意：在某些情况下（如快速导航），widget 可能在 unmount 过程中被销毁
+    // 此时 ref 已不可用，需要捕获异常
+    try {
+      ref.read(musicPlayerControllerProvider.notifier)
+          .removeUnsupportedFormatCallback();
+    } catch (_) {
+      // 忽略 ref 不可用的情况，回调会在 notifier dispose 时自动清理
+    }
     _rotationController.dispose();
     // 恢复原生 Tab Bar（iOS 玻璃风格）
     NativeTabBarService.instance.setTabBarVisible(true);
@@ -158,10 +164,14 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 控制封面旋转动画
-    if (playerState.isPlaying) {
-      _rotationController.repeat();
-    } else {
-      _rotationController.stop();
+    // 只在 widget 仍然挂载时操作动画控制器
+    // 避免在 widget 销毁后 provider 更新触发时抛出异常
+    if (mounted) {
+      if (playerState.isPlaying) {
+        _rotationController.repeat();
+      } else {
+        _rotationController.stop();
+      }
     }
 
     if (currentMusic == null) {
@@ -340,32 +350,35 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             ),
           ),
         ),
-        // 固定的控制区域
-        Container(
-          padding: EdgeInsets.fromLTRB(16, isCompact ? 8 : 12, 16, isCompact ? 8 : 16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                (isDark ? AppColors.darkBackground : Colors.grey[100]!)
-                    .withValues(alpha: 0.8),
+        // 固定的控制区域（使用 Flexible 允许在空间不足时收缩）
+        Flexible(
+          flex: 0, // 优先使用封面区域的空间
+          child: Container(
+            padding: EdgeInsets.fromLTRB(16, isCompact ? 8 : 12, 16, isCompact ? 8 : 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  (isDark ? AppColors.darkBackground : Colors.grey[100]!)
+                      .withValues(alpha: 0.8),
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 进度条
+                _buildProgressBar(context, ref, playerState, isDark),
+                SizedBox(height: isCompact ? 12 : 20),
+                // 控制按钮
+                _buildControlButtons(context, ref, playerState, isDark),
+                SizedBox(height: isCompact ? 8 : 12),
+                // 额外控制
+                _buildExtraControls(context, playerState, isDark),
               ],
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 进度条
-              _buildProgressBar(context, ref, playerState, isDark),
-              SizedBox(height: isCompact ? 12 : 20),
-              // 控制按钮
-              _buildControlButtons(context, ref, playerState, isDark),
-              SizedBox(height: isCompact ? 8 : 12),
-              // 额外控制
-              _buildExtraControls(context, playerState, isDark),
-            ],
           ),
         ),
       ],
