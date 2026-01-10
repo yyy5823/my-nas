@@ -295,9 +295,18 @@ class BookSourceManagerService {
   }
 
   /// 从JSON导入书源
+  ///
+  /// 如果输入内容看起来像URL，自动使用 [importFromUrl] 导入
   Future<List<BookSource>> importFromJson(String json) async {
+    // 检测是否为URL（用户可能误将URL粘贴到JSON输入框）
+    final trimmed = json.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      logger.i('检测到URL输入，自动切换为URL导入: $trimmed');
+      return importFromUrl(trimmed);
+    }
+
     try {
-      final data = jsonDecode(json);
+      final data = jsonDecode(trimmed);
       
       if (data is List) {
         return data

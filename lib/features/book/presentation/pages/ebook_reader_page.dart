@@ -229,14 +229,22 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
             _isCharging = state == BatteryState.charging ||
                 state == BatteryState.full;
           });
-          // 状态变化时也更新电量
-          battery.batteryLevel.then((dynamic levelValue) {
-            if (mounted) {
-              setState(() {
-                _batteryLevel = _parseBatteryLevel(levelValue);
-              });
-            }
-          });
+          // 状态变化时也更新电量（使用 try-catch 防止类型错误）
+          AppError.fireAndForget(
+            Future(() async {
+              try {
+                final dynamic levelValue = await battery.batteryLevel;
+                if (mounted) {
+                  setState(() {
+                    _batteryLevel = _parseBatteryLevel(levelValue);
+                  });
+                }
+              } catch (e) {
+                // 忽略电池电量获取错误
+              }
+            }),
+            action: 'updateBatteryLevel',
+          );
         }
       });
     } catch (e, st) {

@@ -308,45 +308,67 @@ class BookSource {
     this.ruleContent,
   }) : id = id ?? const Uuid().v4();
 
-  factory BookSource.fromJson(Map<String, dynamic> json) => BookSource(
-        id: json['id'] as String?,
-        bookSourceUrl: json['bookSourceUrl'] as String? ?? '',
-        bookSourceName: json['bookSourceName'] as String? ?? '',
-        bookSourceGroup: json['bookSourceGroup'] as String?,
-        bookSourceType: BookSourceType.fromValue(
-          json['bookSourceType'] as int? ?? 0,
-        ),
-        bookSourceComment: json['bookSourceComment'] as String?,
-        loginUrl: json['loginUrl'] as String?,
-        loginUi: json['loginUi'] as String?,
-        loginCheckJs: json['loginCheckJs'] as String?,
-        header: json['header'] as String?,
-        concurrentRate: json['concurrentRate'] as String?,
-        enabled: json['enabled'] as bool? ?? true,
-        enabledExplore: json['enabledExplore'] as bool? ?? true,
-        weight: json['weight'] as int? ?? 0,
-        customOrder: json['customOrder'] as int? ?? 0,
-        lastUpdateTime: json['lastUpdateTime'] as int? ?? 0,
-        respondTime: json['respondTime'] as int? ?? 180000,
-        searchUrl: json['searchUrl'] as String?,
-        exploreUrl: json['exploreUrl'] as String?,
-        ruleSearch: json['ruleSearch'] != null
-            ? SearchRule.fromJson(json['ruleSearch'] as Map<String, dynamic>)
-            : null,
-        ruleExplore: json['ruleExplore'] != null
-            ? ExploreRule.fromJson(json['ruleExplore'] as Map<String, dynamic>)
-            : null,
-        ruleBookInfo: json['ruleBookInfo'] != null
-            ? BookInfoRule.fromJson(
-                json['ruleBookInfo'] as Map<String, dynamic>)
-            : null,
-        ruleToc: json['ruleToc'] != null
-            ? TocRule.fromJson(json['ruleToc'] as Map<String, dynamic>)
-            : null,
-        ruleContent: json['ruleContent'] != null
-            ? ContentRule.fromJson(json['ruleContent'] as Map<String, dynamic>)
-            : null,
-      );
+  factory BookSource.fromJson(Map<String, dynamic> json) {
+    // 安全解析整数（可能是 String 或 int）
+    int parseIntSafe(dynamic value, [int defaultValue = 0]) {
+      if (value == null) return defaultValue;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value) ?? defaultValue;
+      if (value is double) return value.toInt();
+      return defaultValue;
+    }
+
+    // 安全解析布尔值（可能是 String、bool 或 int）
+    bool parseBoolSafe(dynamic value, [bool defaultValue = true]) {
+      if (value == null) return defaultValue;
+      if (value is bool) return value;
+      if (value is int) return value != 0;
+      if (value is String) {
+        return value.toLowerCase() == 'true' || value == '1';
+      }
+      return defaultValue;
+    }
+
+    return BookSource(
+      id: json['id'] as String?,
+      bookSourceUrl: json['bookSourceUrl'] as String? ?? '',
+      bookSourceName: json['bookSourceName'] as String? ?? '',
+      bookSourceGroup: json['bookSourceGroup'] as String?,
+      bookSourceType: BookSourceType.fromValue(
+        parseIntSafe(json['bookSourceType'], 0),
+      ),
+      bookSourceComment: json['bookSourceComment'] as String?,
+      loginUrl: json['loginUrl'] as String?,
+      loginUi: json['loginUi'] as String?,
+      loginCheckJs: json['loginCheckJs'] as String?,
+      header: json['header'] as String?,
+      concurrentRate: json['concurrentRate'] as String?,
+      enabled: parseBoolSafe(json['enabled'], true),
+      enabledExplore: parseBoolSafe(json['enabledExplore'], true),
+      weight: parseIntSafe(json['weight'], 0),
+      customOrder: parseIntSafe(json['customOrder'], 0),
+      lastUpdateTime: parseIntSafe(json['lastUpdateTime'], 0),
+      respondTime: parseIntSafe(json['respondTime'], 180000),
+      searchUrl: json['searchUrl'] as String?,
+      exploreUrl: json['exploreUrl'] as String?,
+      ruleSearch: json['ruleSearch'] != null
+          ? SearchRule.fromJson(json['ruleSearch'] as Map<String, dynamic>)
+          : null,
+      ruleExplore: json['ruleExplore'] != null
+          ? ExploreRule.fromJson(json['ruleExplore'] as Map<String, dynamic>)
+          : null,
+      ruleBookInfo: json['ruleBookInfo'] != null
+          ? BookInfoRule.fromJson(
+              json['ruleBookInfo'] as Map<String, dynamic>)
+          : null,
+      ruleToc: json['ruleToc'] != null
+          ? TocRule.fromJson(json['ruleToc'] as Map<String, dynamic>)
+          : null,
+      ruleContent: json['ruleContent'] != null
+          ? ContentRule.fromJson(json['ruleContent'] as Map<String, dynamic>)
+          : null,
+    );
+  }
 
   /// 内部唯一ID
   final String id;

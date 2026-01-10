@@ -6,11 +6,21 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
+import 'package:my_nas/features/book/presentation/providers/book_search_provider.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/note/presentation/pages/note_list_page.dart';
 import 'package:my_nas/features/note/presentation/widgets/note_tree_widget.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
+
+/// 图书搜索模式
+enum BookSearchMode {
+  local('本地'),
+  online('书源');
+
+  const BookSearchMode(this.label);
+  final String label;
+}
 
 /// 当前选中的阅读 Tab
 final readingTabProvider = StateProvider<int>((ref) => 0);
@@ -35,6 +45,9 @@ class ReadingPage extends ConsumerStatefulWidget {
 
 class _ReadingPageState extends ConsumerState<ReadingPage> {
   late PageController _pageController;
+  final TextEditingController _searchController = TextEditingController();
+  bool _showSearch = false;
+  BookSearchMode _bookSearchMode = BookSearchMode.local;
 
   @override
   void initState() {
@@ -46,6 +59,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -336,7 +350,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         : null;
 
     return AdaptiveGlassHeader(
-      height: 72,
+      height: 84,
       backgroundColor: uiStyle.isGlass
           ? tintColor
           : (isDark
@@ -382,12 +396,262 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
                 ],
               ),
             ),
-            // 类型切换按钮
-            _buildTypeSwitcher(context, isDark, currentTab),
+            // 搜索栏或操作按钮组
+            if (_showSearch)
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => _closeSearch(currentTab),
+                          icon: Icon(
+                            Icons.arrow_back_rounded,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          tooltip: '关闭搜索',
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            autofocus: true,
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: currentTab == 0 && _bookSearchMode == BookSearchMode.online
+                                  ? '搜索书源（按回车搜索）...'
+                                  : '搜索${ReadingContentType.values[currentTab].label}...',
+                              hintStyle: TextStyle(
+                                color: isDark ? Colors.grey[500] : Colors.grey[400],
+                              ),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                            textInputAction: TextInputAction.search,
+                            onChanged: (value) => _performSearch(value, currentTab),
+                            onSubmitted: (value) {
+                              if (currentTab == 0 && _bookSearchMode == BookSearchMode.online) {
+                                _performOnlineSearch(value);
+                              } else {
+                                _performSearch(value, currentTab);
+                              }
+                            },
+                          ),
+                        ),
+                        if (_searchController.text.isNotEmpty)
+                          IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              _performSearch('', currentTab);
+                              ref.read(bookSearchProvider.notifier).clear();
+                            },
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                            tooltip: '清除',
+                          ),
+                      ],
+                    ),
+                    // 图书模式下显示本地/书源切换
+                    if (currentTab == 0)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 48, top: 4),
+                        child: Row(
+                          children: BookSearchMode.values.map((mode) {
+                            final isSelected = _bookSearchMode == mode;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() => _bookSearchMode = mode);
+                                  // 切换模式时清空搜索
+                                  _searchController.clear();
+                                  ref.read(bookListProvider.notifier).setSearchQuery('');
+                                  ref.read(bookSearchProvider.notifier).clear();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? (isDark ? Colors.amber.withValues(alpha: 0.3) : Colors.amber.withValues(alpha: 0.2))
+                                        : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: isSelected
+                                        ? Border.all(color: Colors.amber, width: 1.5)
+                                        : null,
+                                  ),
+                                  child: Text(
+                                    mode.label,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                      color: isSelected
+                                          ? Colors.amber[700]
+                                          : (isDark ? Colors.white70 : Colors.black54),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            else
+              GlassButtonGroup(
+                children: [
+                  // 搜索按钮
+                  GlassGroupIconButton(
+                    icon: Icons.search_rounded,
+                    tooltip: '搜索',
+                    onPressed: () => _triggerSearch(currentTab),
+                  ),
+                  // 刷新按钮
+                  GlassGroupIconButton(
+                    icon: Icons.refresh_rounded,
+                    tooltip: '刷新',
+                    onPressed: () => _triggerRefresh(currentTab),
+                  ),
+                  // 类型切换按钮
+                  GlassGroupDynamicButton(
+                    icon: ReadingContentType.values[currentTab].icon,
+                    tooltip: '切换内容类型',
+                    showDropdownIndicator: true,
+                    onPressed: () => _showTypeSwitcherMenu(context, isDark, currentTab),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// 触发搜索
+  void _triggerSearch(int currentTab) {
+    setState(() => _showSearch = true);
+  }
+
+  /// 关闭搜索
+  void _closeSearch(int currentTab) {
+    setState(() => _showSearch = false);
+    _searchController.clear();
+    // 清空搜索结果
+    switch (currentTab) {
+      case 0: // 图书
+        ref.read(bookListProvider.notifier).setSearchQuery('');
+        ref.read(bookSearchProvider.notifier).clear();
+      case 1: // 漫画
+        ref.read(comicListProvider.notifier).setSearchQuery('');
+      case 2: // 笔记
+        // 笔记暂不支持搜索
+        break;
+    }
+  }
+
+  /// 执行搜索
+  void _performSearch(String query, int currentTab) {
+    switch (currentTab) {
+      case 0: // 图书
+        if (_bookSearchMode == BookSearchMode.local) {
+          ref.read(bookListProvider.notifier).setSearchQuery(query);
+        } else {
+          // 书源搜索 - 只在按回车时触发
+          // onChanged会频繁调用，所以这里不执行书源搜索
+        }
+      case 1: // 漫画
+        ref.read(comicListProvider.notifier).setSearchQuery(query);
+      case 2: // 笔记
+        // 笔记暂不支持搜索
+        if (query.isNotEmpty) {
+          context.showToast('笔记搜索功能开发中...');
+        }
+    }
+  }
+
+  /// 执行书源搜索（按回车时调用）
+  void _performOnlineSearch(String query) {
+    if (query.trim().isEmpty) return;
+    ref.read(bookSearchProvider.notifier).search(query.trim());
+  }
+
+  /// 触发刷新
+  void _triggerRefresh(int currentTab) {
+    switch (currentTab) {
+      case 0: // 图书
+        ref.read(bookListProvider.notifier).forceRefresh();
+      case 1: // 漫画
+        ref.read(comicListProvider.notifier).forceRefresh();
+      case 2: // 笔记
+        ref.read(notePageProvider.notifier).loadTree();
+    }
+  }
+
+  /// 显示类型切换菜单
+  void _showTypeSwitcherMenu(BuildContext context, bool isDark, int currentTab) {
+    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    showMenu<int>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        screenWidth - 200,
+        offset.dy + 50,
+        16,
+        0,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: ReadingContentType.values.asMap().entries.map((entry) {
+        final index = entry.key;
+        final type = entry.value;
+        final isSelected = index == currentTab;
+
+        return PopupMenuItem<int>(
+          value: index,
+          child: Row(
+            children: [
+              Icon(
+                type.icon,
+                size: 20,
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600]),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                type.label,
+                style: TextStyle(
+                  color: isSelected
+                      ? AppColors.primary
+                      : (isDark ? AppColors.darkOnSurface : Colors.black87),
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+              if (isSelected) ...[
+                const Spacer(),
+                Icon(
+                  Icons.check_rounded,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    ).then((value) {
+      if (value != null) {
+        _onTabChanged(value);
+      }
+    });
   }
 
   String _getGreeting() {
