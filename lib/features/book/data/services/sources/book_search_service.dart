@@ -185,7 +185,7 @@ class BookSearchService {
 
     for (final item in bookList) {
       try {
-        final name = RuleParser.parseRule(rule.name, item, baseUrl: baseUrl);
+        var name = RuleParser.parseRule(rule.name, item, baseUrl: baseUrl);
         final bookUrl = RuleParser.parseRule(rule.bookUrl, item, baseUrl: baseUrl);
 
         // 书名和URL是必须的
@@ -193,15 +193,23 @@ class BookSearchService {
           continue;
         }
 
+        // 智能处理书名 - 如果书名看起来像URL，尝试提取真实书名
+        name = _sanitizeBookName(name, bookUrl);
+        
+        // 跳过无法提取有效书名的结果
+        if (name.isEmpty || name == bookUrl) {
+          continue;
+        }
+
         books.add(OnlineBook(
           name: name,
-          author: RuleParser.parseRule(rule.author, item, baseUrl: baseUrl) ?? '',
+          author: _sanitizeText(RuleParser.parseRule(rule.author, item, baseUrl: baseUrl)),
           bookUrl: bookUrl,
           coverUrl: RuleParser.parseRule(rule.coverUrl, item, baseUrl: baseUrl),
-          intro: RuleParser.parseRule(rule.intro, item, baseUrl: baseUrl),
-          kind: RuleParser.parseRule(rule.kind, item, baseUrl: baseUrl),
-          lastChapter: RuleParser.parseRule(rule.lastChapter, item, baseUrl: baseUrl),
-          wordCount: RuleParser.parseRule(rule.wordCount, item, baseUrl: baseUrl),
+          intro: _sanitizeText(RuleParser.parseRule(rule.intro, item, baseUrl: baseUrl)),
+          kind: _sanitizeText(RuleParser.parseRule(rule.kind, item, baseUrl: baseUrl)),
+          lastChapter: _sanitizeText(RuleParser.parseRule(rule.lastChapter, item, baseUrl: baseUrl)),
+          wordCount: _sanitizeText(RuleParser.parseRule(rule.wordCount, item, baseUrl: baseUrl)),
           source: source,
         ));
       } catch (e, st) {
@@ -211,6 +219,78 @@ class BookSearchService {
 
     logger.i('书源 ${source.displayName} 搜索到 ${books.length} 本书');
     return books;
+  }
+
+  /// 智能处理书名
+  /// 
+  /// 如果书名看起来像URL，尝试从URL路径中提取真实书名
+  String _sanitizeBookName(String name, String bookUrl) {
+    // 如果书名不像URL，直接返回
+    if (!name.startsWith('http://') && !name.startsWith('https://')) {
+      // 尝试URL解码（处理 %XX 编码的中文）
+      try {
+        final decoded = Uri.decodeComponent(name);
+        if (decoded != name && !decoded.contains('%')) {
+          return decoded.trim();
+        }
+      } catch (_) {}
+      return name.trim();
+    }
+    
+    // 书名看起来像URL，尝试从URL路径中提取书名
+    try {
+      final uri = Uri.parse(name);
+      final path = uri.path;
+      
+      // 移除常见的路径前缀和后缀
+      var extractedName = path
+          .replaceAll(RegExp(r'^/+'), '')  // 移除开头的斜杠
+          .replaceAll(RegExp(r'\.(html?|php|aspx?|jsp)$', caseSensitive: false), '')  // 移除文件扩展名
+          .replaceAll(RegExp(r'/+$'), '');  // 移除结尾的斜杠
+      
+      // URL解码
+      extractedName = Uri.decodeComponent(extractedName);
+      
+      // 如果提取到的是一堆数字或太短，则无效
+      if (extractedName.isEmpty || 
+          RegExp(r'^\d+$').hasMatch(extractedName) ||
+          extractedName.length < 2) {
+        return '';  // 返回空表示无效
+      }
+      
+      // 取路径最后一部分作为书名
+      final parts = extractedName.split('/');
+      return parts.last.trim();
+    } catch (_) {
+      return '';
+    }
+  }
+  
+  /// 清理文本字段
+  /// 
+  /// 移除URL前缀，URL解码中文字符
+  String _sanitizeText(String? text) {
+    if (text == null || text.isEmpty) return '';
+    
+    var result = text;
+    
+    // 如果文本是URL，返回空（这些字段不应该是URL）
+    if (result.startsWith('http://') || result.startsWith('https://')) {
+      return '';
+    }
+    
+    // 尝试URL解码
+    try {
+      final decoded = Uri.decodeComponent(result);
+      if (decoded != result && !decoded.contains('%')) {
+        result = decoded;
+      }
+    } catch (_) {}
+    
+    // 清理HTML标签
+    result = result.replaceAll(RegExp(r'<[^>]*>'), '');
+    
+    return result.trim();
   }
 
   /// 搜索书籍（返回聚合列表）

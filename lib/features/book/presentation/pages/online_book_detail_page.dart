@@ -64,6 +64,94 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
     }
   }
 
+  /// 获取可显示的书名
+  String get _displayName {
+    final name = widget.book.name;
+    // 如果是URL，尝试提取书名
+    if (name.startsWith('http://') || name.startsWith('https://')) {
+      return _extractNameFromUrl(name);
+    }
+    // URL解码
+    return _urlDecode(name);
+  }
+
+  /// 获取可显示的作者
+  String get _displayAuthor {
+    final author = widget.book.author;
+    if (!_isValidText(author)) return '';
+    return _urlDecode(author);
+  }
+
+  /// 获取可显示的简介
+  String? get _displayIntro {
+    final intro = widget.book.intro;
+    if (intro == null || intro.isEmpty) return null;
+    if (!_isValidText(intro)) return null;
+    return _urlDecode(intro);
+  }
+
+  /// 获取可显示的分类
+  String? get _displayKind {
+    final kind = widget.book.kind;
+    if (kind == null || kind.isEmpty) return null;
+    if (!_isValidText(kind)) return null;
+    return _urlDecode(kind);
+  }
+
+  /// 获取可显示的字数
+  String? get _displayWordCount {
+    final wc = widget.book.wordCount;
+    if (wc == null || wc.isEmpty) return null;
+    if (!_isValidText(wc)) return null;
+    return _urlDecode(wc);
+  }
+
+  /// 检查文本是否有效（非URL、非JSON）
+  bool _isValidText(String text) {
+    if (text.isEmpty) return false;
+    // 检查是否是URL
+    if (text.startsWith('http://') || text.startsWith('https://')) return false;
+    // 检查是否是JSON对象
+    if (text.startsWith('{') && text.endsWith('}')) return false;
+    if (text.startsWith('[') && text.endsWith(']')) return false;
+    // 检查是否包含大量URL编码
+    if (RegExp(r'%[0-9A-Fa-f]{2}').allMatches(text).length > text.length / 10) {
+      return true; // 有编码但尝试解码
+    }
+    return true;
+  }
+
+  /// URL解码
+  String _urlDecode(String text) {
+    try {
+      final decoded = Uri.decodeComponent(text);
+      if (decoded != text) return decoded;
+    } catch (_) {}
+    return text;
+  }
+
+  /// 从URL提取书名
+  String _extractNameFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      var path = uri.path
+          .replaceAll(RegExp(r'^/+'), '')
+          .replaceAll(RegExp(r'\.(html?|php|aspx?)$', caseSensitive: false), '')
+          .replaceAll(RegExp(r'/+$'), '');
+      
+      path = Uri.decodeComponent(path);
+      
+      if (path.isEmpty || RegExp(r'^\d+$').hasMatch(path)) {
+        return widget.book.name; // 无法提取，返回原值
+      }
+      
+      final parts = path.split('/');
+      return parts.last;
+    } catch (_) {
+      return widget.book.name;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -159,7 +247,7 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      widget.book.name,
+                      _displayName,
                       style: context.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
@@ -169,7 +257,7 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      widget.book.author,
+                      _displayAuthor,
                       style: context.textTheme.bodyMedium?.copyWith(
                         color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
@@ -199,7 +287,7 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
               // 分类和字数
               Row(
                 children: [
-                  if (widget.book.kind != null && widget.book.kind!.isNotEmpty)
+                  if (_displayKind != null && _displayKind!.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -207,17 +295,17 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        widget.book.kind!,
+                        _displayKind!,
                         style: TextStyle(
                           fontSize: 12,
                           color: AppColors.primary,
                         ),
                       ),
                     ),
-                  if (widget.book.wordCount != null && widget.book.wordCount!.isNotEmpty) ...[
+                  if (_displayWordCount != null && _displayWordCount!.isNotEmpty) ...[
                     const SizedBox(width: 8),
                     Text(
-                      widget.book.wordCount!,
+                      _displayWordCount!,
                       style: context.textTheme.bodySmall?.copyWith(
                         color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
@@ -233,7 +321,7 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
                 ],
               ),
               // 简介
-              if (widget.book.intro != null && widget.book.intro!.isNotEmpty) ...[
+              if (_displayIntro != null && _displayIntro!.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(
                   '简介',
@@ -244,7 +332,7 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  widget.book.intro!,
+                  _displayIntro!,
                   style: context.textTheme.bodyMedium?.copyWith(
                     color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     height: 1.5,
