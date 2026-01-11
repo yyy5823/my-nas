@@ -2173,8 +2173,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
 
     return Row(
       children: [
-        Flexible(
-          // 使用 Flexible 替代 Expanded，允许内容在空间不足时收缩
+        Expanded(
+          // 使用 Expanded 确保左侧内容填满可用空间，按钮自动靠右
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,

@@ -119,7 +119,7 @@ class _OnlineBookSearchPageState extends ConsumerState<OnlineBookSearchPage>
     }
 
     // 显示结果
-    return _buildResultsList(searchState.results, isDark, uiStyle, searchState.isLoading);
+    return _buildResultsList(searchState.results, isDark, uiStyle, searchState);
   }
 
   Widget _buildEmptyState(bool isDark) {
@@ -202,8 +202,9 @@ class _OnlineBookSearchPageState extends ConsumerState<OnlineBookSearchPage>
     List<OnlineBook> books,
     bool isDark,
     UIStyle uiStyle,
-    bool isLoading,
+    BookSearchState searchState,
   ) {
+    final isLoading = searchState.isLoading;
     return Column(
       children: [
         // 结果统计
@@ -226,7 +227,9 @@ class _OnlineBookSearchPageState extends ConsumerState<OnlineBookSearchPage>
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  '搜索中...',
+                  searchState.totalSources > 0
+                      ? '${searchState.completedSources}/${searchState.totalSources} 书源'
+                      : '搜索中...',
                   style: context.textTheme.bodySmall?.copyWith(
                     color: AppColors.primary,
                   ),

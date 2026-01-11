@@ -28,6 +28,8 @@ class BookSearchState {
     this.isLoading = false,
     this.error,
     this.isComplete = false,
+    this.completedSources = 0,
+    this.totalSources = 0,
   });
 
   final String keyword;
@@ -35,6 +37,8 @@ class BookSearchState {
   final bool isLoading;
   final String? error;
   final bool isComplete;
+  final int completedSources;
+  final int totalSources;
 
   BookSearchState copyWith({
     String? keyword,
@@ -42,6 +46,8 @@ class BookSearchState {
     bool? isLoading,
     String? error,
     bool? isComplete,
+    int? completedSources,
+    int? totalSources,
   }) =>
       BookSearchState(
         keyword: keyword ?? this.keyword,
@@ -49,6 +55,8 @@ class BookSearchState {
         isLoading: isLoading ?? this.isLoading,
         error: error,
         isComplete: isComplete ?? this.isComplete,
+        completedSources: completedSources ?? this.completedSources,
+        totalSources: totalSources ?? this.totalSources,
       );
 }
 
@@ -83,6 +91,17 @@ class BookSearch extends _$BookSearch {
     final seen = <String>{};
 
     try {
+      // 启动进度更新定时器
+      Timer? progressTimer;
+      progressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (state.isLoading) {
+          state = state.copyWith(
+            completedSources: searchService.completedSources,
+            totalSources: searchService.totalSources,
+          );
+        }
+      });
+      
       _subscription = searchService.search(keyword).listen(
         (book) {
           // 去重
@@ -90,20 +109,28 @@ class BookSearch extends _$BookSearch {
           if (!seen.contains(key)) {
             seen.add(key);
             results.add(book);
-            // 更新状态
-            state = state.copyWith(results: List.from(results));
+            // 更新状态（包含进度）
+            state = state.copyWith(
+              results: List.from(results),
+              completedSources: searchService.completedSources,
+              totalSources: searchService.totalSources,
+            );
           }
         },
         onError: (Object e) {
+          progressTimer?.cancel();
           state = state.copyWith(
             isLoading: false,
             error: e.toString(),
           );
         },
         onDone: () {
+          progressTimer?.cancel();
           state = state.copyWith(
             isLoading: false,
             isComplete: true,
+            completedSources: searchService.totalSources,
+            totalSources: searchService.totalSources,
           );
         },
       );

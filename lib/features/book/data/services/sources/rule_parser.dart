@@ -419,13 +419,27 @@ class RuleParser {
       } else if (source is html_dom.Document) {
         document = source;
       } else {
+        logger.d('CSS选择器: 无效的源类型: ${source.runtimeType}');
         return [];
       }
 
+      logger.d('CSS选择器解析: selector="$processedSelector", HTML长度=${source is String ? source.length : "N/A"}');
+      
       final elements = document.querySelectorAll(processedSelector);
+      
+      if (elements.isEmpty) {
+        // 诊断信息：显示HTML前200字符
+        final htmlPreview = source is String 
+            ? (source.length > 200 ? '${source.substring(0, 200)}...' : source)
+            : 'N/A';
+        logger.d('CSS选择器匹配0个元素. HTML预览: $htmlPreview');
+      } else {
+        logger.d('CSS选择器匹配到 ${elements.length} 个元素');
+      }
+      
       return elements.map((e) => e.outerHtml).toList();
     } catch (e) {
-            logger.d('CSS选择器列表解析失败: $selector - $e');
+      logger.d('CSS选择器列表解析失败: $selector - $e');
       return [];
     }
   }

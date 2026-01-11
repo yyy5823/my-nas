@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/book/data/services/online_book_shelf_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_source.dart';
 import 'package:my_nas/features/book/presentation/pages/online_book_reader_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_search_provider.dart';
@@ -28,12 +29,24 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
   bool _isLoadingChapters = false;
   String? _error;
   bool _isReversed = false;
+  bool _isInShelf = false;
 
   @override
   void initState() {
     super.initState();
     hideTabBar();
     _loadChapters();
+    _checkShelfStatus();
+  }
+
+  Future<void> _checkShelfStatus() async {
+    final inShelf = await OnlineBookShelfService.instance.isInShelf(
+      widget.book.bookUrl,
+      widget.book.source.id,
+    );
+    if (mounted) {
+      setState(() => _isInShelf = inShelf);
+    }
   }
 
   Future<void> _loadChapters() async {
@@ -279,12 +292,19 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
       mainAxisSize: MainAxisSize.min,
       children: [
         // 加入书架按钮
-        FloatingActionButton.small(
-          heroTag: 'addToShelf',
-          onPressed: _addToShelf,
-          backgroundColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-          foregroundColor: AppColors.primary,
-          child: const Icon(Icons.library_add_rounded),
+        GestureDetector(
+          onLongPress: _isInShelf ? _removeFromShelf : null,
+          child: FloatingActionButton.small(
+            heroTag: 'addToShelf',
+            onPressed: _addToShelf,
+            backgroundColor: _isInShelf 
+                ? AppColors.primary 
+                : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
+            foregroundColor: _isInShelf 
+                ? Colors.white 
+                : AppColors.primary,
+            child: Icon(_isInShelf ? Icons.bookmark_rounded : Icons.bookmark_add_outlined),
+          ),
         ),
         const SizedBox(height: 12),
         // 开始阅读按钮
@@ -300,9 +320,37 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
     );
   }
 
-  void _addToShelf() {
-    // TODO: 实现添加到书架功能
-    context.showToast('已加入书架: ${_displayName}');
+  Future<void> _addToShelf() async {
+    if (_isInShelf) {
+      context.showToast('已在书架中');
+      return;
+    }
+    
+    try {
+      await OnlineBookShelfService.instance.addBook(widget.book);
+      if (mounted) {
+        setState(() => _isInShelf = true);
+        context.showToast('已加入书架: $_displayName');
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showToast('加入书架失败');
+      }
+    }
+  }
+
+  Future<void> _removeFromShelf() async {
+    final shelfItem = await OnlineBookShelfService.instance.getByBookUrl(
+      widget.book.bookUrl,
+      widget.book.source.id,
+    );
+    if (shelfItem == null) return;
+    
+    await OnlineBookShelfService.instance.removeBook(shelfItem.id);
+    if (mounted) {
+      setState(() => _isInShelf = false);
+      context.showToast('已从书架移除');
+    }
   }
 
   void _startReading() {
@@ -556,15 +604,6 @@ class _ChapterTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (chapter.updateTime != null && chapter.updateTime!.isNotEmpty)
-                Text(
-                  chapter.updateTime!,
-                  style: context.textTheme.bodySmall?.copyWith(
-                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-                    fontSize: 10,
-                  ),
-                ),
-              const SizedBox(width: 8),
               Icon(
                 Icons.chevron_right_rounded,
                 size: 18,

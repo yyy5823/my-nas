@@ -330,34 +330,36 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
               ),
             ),
           ),
-          const SizedBox(height: 6),
-          // 书名和作者 - 固定高度确保对齐
+          const SizedBox(height: 8),
+          // 书名和作者 - 优化布局
           SizedBox(
-            height: 46, // 2行书名(24) + 间距(4) + 1行作者(14) + 边距(4)
+            height: 40, // 紧凑高度
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                // 书名
+                // 书名 - 过滤日期格式的无效名称
                 Text(
-                  book.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    height: 1.2,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-                const Spacer(),
-                // 作者
-                Text(
-                  book.author.isNotEmpty ? book.author : '未知作者',
+                  _filterDisplayName(book.name),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 10,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // 作者 - 更柔和的样式
+                Text(
+                  book.author.isNotEmpty ? book.author : '佚名',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark 
+                        ? Colors.grey[400] 
+                        : Colors.grey[600],
                   ),
                 ),
               ],
@@ -366,6 +368,21 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         ],
       ),
     );
+  }
+  
+  /// 过滤显示名称 - 移除纯日期格式的无效名称
+  String _filterDisplayName(String name) {
+    // 如果名称只是日期格式，返回"未知书名"
+    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(name.trim())) {
+      return '未知书名';
+    }
+    // 如果名称以日期开头，尝试移除日期部分
+    final datePrefix = RegExp(r'^\d{4}-\d{2}-\d{2}\s*');
+    if (datePrefix.hasMatch(name)) {
+      final cleaned = name.replaceFirst(datePrefix, '').trim();
+      return cleaned.isNotEmpty ? cleaned : '未知书名';
+    }
+    return name;
   }
 
   /// 书籍封面占位符

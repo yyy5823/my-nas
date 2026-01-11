@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:my_nas/core/errors/errors.dart';
@@ -17,10 +18,32 @@ class BookSearchService {
   static final instance = BookSearchService._();
 
   final _dio = Dio();
+  final _random = Random();
+  
+  /// User-Agent 列表，模拟不同浏览器
+  static const _userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  ];
+
+  /// 搜索进度信息
+  int _totalSources = 0;
+  int _completedSources = 0;
+  
+  /// 获取搜索书源总数
+  int get totalSources => _totalSources;
+  
+  /// 获取已完成搜索的书源数  
+  int get completedSources => _completedSources;
 
   /// 搜索书籍（多书源并行）
   ///
   /// 返回一个 Stream，每当有书源返回结果时就 yield
+  /// 同时更新 completedSources 和 totalSources 用于显示进度
   Stream<OnlineBook> search(String keyword, {int page = 1}) async* {
     logger.d('📚 BookSearchService.search() 开始搜索: keyword="$keyword", page=$page');
     
@@ -44,7 +67,15 @@ class BookSearchService {
       return;
     }
     
-    final futures = searchableSources.map((source) => _searchSource(source, keyword, page));
+    // 重置进度
+    _totalSources = searchableSources.length;
+    _completedSources = 0;
+    
+    final futures = searchableSources.map((source) async {
+      final results = await _searchSource(source, keyword, page);
+      _completedSources++;
+      return results;
+    });
 
     // 使用 Stream.fromFutures 处理并行结果
     await for (final results in Stream.fromFutures(futures)) {
@@ -69,8 +100,8 @@ class BookSearchService {
 
       logger.d('搜索书源: ${source.displayName}, URL: $searchUrl');
 
-      // 发送请求
-      final response = await _makeRequest(source, searchUrl);
+      // 发送请求（搜索时减少重试次数以加快速度）
+      final response = await _makeRequest(source, searchUrl, maxRetries: 1);
       if (response == null) return [];
 
       // 解析结果（传入关键词用于相关性过滤）
@@ -101,47 +132,77 @@ class BookSearchService {
     return url;
   }
 
-  /// 发送HTTP请求
-  Future<dynamic> _makeRequest(BookSource source, String url) async {
-    try {
-      final options = Options(
-        headers: _buildHeaders(source),
-        responseType: ResponseType.plain,
-      );
+  /// 发送HTTP请求（带重试机制）
+  Future<dynamic> _makeRequest(BookSource source, String url, {int maxRetries = 3}) async {
+    Exception? lastError;
+    
+    for (var attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final options = Options(
+          headers: _buildHeaders(source, url),
+          responseType: ResponseType.plain,
+        );
 
-      final response = await _dio.get<String>(
-        url,
-        options: options,
-      );
+        final response = await _dio.get<String>(
+          url,
+          options: options,
+        );
 
-      if (response.statusCode != 200) {
-        logger.w('请求失败: $url, 状态码: ${response.statusCode}');
+        if (response.statusCode != 200) {
+          logger.w('请求失败: $url, 状态码: ${response.statusCode}');
+          return null;
+        }
+
+        final data = response.data;
+        if (data == null) return null;
+
+        // 尝试解析为JSON
+        try {
+          return jsonDecode(data);
+        } catch (_) {
+          // 不是JSON，返回HTML
+          return data;
+        }
+      } on DioException catch (e) {
+        lastError = e;
+        if (attempt < maxRetries) {
+          // 指数退避延迟: 500ms, 1000ms, 2000ms
+          final delay = Duration(milliseconds: 500 * (1 << (attempt - 1)));
+          logger.d('请求失败，${delay.inMilliseconds}ms 后重试 ($attempt/$maxRetries): $url');
+          await Future<void>.delayed(delay);
+        }
+      } catch (e, st) {
+        AppError.ignore(e, st, '请求失败: $url');
         return null;
       }
-
-      final data = response.data;
-      if (data == null) return null;
-
-      // 尝试解析为JSON
-      try {
-        return jsonDecode(data);
-      } catch (_) {
-        // 不是JSON，返回HTML
-        return data;
-      }
-    } catch (e, st) {
-      AppError.ignore(e, st, '请求失败: $url');
-      return null;
     }
+    
+    if (lastError != null) {
+      AppError.ignore(lastError, StackTrace.current, '请求失败(重试$maxRetries次后): $url');
+    }
+    return null;
   }
 
-  /// 构建请求头
-  Map<String, String> _buildHeaders(BookSource source) {
+  /// 构建请求头（带随机 User-Agent）
+  Map<String, String> _buildHeaders(BookSource source, String url) {
+    // 从 URL 提取 Referer
+    String referer;
+    try {
+      final uri = Uri.parse(url);
+      referer = '${uri.scheme}://${uri.host}/';
+    } catch (_) {
+      referer = source.bookSourceUrl;
+    }
+    
     final headers = <String, String>{
-      'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'User-Agent': _userAgents[_random.nextInt(_userAgents.length)],
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7',
+      'Accept-Encoding': 'gzip, deflate',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Referer': referer,
+      'Cache-Control': 'max-age=0',
     };
 
     // 解析书源中的自定义请求头
@@ -202,9 +263,23 @@ class BookSearchService {
           continue;
         }
         
+        // 验证 bookUrl 格式 - 必须是有效的 URL
+        // 跳过 JSON 对象或其他无效格式
+        if (!bookUrl.startsWith('http://') && !bookUrl.startsWith('https://')) {
+          // 尝试使用 baseUrl 补全
+          if (bookUrl.startsWith('/')) {
+            // 相对路径，后续会处理
+          } else if (bookUrl.startsWith('{') || bookUrl.contains(': ')) {
+            // JSON 格式，跳过
+            continue;
+          }
+        }
+        
         // 相关性过滤 - 跳过与搜索关键词不相关的结果
         final author = _sanitizeText(RuleParser.parseRule(rule.author, item, baseUrl: baseUrl));
-        if (!_isRelevantResult(name, author, keyword)) {
+        final isRelevant = _isRelevantResult(name, author, keyword);
+        if (!isRelevant) {
+          logger.d('过滤不相关结果: "$name" (关键词: "$keyword")');
           continue;
         }
 
@@ -302,43 +377,33 @@ class BookSearchService {
 
   /// 检查搜索结果是否与关键词相关
   /// 
-  /// 使用多重匹配策略提高中文匹配准确性
+  /// 要求书名或作者与关键词有实质关联
   bool _isRelevantResult(String bookName, String author, String keyword) {
     final lowerKeyword = keyword.toLowerCase();
     final lowerName = bookName.toLowerCase();
     final lowerAuthor = author.toLowerCase();
     
-    // 1. 直接包含匹配（最严格）
-    if (lowerName.contains(lowerKeyword) || lowerAuthor.contains(lowerKeyword)) {
+    // 1. 直接包含匹配 - 书名包含完整关键词（最优先）
+    if (lowerName.contains(lowerKeyword)) {
       return true;
     }
     
-    // 2. 关键词被书名包含（如搜索"龙"匹配"龙族"）
-    if (lowerKeyword.length >= 2) {
-      for (var i = 0; i < lowerKeyword.length; i++) {
-        final char = lowerKeyword[i];
-        if (lowerName.contains(char)) {
-          // 至少有一个字符匹配
-          // 检查是否有连续2个字符匹配
-          if (i + 1 < lowerKeyword.length) {
-            final twoChars = lowerKeyword.substring(i, i + 2);
-            if (lowerName.contains(twoChars)) {
-              return true;
-            }
-          } else if (lowerKeyword.length <= 2) {
-            // 短关键词，单字符匹配即可
-            return true;
-          }
-        }
-      }
-    } else {
-      // 单字符关键词
-      if (lowerName.contains(lowerKeyword)) {
+    // 2. 作者名包含关键词
+    if (lowerAuthor.isNotEmpty && lowerAuthor.contains(lowerKeyword)) {
+      return true;
+    }
+    
+    // 3. 对于中文关键词：要求所有字符都出现在书名中（连续）
+    // 但只对短关键词(2-4字)启用此规则，且书名必须较短
+    // 例如：搜索"鸣龙"，书名"鸣龙少年"应该匹配
+    if (lowerKeyword.length >= 2 && lowerKeyword.length <= 4) {
+      // 检查书名是否以关键词开头
+      if (lowerName.startsWith(lowerKeyword)) {
         return true;
       }
     }
     
-    // 3. 不相关
+    // 4. 不相关
     return false;
   }
 
