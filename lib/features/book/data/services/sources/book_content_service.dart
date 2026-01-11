@@ -277,10 +277,16 @@ class BookContentService {
             // 清理 URL（可能包含 HTML 片段）
             url = _sanitizeChapterUrl(url, baseUrl);
             
+            // 智能清理章节名称（仅在检测到问题时清理）
+            var cleanedName = _smartCleanChapterName(name);
+            if (cleanedName.isEmpty) {
+              cleanedName = _extractNameFromUrl(url) ?? 'Unknown';
+            }
+            
             // 过滤非章节链接
-            if (_isLikelyChapterUrl(url, name)) {
+            if (_isLikelyChapterUrl(url, cleanedName)) {
               chapters.add(OnlineChapter(
-                name: name.trim(),
+                name: cleanedName,
                 url: url,
                 isVolume: false,
               ));
@@ -447,8 +453,14 @@ class BookContentService {
         final isVolumeStr = RuleParser.parseRule(rule.isVolume, item, baseUrl: baseUrl);
         final isVolume = isVolumeStr == 'true' || isVolumeStr == '1';
 
+        // 智能清理章节名称（仅在检测到问题时清理）
+        var cleanedName = _smartCleanChapterName(name);
+        if (cleanedName.isEmpty) {
+          cleanedName = _extractNameFromUrl(url) ?? 'Unknown';
+        }
+
         chapters.add(OnlineChapter(
-          name: name,
+          name: cleanedName,
           url: url,
           isVolume: isVolume,
           updateTime: RuleParser.parseRule(rule.updateTime, item, baseUrl: baseUrl),
@@ -460,6 +472,97 @@ class BookContentService {
 
     logger.d('成功解析 ${chapters.length} 个章节');
     return chapters;
+  }
+
+  /// 智能清理章节名称 - 只有在检测到问题时才进行清理
+  /// 
+  /// 检测规则：
+  /// 1. 包含 URL 编码的 HTML（%3C, %3E 等）→ 解码后提取文本
+  /// 2. 包含 HTML 标签（< 和 >）→ 解析 HTML 提取文本
+  /// 3. 以 http 开头 → 可能是 URL，尝试从中提取名称
+  /// 4. 否则 → 保持原样，不做任何处理
+  String _smartCleanChapterName(String name) {
+    if (name.isEmpty) return name;
+    
+    final trimmed = name.trim();
+    
+    // 1. 检测 URL 编码的 HTML 内容
+    if (trimmed.contains('%3C') || trimmed.contains('%3c') || 
+        trimmed.contains('%3E') || trimmed.contains('%3e')) {
+      try {
+        final decoded = Uri.decodeComponent(trimmed);
+        // 如果解码后包含 HTML，继续处理
+        if (decoded.contains('<') && decoded.contains('>')) {
+          final cleaned = _extractTextFromHtmlString(decoded);
+          if (cleaned != null && cleaned.isNotEmpty && !_isUrlLike(cleaned)) {
+            logger.d('章节名清理(URL编码): "$trimmed" => "$cleaned"');
+            return cleaned;
+          }
+        }
+        // 如果解码后不是 HTML，但解码成功，返回解码结果
+        if (!decoded.contains('<') && !_isUrlLike(decoded)) {
+          return decoded;
+        }
+      } catch (_) {
+        // URL 解码失败，继续检查其他情况
+      }
+    }
+    
+    // 2. 检测 HTML 标签
+    if (trimmed.contains('<') && trimmed.contains('>')) {
+      final cleaned = _extractTextFromHtmlString(trimmed);
+      if (cleaned != null && cleaned.isNotEmpty && !_isUrlLike(cleaned)) {
+        logger.d('章节名清理(HTML): "$trimmed" => "$cleaned"');
+        return cleaned;
+      }
+    }
+    
+    // 3. 检测纯 URL（不应作为章节名）
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      // 已经是 URL，返回空让调用者用 _extractNameFromUrl 处理
+      return '';
+    }
+    
+    // 4. 正常名称，不需要清理
+    return trimmed;
+  }
+
+  /// 从 HTML 字符串中提取纯文本
+  String? _extractTextFromHtmlString(String html) {
+    try {
+      final document = html_parser.parse(html);
+      
+      // 优先从 <a> 标签提取
+      final aElement = document.querySelector('a');
+      if (aElement != null) {
+        // 首选：链接文本
+        final text = aElement.text.trim();
+        if (text.isNotEmpty && !_isUrlLike(text)) {
+          return text;
+        }
+        // 备选：title 属性
+        final title = aElement.attributes['title'];
+        if (title != null && title.isNotEmpty && !_isUrlLike(title)) {
+          return title;
+        }
+      }
+      
+      // 获取 body 中的所有文本
+      final bodyText = document.body?.text.trim();
+      if (bodyText != null && bodyText.isNotEmpty && !_isUrlLike(bodyText)) {
+        return bodyText;
+      }
+    } catch (_) {
+      // 降级到正则提取
+      final match = RegExp(r'>([^<]+)<').firstMatch(html);
+      if (match != null) {
+        final text = match.group(1)?.trim();
+        if (text != null && text.isNotEmpty && !_isUrlLike(text)) {
+          return text;
+        }
+      }
+    }
+    return null;
   }
 
   /// 清理章节URL：从HTML片段中提取href

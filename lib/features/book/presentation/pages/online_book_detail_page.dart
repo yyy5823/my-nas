@@ -356,20 +356,27 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
   }
 
   Future<void> _addToShelf() async {
+    debugPrint('[在线书架] _addToShelf 被调用, 书名: ${widget.book.name}');
     if (_isInShelf) {
+      debugPrint('[在线书架] 已在书架中, 跳过');
       context.showToast('已在书架中');
       return;
     }
     
     try {
-      await OnlineBookShelfService.instance.addBook(widget.book);
+      debugPrint('[在线书架] 调用 addBook...');
+      final item = await OnlineBookShelfService.instance.addBook(widget.book);
+      debugPrint('[在线书架] addBook 成功返回, item.id: ${item.id}, item.name: ${item.name}');
       if (mounted) {
         setState(() => _isInShelf = true);
         // 刷新书架 Provider 状态
         ref.read(onlineBookShelfProvider.notifier).onBookAdded();
         context.showToast('已加入书架: $_displayName');
+        debugPrint('[在线书架] 已刷新 Provider 并显示 toast');
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[在线书架] addBook 异常: $e');
+      debugPrint('[在线书架] 堆栈: $st');
       if (mounted) {
         context.showToast('加入书架失败');
       }

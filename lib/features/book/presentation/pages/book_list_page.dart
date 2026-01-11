@@ -1359,14 +1359,26 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                 ),
                 tooltip: '选择',
               ),
-            IconButton(
-              onPressed: () => ref.read(bookListProvider.notifier).forceRefresh(),
-              icon: Icon(
-                Icons.refresh_rounded,
-                color: isDark ? Colors.white : Colors.black87,
+            // 本地/在线切换按钮（仅在图书/在线类别时显示）
+            if (_selectedCategory == ReadingCategory.book || _selectedCategory == ReadingCategory.online)
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _selectedCategory = _selectedCategory == ReadingCategory.online 
+                        ? ReadingCategory.book 
+                        : ReadingCategory.online;
+                  });
+                },
+                icon: Icon(
+                  _selectedCategory == ReadingCategory.online 
+                      ? Icons.cloud_rounded 
+                      : Icons.folder_rounded,
+                  color: _selectedCategory == ReadingCategory.online 
+                      ? _themeColor 
+                      : (isDark ? Colors.white : Colors.black87),
+                ),
+                tooltip: _selectedCategory == ReadingCategory.online ? '查看本地图书' : '查看在线书架',
               ),
-              tooltip: '刷新',
-            ),
             IconButton(
               onPressed: () => _showSettingsMenu(context),
               icon: Icon(
@@ -2282,26 +2294,6 @@ class _BookCacheInfoBar extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 11,
                 color: isDark ? Colors.grey[500] : Colors.grey[600],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => ref.read(bookListProvider.notifier).forceRefresh(),
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppColors.fileDocument.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Icon(
-                    Icons.refresh_rounded,
-                    size: 16,
-                    color: AppColors.fileDocument,
-                  ),
-                ),
               ),
             ),
           ],
