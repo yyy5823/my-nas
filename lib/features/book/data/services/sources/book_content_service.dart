@@ -147,22 +147,38 @@ class BookContentService {
     String baseUrl,
   ) {
     final rule = source.ruleToc;
-    if (rule == null) return [];
+    if (rule == null) {
+      logger.d('书源 ${source.displayName} 没有目录规则 (ruleToc is null)');
+      return [];
+    }
 
     final chapterListRule = rule.chapterList;
-    if (chapterListRule == null || chapterListRule.isEmpty) return [];
+    if (chapterListRule == null || chapterListRule.isEmpty) {
+      logger.d('书源 ${source.displayName} 没有章节列表规则 (chapterList is empty)');
+      return [];
+    }
 
+    logger.d('解析章节列表, 规则: $chapterListRule');
     final chapterList = RuleParser.parseRuleList(chapterListRule, responseData, baseUrl: baseUrl);
-    if (chapterList.isEmpty) return [];
+    if (chapterList.isEmpty) {
+      logger.d('章节列表解析结果为空, 响应数据类型: ${responseData.runtimeType}');
+      return [];
+    }
+    
+    logger.d('解析到 ${chapterList.length} 个章节项');
 
     final chapters = <OnlineChapter>[];
 
-    for (final item in chapterList) {
+    for (var i = 0; i < chapterList.length; i++) {
+      final item = chapterList[i];
       try {
         final name = RuleParser.parseRule(rule.chapterName, item, baseUrl: baseUrl);
         final url = RuleParser.parseRule(rule.chapterUrl, item, baseUrl: baseUrl);
 
         if (name == null || name.isEmpty || url == null || url.isEmpty) {
+          if (i < 3) {  // 只记录前几个失败的
+            logger.d('章节项[$i] 解析失败: name=$name, url=$url');
+          }
           continue;
         }
 
@@ -180,6 +196,7 @@ class BookContentService {
       }
     }
 
+    logger.d('成功解析 ${chapters.length} 个章节');
     return chapters;
   }
 

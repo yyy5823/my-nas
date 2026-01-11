@@ -331,28 +331,38 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
             ),
           ),
           const SizedBox(height: 6),
-          // 书名
-          Text(
-            book.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.white : Colors.black87,
+          // 书名和作者 - 固定高度确保对齐
+          SizedBox(
+            height: 46, // 2行书名(24) + 间距(4) + 1行作者(14) + 边距(4)
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 书名
+                Text(
+                  book.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.2,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const Spacer(),
+                // 作者
+                Text(
+                  book.author.isNotEmpty ? book.author : '未知作者',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
           ),
-          // 作者
-          if (book.author != null && book.author!.isNotEmpty)
-            Text(
-              book.author!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-              ),
-            ),
         ],
       ),
     );

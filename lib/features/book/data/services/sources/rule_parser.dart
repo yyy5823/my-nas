@@ -64,14 +64,47 @@ class RuleParser {
 
   /// 解析单条规则
   static String? _parseSingleRule(String rule, dynamic source, {String? baseUrl}) {
-    // 处理 @ 属性提取（用于CSS选择器）
+    var processedRule = rule.trim();
     String? attrName;
-    var processedRule = rule;
     
-    if (rule.contains('@') && !rule.startsWith('//') && !rule.startsWith('/')) {
-      final attrIndex = rule.lastIndexOf('@');
-      attrName = rule.substring(attrIndex + 1);
-      processedRule = rule.substring(0, attrIndex);
+    // 1. 首先处理 Legado 格式的前缀规则
+    // @css: 开头表示 CSS 选择器
+    if (processedRule.startsWith('@css:')) {
+      processedRule = processedRule.substring(5);
+      // 检查是否有属性提取 (如 @css:div.title@text)
+      if (processedRule.contains('@')) {
+        final attrIndex = processedRule.lastIndexOf('@');
+        attrName = processedRule.substring(attrIndex + 1);
+        processedRule = processedRule.substring(0, attrIndex);
+      }
+      final result = _parseCssSelector(processedRule, source, attrName: attrName);
+      return _processResult(result, attrName, baseUrl);
+    }
+    
+    // @json: 开头表示 JSONPath
+    if (processedRule.startsWith('@json:')) {
+      processedRule = processedRule.substring(6);
+      final result = _parseJsonPath(processedRule.startsWith(r'$') ? processedRule : '\$.$processedRule', source);
+      return _processResult(result, null, baseUrl);
+    }
+    
+    // @XPath: 开头表示 XPath
+    if (processedRule.startsWith('@XPath:') || processedRule.startsWith('@xpath:')) {
+      processedRule = processedRule.substring(7);
+      final result = _parseXPath(processedRule, source);
+      return _processResult(result, null, baseUrl);
+    }
+    
+    // 2. 处理 JSOUP 默认语法中的 @ 属性提取
+    // 只有非前缀规则才处理 @ 作为属性分隔符
+    if (processedRule.contains('@') && !processedRule.startsWith('//') && !processedRule.startsWith('/')) {
+      final attrIndex = processedRule.lastIndexOf('@');
+      final potentialAttr = processedRule.substring(attrIndex + 1);
+      // 确保 @ 后面是有效的属性名（如 text, href, src 等）
+      if (_isValidAttributeName(potentialAttr)) {
+        attrName = potentialAttr;
+        processedRule = processedRule.substring(0, attrIndex);
+      }
     }
 
     String? result;
@@ -89,17 +122,14 @@ class RuleParser {
     else if (processedRule.startsWith('regex:')) {
       result = _parseRegex(processedRule.substring(6), source.toString());
     }
-    // 检测隐式正则表达式模式（不以 regex: 开头但包含正则元字符）
-    // 常见正则元字符: *, +, ?, ^, $, |, <, > (在非HTML上下文)
-    // 避免将这些误识别为CSS选择器
+    // 检测隐式正则表达式模式
     else if (_isLikelyRegexPattern(processedRule)) {
-      // 这是一个正则表达式模式，用于清理/替换
-      // 直接返回源内容（正则替换应在后处理阶段完成）
       result = source?.toString();
     }
-    // CSS选择器
+    // CSS选择器 (包含 . # [ 或空格)
     else if (processedRule.contains('.') || processedRule.contains('#') || 
-             processedRule.contains('[') || processedRule.contains(' ')) {
+             processedRule.contains('[') || processedRule.contains(' ') ||
+             processedRule.contains('>') || processedRule.contains(':')) {
       result = _parseCssSelector(processedRule, source, attrName: attrName);
       attrName = null;
     }
@@ -129,20 +159,47 @@ class RuleParser {
 
   /// 解析规则并返回列表
   static List<dynamic> _parseSingleRuleList(String rule, dynamic source, {String? baseUrl}) {
+    final trimmedRule = rule.trim();
+    
+    // @css: CSS选择器
+    if (trimmedRule.startsWith('@css:')) {
+      var selector = trimmedRule.substring(5);
+      // 移除属性提取部分（列表模式不需要）
+      if (selector.contains('@')) {
+        selector = selector.substring(0, selector.lastIndexOf('@'));
+      }
+      return _parseCssSelectorList(selector, source);
+    }
+    
+    // @json: JSONPath
+    if (trimmedRule.startsWith('@json:')) {
+      var path = trimmedRule.substring(6);
+      if (!path.startsWith(r'$')) {
+        path = '\$.$path';
+      }
+      return _parseJsonPathList(path, source);
+    }
+    
+    // @XPath: XPath
+    if (trimmedRule.startsWith('@XPath:') || trimmedRule.startsWith('@xpath:')) {
+      return _parseXPathList(trimmedRule.substring(7), source);
+    }
+    
     // JSONPath 规则
-    if (rule.startsWith(r'$.') || rule.startsWith(r'$[')) {
-      return _parseJsonPathList(rule, source);
+    if (trimmedRule.startsWith(r'$.') || trimmedRule.startsWith(r'$[')) {
+      return _parseJsonPathList(trimmedRule, source);
     }
     
     // XPath 规则
-    if (rule.startsWith('//') || rule.startsWith('/')) {
-      return _parseXPathList(rule, source);
+    if (trimmedRule.startsWith('//') || trimmedRule.startsWith('/')) {
+      return _parseXPathList(trimmedRule, source);
     }
     
     // CSS选择器
-    if (rule.contains('.') || rule.contains('#') || 
-        rule.contains('[') || rule.contains(' ')) {
-      return _parseCssSelectorList(rule, source);
+    if (trimmedRule.contains('.') || trimmedRule.contains('#') || 
+        trimmedRule.contains('[') || trimmedRule.contains(' ') ||
+        trimmedRule.contains('>') || trimmedRule.contains(':')) {
+      return _parseCssSelectorList(trimmedRule, source);
     }
 
     // 默认返回单个结果
@@ -170,6 +227,34 @@ class RuleParser {
       return true;
     }
     return false;
+  }
+
+  /// 检查是否是有效的属性名
+  static bool _isValidAttributeName(String name) {
+    const validAttrs = {
+      'text', 'textNodes', 'ownText', 'html', 'innerHTML', 'outerHtml',
+      'href', 'src', 'alt', 'title', 'value', 'data-', 'id', 'class',
+      'content', 'name', 'type', 'action', 'method', 'target',
+    };
+    final lowerName = name.toLowerCase();
+    return validAttrs.any((attr) => lowerName == attr || lowerName.startsWith(attr));
+  }
+
+  /// 处理结果（属性提取和URL解析）
+  static String? _processResult(String? result, String? attrName, String? baseUrl) {
+    if (result == null) return null;
+    
+    // 处理属性提取
+    if (attrName != null && result.isNotEmpty) {
+      result = _extractAttr(result, attrName);
+    }
+    
+    // 处理相对URL
+    if (baseUrl != null && result != null && result.isNotEmpty) {
+      result = _resolveUrl(result, baseUrl);
+    }
+    
+    return result?.trim();
   }
 
   /// 解析 JSONPath

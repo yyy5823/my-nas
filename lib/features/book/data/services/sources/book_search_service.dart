@@ -73,8 +73,8 @@ class BookSearchService {
       final response = await _makeRequest(source, searchUrl);
       if (response == null) return [];
 
-      // 解析结果
-      return _parseSearchResults(source, response, searchUrl);
+      // 解析结果（传入关键词用于相关性过滤）
+      return _parseSearchResults(source, response, searchUrl, keyword);
     } catch (e, st) {
       AppError.ignore(e, st, '书源搜索失败: ${source.displayName}');
       return [];
@@ -170,6 +170,7 @@ class BookSearchService {
     BookSource source,
     dynamic responseData,
     String baseUrl,
+    String keyword,
   ) {
     final rule = source.ruleSearch;
     if (rule == null) return [];
@@ -200,10 +201,16 @@ class BookSearchService {
         if (name.isEmpty || name == bookUrl) {
           continue;
         }
+        
+        // 相关性过滤 - 跳过与搜索关键词不相关的结果
+        final author = _sanitizeText(RuleParser.parseRule(rule.author, item, baseUrl: baseUrl));
+        if (!_isRelevantResult(name, author, keyword)) {
+          continue;
+        }
 
         books.add(OnlineBook(
           name: name,
-          author: _sanitizeText(RuleParser.parseRule(rule.author, item, baseUrl: baseUrl)),
+          author: author,
           bookUrl: bookUrl,
           coverUrl: RuleParser.parseRule(rule.coverUrl, item, baseUrl: baseUrl),
           intro: _sanitizeText(RuleParser.parseRule(rule.intro, item, baseUrl: baseUrl)),
@@ -291,6 +298,48 @@ class BookSearchService {
     result = result.replaceAll(RegExp(r'<[^>]*>'), '');
     
     return result.trim();
+  }
+
+  /// 检查搜索结果是否与关键词相关
+  /// 
+  /// 使用多重匹配策略提高中文匹配准确性
+  bool _isRelevantResult(String bookName, String author, String keyword) {
+    final lowerKeyword = keyword.toLowerCase();
+    final lowerName = bookName.toLowerCase();
+    final lowerAuthor = author.toLowerCase();
+    
+    // 1. 直接包含匹配（最严格）
+    if (lowerName.contains(lowerKeyword) || lowerAuthor.contains(lowerKeyword)) {
+      return true;
+    }
+    
+    // 2. 关键词被书名包含（如搜索"龙"匹配"龙族"）
+    if (lowerKeyword.length >= 2) {
+      for (var i = 0; i < lowerKeyword.length; i++) {
+        final char = lowerKeyword[i];
+        if (lowerName.contains(char)) {
+          // 至少有一个字符匹配
+          // 检查是否有连续2个字符匹配
+          if (i + 1 < lowerKeyword.length) {
+            final twoChars = lowerKeyword.substring(i, i + 2);
+            if (lowerName.contains(twoChars)) {
+              return true;
+            }
+          } else if (lowerKeyword.length <= 2) {
+            // 短关键词，单字符匹配即可
+            return true;
+          }
+        }
+      }
+    } else {
+      // 单字符关键词
+      if (lowerName.contains(lowerKeyword)) {
+        return true;
+      }
+    }
+    
+    // 3. 不相关
+    return false;
   }
 
   /// 搜索书籍（返回聚合列表）

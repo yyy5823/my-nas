@@ -159,6 +159,7 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
+      floatingActionButton: _buildFloatingButtons(isDark),
       body: CustomScrollView(
         slivers: [
           // AppBar
@@ -270,6 +271,46 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
         ),
       ],
     );
+  }
+
+  /// 构建浮动操作按钮
+  Widget _buildFloatingButtons(bool isDark) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 加入书架按钮
+        FloatingActionButton.small(
+          heroTag: 'addToShelf',
+          onPressed: _addToShelf,
+          backgroundColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+          foregroundColor: AppColors.primary,
+          child: const Icon(Icons.library_add_rounded),
+        ),
+        const SizedBox(height: 12),
+        // 开始阅读按钮
+        FloatingActionButton.extended(
+          heroTag: 'startReading',
+          onPressed: _startReading,
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          icon: const Icon(Icons.play_arrow_rounded),
+          label: const Text('开始阅读'),
+        ),
+      ],
+    );
+  }
+
+  void _addToShelf() {
+    // TODO: 实现添加到书架功能
+    context.showToast('已加入书架: ${_displayName}');
+  }
+
+  void _startReading() {
+    if (_chapters != null && _chapters!.isNotEmpty) {
+      _openReader(_chapters!.first);
+    } else {
+      context.showToast('暂无章节可阅读');
+    }
   }
 
   Widget _buildBookInfo(bool isDark, UIStyle uiStyle) {
