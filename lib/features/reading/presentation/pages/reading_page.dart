@@ -926,12 +926,23 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
                     tooltip: '搜索',
                     onPressed: () => _triggerSearch(currentTab),
                   ),
-                  // 刷新按钮
-                  GlassGroupIconButton(
-                    icon: Icons.refresh_rounded,
-                    tooltip: '刷新',
-                    onPressed: () => _triggerRefresh(currentTab),
-                  ),
+                  // 本地/在线切换按钮（仅在图书页显示）
+                  if (currentTab == 0)
+                    GlassGroupIconButton(
+                      icon: _bookSearchMode == BookSearchMode.online 
+                          ? Icons.cloud_rounded 
+                          : Icons.folder_rounded,
+                      tooltip: _bookSearchMode == BookSearchMode.online 
+                          ? '查看本地图书' 
+                          : '查看在线书架',
+                      onPressed: () {
+                        setState(() {
+                          _bookSearchMode = _bookSearchMode == BookSearchMode.online 
+                              ? BookSearchMode.local 
+                              : BookSearchMode.online;
+                        });
+                      },
+                    ),
                   // 类型切换按钮
                   GlassGroupDynamicButton(
                     icon: ReadingContentType.values[currentTab].icon,
