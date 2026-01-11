@@ -22,17 +22,29 @@ class BookSearchService {
   ///
   /// 返回一个 Stream，每当有书源返回结果时就 yield
   Stream<OnlineBook> search(String keyword, {int page = 1}) async* {
+    logger.d('📚 BookSearchService.search() 开始搜索: keyword="$keyword", page=$page');
+    
     final sources = await BookSourceManagerService.instance.getEnabledSources();
+    logger.d('📚 已启用的书源数量: ${sources.length}');
 
     if (sources.isEmpty) {
-      logger.w('没有可用的书源');
+      logger.w('📚 没有可用的书源（请在书源管理中启用至少一个书源）');
       return;
     }
 
     // 并行搜索所有书源
-    final futures = sources
+    final searchableSources = sources
         .where((s) => s.searchUrl != null && s.searchUrl!.isNotEmpty)
-        .map((source) => _searchSource(source, keyword, page));
+        .toList();
+    
+    logger.d('📚 有搜索URL的书源数量: ${searchableSources.length}');
+    
+    if (searchableSources.isEmpty) {
+      logger.w('📚 没有配置搜索URL的书源');
+      return;
+    }
+    
+    final futures = searchableSources.map((source) => _searchSource(source, keyword, page));
 
     // 使用 Stream.fromFutures 处理并行结果
     await for (final results in Stream.fromFutures(futures)) {
@@ -40,6 +52,8 @@ class BookSearchService {
         yield book;
       }
     }
+    
+    logger.d('📚 BookSearchService.search() 搜索完成');
   }
 
   /// 搜索单个书源

@@ -89,11 +89,25 @@ class RuleParser {
     else if (processedRule.startsWith('regex:')) {
       result = _parseRegex(processedRule.substring(6), source.toString());
     }
+    // 检测隐式正则表达式模式（不以 regex: 开头但包含正则元字符）
+    // 常见正则元字符: *, +, ?, ^, $, |, <, > (在非HTML上下文)
+    // 避免将这些误识别为CSS选择器
+    else if (_isLikelyRegexPattern(processedRule)) {
+      // 这是一个正则表达式模式，用于清理/替换
+      // 直接返回源内容（正则替换应在后处理阶段完成）
+      result = source?.toString();
+    }
     // CSS选择器
     else if (processedRule.contains('.') || processedRule.contains('#') || 
              processedRule.contains('[') || processedRule.contains(' ')) {
       result = _parseCssSelector(processedRule, source, attrName: attrName);
       attrName = null;
+    }
+    // 简单字段名（用于JSON对象）- 如 "title", "author"
+    else if (source is Map) {
+      // 直接从Map中获取字段值
+      final value = source[processedRule];
+      result = value?.toString();
     }
     // 纯文本返回
     else {
@@ -134,6 +148,28 @@ class RuleParser {
     // 默认返回单个结果
     final result = _parseSingleRule(rule, source, baseUrl: baseUrl);
     return result != null ? [result] : [];
+  }
+
+  /// 检测是否可能是正则表达式模式
+  /// 
+  /// 正则表达式通常包含特殊元字符，与 CSS 选择器区分开
+  static bool _isLikelyRegexPattern(String pattern) {
+    // 包含明显的正则元字符组合
+    // *、+、? 前有字符（如 .*, \w+, \d?）
+    // 或者包含 |、^、$ 等
+    // 或者类似 <.*?> 的 HTML 标签匹配模式
+    if (pattern.contains('.*') || 
+        pattern.contains('.+') ||
+        pattern.contains('.?') ||
+        pattern.contains('\\') ||  // 转义字符
+        pattern.contains('^') ||   // 行首
+        pattern.contains(r'$') ||  // 行尾
+        pattern.contains('|') ||   // 或
+        (pattern.contains('<') && pattern.contains('>')) // HTML标签模式
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /// 解析 JSONPath

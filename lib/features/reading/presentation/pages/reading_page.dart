@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/book/domain/entities/book_source.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
+import 'package:my_nas/features/book/presentation/pages/online_book_detail_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_search_provider.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/note/presentation/pages/note_list_page.dart';
@@ -88,11 +90,13 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
           children: [
             // 主内容区域
             _buildReadingContentWithLargeTitle(context, isDark, currentTab, safeTop),
-            // 悬浮按钮组（右上角）
+            // 悬浮按钮组或搜索栏（右上角）
             Positioned(
               top: safeTop + 8,
               right: 16,
-              child: _buildFloatingButtons(context, isDark, currentTab),
+              child: _showSearch
+                  ? _buildFloatingSearchBar(context, isDark, currentTab)
+                  : _buildFloatingButtons(context, isDark, currentTab),
             ),
           ],
         ),
@@ -114,18 +118,361 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
               onPageChanged: (index) {
                 ref.read(readingTabProvider.notifier).state = index;
               },
-              children: const [
-                // 图书页面内容
-                BookListContent(),
+              children: [
+                // 图书页面内容 - 根据搜索模式显示不同内容
+                _buildBookContent(isDark),
                 // 漫画页面内容
-                ComicListContent(),
+                const ComicListContent(),
                 // 笔记页面内容
-                NoteListContent(),
+                const NoteListContent(),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// 构建图书内容区域
+  Widget _buildBookContent(bool isDark) {
+    // 如果在书源搜索模式且正在搜索或有结果
+    if (_showSearch && _bookSearchMode == BookSearchMode.online) {
+      return _buildOnlineSearchResults(isDark);
+    }
+    return const BookListContent();
+  }
+
+  /// 构建书源搜索结果
+  Widget _buildOnlineSearchResults(bool isDark) {
+    final searchState = ref.watch(bookSearchProvider);
+
+    // 空状态（没有搜索）
+    if (searchState.keyword.isEmpty && searchState.results.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_rounded,
+              size: 64,
+              color: isDark ? Colors.grey[700] : Colors.grey[300],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '输入关键词搜索书源',
+              style: TextStyle(
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 加载中
+    if (searchState.isLoading && searchState.results.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: Colors.amber),
+            const SizedBox(height: 16),
+            Text(
+              '正在搜索书源...',
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 错误状态
+    if (searchState.error != null && searchState.results.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 64,
+              color: Colors.red[300],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '搜索出错: ${searchState.error}',
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 无结果
+    if (searchState.results.isEmpty && searchState.isComplete) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.menu_book_rounded,
+              size: 64,
+              color: isDark ? Colors.grey[700] : Colors.grey[300],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '未找到相关书籍',
+              style: TextStyle(
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 结果列表
+    return Column(
+      children: [
+        // 状态栏
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Text(
+                '找到 ${searchState.results.length} 本书',
+                style: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  fontSize: 13,
+                ),
+              ),
+              if (searchState.isLoading)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8),
+                  child: SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.amber,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // 结果网格
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.all(16),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 140,
+              childAspectRatio: 0.6,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            itemCount: searchState.results.length,
+            itemBuilder: (context, index) {
+              final book = searchState.results[index];
+              return _buildOnlineBookCard(book, isDark);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建在线书籍卡片
+  Widget _buildOnlineBookCard(OnlineBook book, bool isDark) {
+    return GestureDetector(
+      onTap: () {
+        // 打开书籍详情页
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => OnlineBookDetailPage(book: book),
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 封面
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[800] : Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: book.coverUrl != null && book.coverUrl!.isNotEmpty
+                    ? Image.network(
+                        book.coverUrl!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        errorBuilder: (_, __, ___) => _buildBookPlaceholder(book, isDark),
+                      )
+                    : _buildBookPlaceholder(book, isDark),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          // 书名
+          Text(
+            book.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          // 作者
+          if (book.author != null && book.author!.isNotEmpty)
+            Text(
+              book.author!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 书籍封面占位符
+  Widget _buildBookPlaceholder(OnlineBook book, bool isDark) {
+    return Container(
+      color: isDark ? Colors.grey[850] : Colors.grey[100],
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.menu_book_rounded,
+              size: 32,
+              color: isDark ? Colors.grey[600] : Colors.grey[400],
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                book.name,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// iOS 26 悬浮搜索栏（玻璃模式）
+  Widget _buildFloatingSearchBar(BuildContext context, bool isDark, int currentTab) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 玻璃搜索栏
+        GlassFloatingSearchBar(
+          controller: _searchController,
+          hintText: currentTab == 0 && _bookSearchMode == BookSearchMode.online
+              ? '搜索书源...'
+              : '搜索${ReadingContentType.values[currentTab].label}...',
+          width: 260,
+          onChanged: (query) {
+            setState(() {}); // 触发重建以更新模式切换可见性
+            _performSearch(query, currentTab);
+          },
+          onClose: () => _closeSearch(currentTab),
+        ),
+        // 图书模式下显示本地/书源切换
+        if (currentTab == 0) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...BookSearchMode.values.map((mode) {
+                final isSelected = _bookSearchMode == mode;
+                return Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _bookSearchMode = mode);
+                      ref.read(bookListProvider.notifier).setSearchQuery('');
+                      ref.read(bookSearchProvider.notifier).clear();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Colors.amber.withValues(alpha: isDark ? 0.3 : 0.2)
+                            : (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05)),
+                        borderRadius: BorderRadius.circular(12),
+                        border: isSelected ? Border.all(color: Colors.amber, width: 1.5) : null,
+                      ),
+                      child: Text(
+                        mode.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          color: isSelected ? Colors.amber[700] : (isDark ? Colors.white70 : Colors.black54),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+              // 书源模式下显示搜索按钮
+              if (_bookSearchMode == BookSearchMode.online && _searchController.text.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _performOnlineSearch(_searchController.text),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.amber,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.search_rounded, size: 14, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text('搜索', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
     );
   }
 
@@ -349,8 +696,11 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
             : Colors.amber.withValues(alpha: 0.08))
         : null;
 
+    // 当搜索栏显示且是图书模式时，需要更高的高度来容纳模式切换
+    final headerHeight = (_showSearch && currentTab == 0) ? 110.0 : 84.0;
+
     return AdaptiveGlassHeader(
-      height: 84,
+      height: headerHeight,
       backgroundColor: uiStyle.isGlass
           ? tintColor
           : (isDark
@@ -360,78 +710,84 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         padding: const EdgeInsets.fromLTRB(20, 12, 16, 16),
         child: Row(
           children: [
-            // 问候语和当前类型标题
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _getGreeting(),
-                    style: context.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+            // 问候语和当前类型标题（搜索时隐藏）
+            if (!_showSearch)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _getGreeting(),
+                      style: context.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(
-                        ReadingContentType.values[currentTab].icon,
-                        size: 14,
-                        color: Colors.amber[700],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        ReadingContentType.values[currentTab].label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark
-                              ? AppColors.darkOnSurfaceVariant
-                              : AppColors.lightOnSurfaceVariant,
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          ReadingContentType.values[currentTab].icon,
+                          size: 14,
+                          color: Colors.amber[700],
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 4),
+                        Text(
+                          ReadingContentType.values[currentTab].label,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
             // 搜索栏或操作按钮组
             if (_showSearch)
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 搜索栏 - 与照片页面完全一致的简单 Row 样式
                     Row(
                       children: [
+                        // 返回按钮
                         IconButton(
-                          onPressed: () => _closeSearch(currentTab),
+                          onPressed: () {
+                            _closeSearch(currentTab);
+                          },
                           icon: Icon(
-                            Icons.arrow_back_rounded,
+                            Icons.arrow_back,
                             color: isDark ? Colors.white : Colors.black87,
                           ),
-                          tooltip: '关闭搜索',
                         ),
+                        // 搜索输入框
                         Expanded(
                           child: TextField(
                             controller: _searchController,
                             autofocus: true,
-                            style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
+                            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                             decoration: InputDecoration(
                               hintText: currentTab == 0 && _bookSearchMode == BookSearchMode.online
-                                  ? '搜索书源（按回车搜索）...'
+                                  ? '搜索书源...'
                                   : '搜索${ReadingContentType.values[currentTab].label}...',
-                              hintStyle: TextStyle(
-                                color: isDark ? Colors.grey[500] : Colors.grey[400],
-                              ),
+                              hintStyle: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[400]),
                               border: InputBorder.none,
                               contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             textInputAction: TextInputAction.search,
-                            onChanged: (value) => _performSearch(value, currentTab),
+                            onChanged: (value) {
+                              setState(() {});
+                              _performSearch(value, currentTab);
+                            },
                             onSubmitted: (value) {
+                              debugPrint('📚 onSubmitted: value="$value", currentTab=$currentTab, _bookSearchMode=$_bookSearchMode');
                               if (currentTab == 0 && _bookSearchMode == BookSearchMode.online) {
                                 _performOnlineSearch(value);
                               } else {
@@ -440,63 +796,95 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
                             },
                           ),
                         ),
+                        // 清除按钮
                         if (_searchController.text.isNotEmpty)
                           IconButton(
                             onPressed: () {
                               _searchController.clear();
+                              setState(() {});
                               _performSearch('', currentTab);
                               ref.read(bookSearchProvider.notifier).clear();
                             },
                             icon: Icon(
-                              Icons.close_rounded,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              Icons.close,
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
-                            tooltip: '清除',
                           ),
                       ],
                     ),
                     // 图书模式下显示本地/书源切换
                     if (currentTab == 0)
                       Padding(
-                        padding: const EdgeInsets.only(left: 48, top: 4),
+                        padding: const EdgeInsets.only(left: 12, top: 8),
                         child: Row(
-                          children: BookSearchMode.values.map((mode) {
-                            final isSelected = _bookSearchMode == mode;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: GestureDetector(
+                          children: [
+                            ...BookSearchMode.values.map((mode) {
+                              final isSelected = _bookSearchMode == mode;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() => _bookSearchMode = mode);
+                                    // 切换模式时清空搜索结果（保留输入内容）
+                                    ref.read(bookListProvider.notifier).setSearchQuery('');
+                                    ref.read(bookSearchProvider.notifier).clear();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? (isDark ? Colors.amber.withValues(alpha: 0.3) : Colors.amber.withValues(alpha: 0.2))
+                                          : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: isSelected
+                                          ? Border.all(color: Colors.amber, width: 1.5)
+                                          : null,
+                                    ),
+                                    child: Text(
+                                      mode.label,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                        color: isSelected
+                                            ? Colors.amber[700]
+                                            : (isDark ? Colors.white70 : Colors.black54),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                            // 书源模式下额外显示搜索按钮
+                            if (_bookSearchMode == BookSearchMode.online && _searchController.text.isNotEmpty)
+                              GestureDetector(
                                 onTap: () {
-                                  setState(() => _bookSearchMode = mode);
-                                  // 切换模式时清空搜索
-                                  _searchController.clear();
-                                  ref.read(bookListProvider.notifier).setSearchQuery('');
-                                  ref.read(bookSearchProvider.notifier).clear();
+                                  debugPrint('📚 Search button tapped');
+                                  _performOnlineSearch(_searchController.text);
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? (isDark ? Colors.amber.withValues(alpha: 0.3) : Colors.amber.withValues(alpha: 0.2))
-                                        : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                                    color: Colors.amber,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: isSelected
-                                        ? Border.all(color: Colors.amber, width: 1.5)
-                                        : null,
                                   ),
-                                  child: Text(
-                                    mode.label,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                                      color: isSelected
-                                          ? Colors.amber[700]
-                                          : (isDark ? Colors.white70 : Colors.black54),
-                                    ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.search_rounded, size: 14, color: Colors.white),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        '搜索',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
-                            );
-                          }).toList(),
+                          ],
                         ),
                       ),
                   ],
@@ -576,7 +964,12 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
 
   /// 执行书源搜索（按回车时调用）
   void _performOnlineSearch(String query) {
-    if (query.trim().isEmpty) return;
+    debugPrint('📚 _performOnlineSearch called with query: "$query"');
+    if (query.trim().isEmpty) {
+      debugPrint('📚 _performOnlineSearch: query is empty, returning');
+      return;
+    }
+    debugPrint('📚 _performOnlineSearch: calling bookSearchProvider.search()');
     ref.read(bookSearchProvider.notifier).search(query.trim());
   }
 

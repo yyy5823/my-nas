@@ -24,6 +24,7 @@ import 'package:my_nas/features/music/presentation/pages/desktop_lyric_window.da
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/book/data/services/sources/book_source_manager_service.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -176,6 +177,12 @@ Future<void> _initApp() async {
   // 初始化性能模式服务（需要 SharedPreferences，会打开 settings box）
   await PerformanceModeService().init();
   logger.i('PerformanceMode: ${PerformanceModeService.isPerformanceMode ? "enabled" : "disabled"}');
+
+  // 初始化书源管理服务（非阻塞，在后台加载）
+  AppError.fireAndForget(
+    BookSourceManagerService.instance.init(),
+    action: 'BookSourceManagerService.init',
+  );
 
   // Initialize AudioSession for proper audio playback on iOS/Android
   // This is critical for just_audio to work correctly
