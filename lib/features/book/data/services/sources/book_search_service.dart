@@ -293,13 +293,13 @@ class BookSearchService {
         
         // 相关性过滤 - 跳过与搜索关键词不相关的结果
         final rawAuthor = RuleParser.parseRule(rule.author, item, baseUrl: baseUrl);
-        final author = _sanitizeText(rawAuthor);
+        final author = _smartExtractAuthor(rawAuthor, item);
         
         // 调试日志：追踪作者解析
         if (books.length < 5) { // 只记录前5本以避免日志过多
           logger.d('📖 [${source.displayName}] 书名: "$name"');
           logger.d('   作者规则: "${rule.author}"');
-          logger.d('   原始作者: "$rawAuthor" → 清理后: "$author"');
+          logger.d('   原始作者: "$rawAuthor" → 智能提取: "$author"');
         }
         
         final isRelevant = _isRelevantResult(name, author, keyword);
@@ -309,7 +309,8 @@ class BookSearchService {
         }
 
         // 解析其他字段
-        final coverUrl = RuleParser.parseRule(rule.coverUrl, item, baseUrl: baseUrl);
+        final rawCoverUrl = RuleParser.parseRule(rule.coverUrl, item, baseUrl: baseUrl);
+        final coverUrl = _smartExtractCoverUrl(rawCoverUrl, item, baseUrl);
         final intro = _sanitizeText(RuleParser.parseRule(rule.intro, item, baseUrl: baseUrl));
         final kind = _sanitizeText(RuleParser.parseRule(rule.kind, item, baseUrl: baseUrl));
         final lastChapter = _sanitizeText(RuleParser.parseRule(rule.lastChapter, item, baseUrl: baseUrl));
@@ -320,7 +321,7 @@ class BookSearchService {
           logger.i('📚 [${source.displayName}] 解析完成:');
           logger.i('   📖 书名: "$name" | 作者: "$author"');
           logger.i('   🔗 bookUrl: $bookUrl');
-          logger.i('   🖼️ coverUrl规则: "${rule.coverUrl}" → "$coverUrl"');
+          logger.i('   🖼️ coverUrl规则: "${rule.coverUrl}" → 原始: "$rawCoverUrl" → 智能提取: "$coverUrl"');
           logger.i('   📝 intro: "${intro.length > 50 ? '${intro.substring(0, 50)}...' : intro}"');
           logger.i('   🏷️ kind: "$kind" | lastChapter: "$lastChapter" | wordCount: "$wordCount"');
         }
@@ -415,6 +416,237 @@ class BookSearchService {
     result = result.replaceAll(RegExp(r'<[^>]*>'), '');
     
     return result.trim();
+  }
+
+  /// 智能提取作者信息
+  /// 
+  /// 处理各种书源的作者字段：
+  /// 1. 正常文本 - 直接使用
+  /// 2. HTML片段 - 从中提取作者名
+  /// 3. URL编码内容 - 解码后提取
+  /// 4. 无效数据 - 尝试从原始item中查找
+  String _smartExtractAuthor(String? rawAuthor, dynamic item) {
+    // 1. 先尝试常规清理
+    var author = _sanitizeText(rawAuthor);
+    
+    // 如果清理后有效，验证是否像作者名
+    if (author.isNotEmpty && _isValidAuthorName(author)) {
+      return author;
+    }
+    
+    // 2. 如果原始值包含URL编码的HTML，尝试从中提取作者
+    if (rawAuthor != null && rawAuthor.isNotEmpty) {
+      final extractedFromRaw = _extractAuthorFromHtmlOrText(rawAuthor);
+      if (extractedFromRaw.isNotEmpty && _isValidAuthorName(extractedFromRaw)) {
+        logger.d('   [智能提取] 从原始值中提取作者: "$extractedFromRaw"');
+        return extractedFromRaw;
+      }
+    }
+    
+    // 3. 尝试从原始item数据中查找作者
+    if (item != null) {
+      final extractedFromItem = _extractAuthorFromItem(item);
+      if (extractedFromItem.isNotEmpty && _isValidAuthorName(extractedFromItem)) {
+        logger.d('   [智能提取] 从item中提取作者: "$extractedFromItem"');
+        return extractedFromItem;
+      }
+    }
+    
+    return author;
+  }
+
+  /// 从HTML或文本中提取作者名
+  String _extractAuthorFromHtmlOrText(String text) {
+    var decoded = text;
+    
+    // URL解码
+    try {
+      decoded = Uri.decodeComponent(text);
+    } catch (_) {}
+    
+    // 查找常见的作者标记模式
+    final patterns = <RegExp>[
+      // class="authorNm" 或 class="author"
+      RegExp(r'''class=["'](?:authorNm|author|writer)["'][^>]*>(?:<[^>]*>)*([^<]+)''', caseSensitive: false),
+      // 作者: xxx 或 作者：xxx
+      RegExp(r'作者[：:]\s*([^\s<,，]+)'),
+      // by XXX
+      RegExp(r'\bby\s+([^\s<,，]+)', caseSensitive: false),
+      // author: xxx
+      RegExp(r'author[：:]\s*([^\s<,，]+)', caseSensitive: false),
+    ];
+    
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(decoded);
+      if (match != null && match.group(1) != null) {
+        final extracted = match.group(1)!.trim();
+        // 清理HTML标签
+        final cleaned = extracted.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+        if (cleaned.isNotEmpty && cleaned.length <= 20) {
+          return cleaned;
+        }
+      }
+    }
+    
+    return '';
+  }
+
+  /// 从item数据中提取作者
+  String _extractAuthorFromItem(dynamic item) {
+    if (item is Map) {
+      // 尝试常见的作者字段名
+      final authorKeys = ['author', 'writer', 'authorName', 'bookAuthor', 'zuozhe', 'zz'];
+      for (final key in authorKeys) {
+        if (item.containsKey(key)) {
+          final value = item[key]?.toString().trim() ?? '';
+          if (value.isNotEmpty && _isValidAuthorName(value)) {
+            return value;
+          }
+        }
+      }
+    } else if (item is String) {
+      // HTML内容，尝试从中提取
+      return _extractAuthorFromHtmlOrText(item);
+    }
+    return '';
+  }
+
+  /// 验证字符串是否像有效的作者名
+  bool _isValidAuthorName(String name) {
+    if (name.isEmpty || name.length > 30) return false;
+    
+    // 不应该是URL
+    if (name.startsWith('http://') || name.startsWith('https://')) return false;
+    
+    // 不应该是章节标题模式（包含"章"和数字）
+    if (RegExp(r'第\d+章').hasMatch(name)) return false;
+    
+    // 不应该包含日期时间
+    if (RegExp(r'\d{4}-\d{2}-\d{2}').hasMatch(name)) return false;
+    if (RegExp(r'\d{2}:\d{2}').hasMatch(name)) return false;
+    
+    // 不应该只是数字
+    if (RegExp(r'^\d+$').hasMatch(name)) return false;
+    
+    // 不应该是HTML标签
+    if (name.startsWith('<') || name.endsWith('>')) return false;
+    
+    // 不应该包含大量特殊字符
+    if (RegExp(r'[<>{}()\[\]]{3,}').hasMatch(name)) return false;
+    
+    return true;
+  }
+
+  /// 智能提取封面URL
+  /// 
+  /// 当规则解析失败时，尝试从原始item中提取封面URL
+  String? _smartExtractCoverUrl(String? rawCoverUrl, dynamic item, String baseUrl) {
+    // 1. 如果规则解析成功且是有效URL，直接返回
+    if (rawCoverUrl != null && rawCoverUrl.isNotEmpty && _isValidImageUrl(rawCoverUrl)) {
+      return _normalizeImageUrl(rawCoverUrl, baseUrl);
+    }
+    
+    // 2. 尝试从原始item中提取封面
+    if (item != null) {
+      final extracted = _extractCoverFromItem(item);
+      if (extracted != null && _isValidImageUrl(extracted)) {
+        logger.d('   [智能提取] 封面URL: "$extracted"');
+        return _normalizeImageUrl(extracted, baseUrl);
+      }
+    }
+    
+    return rawCoverUrl;
+  }
+
+  /// 从item数据中提取封面URL
+  String? _extractCoverFromItem(dynamic item) {
+    if (item is Map) {
+      // 尝试常见的封面字段名
+      final coverKeys = ['cover', 'coverUrl', 'coverImg', 'img', 'pic', 'image', 'bookCover', 'thumb'];
+      for (final key in coverKeys) {
+        if (item.containsKey(key)) {
+          final value = item[key]?.toString().trim();
+          if (value != null && value.isNotEmpty && _isValidImageUrl(value)) {
+            return value;
+          }
+        }
+      }
+    } else if (item is String) {
+      // HTML内容，尝试从中提取
+      return _extractCoverFromHtml(item);
+    }
+    return null;
+  }
+
+  /// 从HTML中提取封面URL
+  String? _extractCoverFromHtml(String html) {
+    var decoded = html;
+    
+    // URL解码
+    try {
+      decoded = Uri.decodeComponent(html);
+    } catch (_) {}
+    
+    // 查找img标签的src或data-src
+    // 优先查找带有cover相关class的img
+    final patterns = <RegExp>[
+      // class包含cover的img
+      RegExp(r'''<img[^>]*class=["'][^"']*cover[^"']*["'][^>]*src=["']([^"']+)["']''', caseSensitive: false),
+      RegExp(r'''<img[^>]*src=["']([^"']+)["'][^>]*class=["'][^"']*cover[^"']*["']''', caseSensitive: false),
+      // class="bookImg" 或 class="book-cover-img"
+      RegExp(r'''<img[^>]*class=["'][^"']*(?:bookImg|book-cover|book-list-cover)[^"']*["'][^>]*src=["']([^"']+)["']''', caseSensitive: false),
+      // data-src (懒加载图片)
+      RegExp(r'''<img[^>]*data-src=["']([^"']+)["']''', caseSensitive: false),
+      // 普通img src（作为最后备选）
+      RegExp(r'''<img[^>]*src=["'](https?://[^"']+\.(?:jpg|jpeg|png|gif|webp)[^"']*)["']''', caseSensitive: false),
+    ];
+    
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(decoded);
+      if (match != null && match.group(1) != null) {
+        final url = match.group(1)!.trim();
+        if (_isValidImageUrl(url)) {
+          return url;
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  /// 验证是否是有效的图片URL
+  bool _isValidImageUrl(String url) {
+    if (url.isEmpty) return false;
+    
+    // 不应该是占位图
+    if (url.contains('placeholder') || url.contains('default') || url.contains('nocover')) {
+      return false;
+    }
+    
+    // 应该是URL格式
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('//')) {
+      return false;
+    }
+    
+    return true;
+  }
+
+  /// 标准化图片URL
+  String _normalizeImageUrl(String url, String baseUrl) {
+    // 处理 // 开头的URL
+    if (url.startsWith('//')) {
+      return 'https:$url';
+    }
+    
+    // 处理相对URL
+    if (url.startsWith('/')) {
+      try {
+        final uri = Uri.parse(baseUrl);
+        return '${uri.scheme}://${uri.host}$url';
+      } catch (_) {}
+    }
+    
+    return url;
   }
 
   /// 检查搜索结果是否与关键词相关
