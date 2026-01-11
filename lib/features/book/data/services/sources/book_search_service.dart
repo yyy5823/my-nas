@@ -247,6 +247,22 @@ class BookSearchService {
 
     for (final item in bookList) {
       try {
+        // 📋 记录原始数据结构（前2条，便于分析可用字段）
+        if (books.isEmpty && bookList.indexOf(item) < 2) {
+          logger.w('📋 [${source.displayName}] 原始数据项 #${bookList.indexOf(item)}:');
+          if (item is Map) {
+            for (final key in (item as Map).keys.take(15)) {
+              final value = item[key];
+              final valueStr = value?.toString() ?? 'null';
+              logger.w('   $key: ${valueStr.length > 100 ? '${valueStr.substring(0, 100)}...' : valueStr}');
+            }
+          } else if (item is String) {
+            logger.w('   [HTML内容] ${item.length > 200 ? '${item.substring(0, 200)}...' : item}');
+          } else {
+            logger.w('   [类型: ${item.runtimeType}] $item');
+          }
+        }
+        
         var name = RuleParser.parseRule(rule.name, item, baseUrl: baseUrl);
         final bookUrl = RuleParser.parseRule(rule.bookUrl, item, baseUrl: baseUrl);
 
@@ -276,22 +292,48 @@ class BookSearchService {
         }
         
         // 相关性过滤 - 跳过与搜索关键词不相关的结果
-        final author = _sanitizeText(RuleParser.parseRule(rule.author, item, baseUrl: baseUrl));
+        final rawAuthor = RuleParser.parseRule(rule.author, item, baseUrl: baseUrl);
+        final author = _sanitizeText(rawAuthor);
+        
+        // 调试日志：追踪作者解析
+        if (books.length < 5) { // 只记录前5本以避免日志过多
+          logger.d('📖 [${source.displayName}] 书名: "$name"');
+          logger.d('   作者规则: "${rule.author}"');
+          logger.d('   原始作者: "$rawAuthor" → 清理后: "$author"');
+        }
+        
         final isRelevant = _isRelevantResult(name, author, keyword);
         if (!isRelevant) {
           logger.d('过滤不相关结果: "$name" (关键词: "$keyword")');
           continue;
         }
 
+        // 解析其他字段
+        final coverUrl = RuleParser.parseRule(rule.coverUrl, item, baseUrl: baseUrl);
+        final intro = _sanitizeText(RuleParser.parseRule(rule.intro, item, baseUrl: baseUrl));
+        final kind = _sanitizeText(RuleParser.parseRule(rule.kind, item, baseUrl: baseUrl));
+        final lastChapter = _sanitizeText(RuleParser.parseRule(rule.lastChapter, item, baseUrl: baseUrl));
+        final wordCount = _sanitizeText(RuleParser.parseRule(rule.wordCount, item, baseUrl: baseUrl));
+        
+        // 详细日志：记录完整解析数据（前3本书）
+        if (books.length < 3) {
+          logger.i('📚 [${source.displayName}] 解析完成:');
+          logger.i('   📖 书名: "$name" | 作者: "$author"');
+          logger.i('   🔗 bookUrl: $bookUrl');
+          logger.i('   🖼️ coverUrl规则: "${rule.coverUrl}" → "$coverUrl"');
+          logger.i('   📝 intro: "${intro.length > 50 ? '${intro.substring(0, 50)}...' : intro}"');
+          logger.i('   🏷️ kind: "$kind" | lastChapter: "$lastChapter" | wordCount: "$wordCount"');
+        }
+
         books.add(OnlineBook(
           name: name,
           author: author,
           bookUrl: bookUrl,
-          coverUrl: RuleParser.parseRule(rule.coverUrl, item, baseUrl: baseUrl),
-          intro: _sanitizeText(RuleParser.parseRule(rule.intro, item, baseUrl: baseUrl)),
-          kind: _sanitizeText(RuleParser.parseRule(rule.kind, item, baseUrl: baseUrl)),
-          lastChapter: _sanitizeText(RuleParser.parseRule(rule.lastChapter, item, baseUrl: baseUrl)),
-          wordCount: _sanitizeText(RuleParser.parseRule(rule.wordCount, item, baseUrl: baseUrl)),
+          coverUrl: coverUrl,
+          intro: intro,
+          kind: kind,
+          lastChapter: lastChapter,
+          wordCount: wordCount,
           source: source,
         ));
       } catch (e, st) {

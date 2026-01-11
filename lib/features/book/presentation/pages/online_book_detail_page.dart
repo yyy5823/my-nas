@@ -326,20 +326,18 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 加入书架按钮
-        GestureDetector(
-          onLongPress: _isInShelf ? _removeFromShelf : null,
-          child: FloatingActionButton.small(
-            heroTag: 'addToShelf',
-            onPressed: _addToShelf,
-            backgroundColor: _isInShelf 
-                ? AppColors.primary 
-                : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
-            foregroundColor: _isInShelf 
-                ? Colors.white 
-                : AppColors.primary,
-            child: Icon(_isInShelf ? Icons.bookmark_rounded : Icons.bookmark_add_outlined),
-          ),
+        // 书架按钮：已在书架显示删除，否则显示添加
+        FloatingActionButton.small(
+          heroTag: 'shelfAction',
+          onPressed: _isInShelf ? _removeFromShelf : _addToShelf,
+          backgroundColor: _isInShelf 
+              ? Colors.red.shade400
+              : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
+          foregroundColor: _isInShelf 
+              ? Colors.white 
+              : AppColors.primary,
+          tooltip: _isInShelf ? '从书架移除' : '加入书架',
+          child: Icon(_isInShelf ? Icons.bookmark_remove_outlined : Icons.bookmark_add_outlined),
         ),
         const SizedBox(height: 12),
         // 开始阅读按钮

@@ -5,10 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/book/domain/entities/book_source.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/book/presentation/pages/online_book_detail_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_search_provider.dart';
+import 'package:my_nas/features/book/presentation/providers/online_book_shelf_provider.dart';
+import 'package:my_nas/features/book/data/services/online_book_shelf_service.dart';
+import 'package:my_nas/features/book/data/services/sources/book_source_manager_service.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/note/presentation/pages/note_list_page.dart';
 import 'package:my_nas/features/note/presentation/widgets/note_tree_widget.dart';
@@ -139,7 +143,229 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     if (_showSearch && _bookSearchMode == BookSearchMode.online) {
       return _buildOnlineSearchResults(isDark);
     }
+    // 如果在在线模式（非搜索），显示在线书架
+    if (_bookSearchMode == BookSearchMode.online) {
+      return _buildOnlineBookShelf(isDark);
+    }
     return const BookListContent();
+  }
+
+  /// 构建在线书架内容
+  Widget _buildOnlineBookShelf(bool isDark) {
+    final shelfState = ref.watch(onlineBookShelfProvider);
+    
+    return shelfState.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text('加载失败', style: TextStyle(color: Colors.grey[600])),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => ref.read(onlineBookShelfProvider.notifier).refresh(),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+      data: (items) {
+        if (items.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.cloud_off_rounded,
+                    size: 36,
+                    color: AppColors.primary.withValues(alpha: 0.5),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '在线书架为空',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '搜索并添加在线书籍开始阅读',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[500] : Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        
+        // 显示在线书架书籍网格
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 140,
+            childAspectRatio: 0.6,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return _buildOnlineShelfCard(item, isDark);
+          },
+        );
+      },
+    );
+  }
+
+  /// 构建在线书架卡片
+  Widget _buildOnlineShelfCard(OnlineBookShelfItem item, bool isDark) {
+    return GestureDetector(
+      onTap: () async {
+        // 从书源管理器加载完整的书源规则
+        final fullSource = await BookSourceManagerService.instance.getSourceById(item.sourceId);
+        if (fullSource == null) {
+          if (mounted) {
+            context.showErrorToast('书源不存在，可能已被删除');
+          }
+          return;
+        }
+        
+        // 使用完整的书源创建 OnlineBook 并打开详情页
+        final book = OnlineBook(
+          name: item.name,
+          author: item.author,
+          bookUrl: item.bookUrl,
+          coverUrl: item.coverUrl,
+          intro: item.intro,
+          source: fullSource,
+        );
+        if (mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) => OnlineBookDetailPage(book: book),
+            ),
+          );
+        }
+      },
+      onLongPress: () => _showDeleteConfirmation(item, isDark),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 封面
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[800] : Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: item.coverUrl != null && item.coverUrl!.isNotEmpty
+                    ? Image.network(
+                        item.coverUrl!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        errorBuilder: (_, __, ___) => _buildShelfPlaceholder(item, isDark),
+                      )
+                    : _buildShelfPlaceholder(item, isDark),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 书名
+          Text(
+            item.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          // 作者
+          Text(
+            item.author.isNotEmpty ? item.author : '佚名',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 书架占位符
+  Widget _buildShelfPlaceholder(OnlineBookShelfItem item, bool isDark) {
+    return Container(
+      color: isDark ? Colors.grey[850] : Colors.grey[100],
+      child: Center(
+        child: Icon(
+          Icons.menu_book_rounded,
+          size: 32,
+          color: isDark ? Colors.grey[600] : Colors.grey[400],
+        ),
+      ),
+    );
+  }
+
+  /// 显示删除确认对话框
+  void _showDeleteConfirmation(OnlineBookShelfItem item, bool isDark) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Colors.grey[850] : null,
+        title: const Text('删除书籍'),
+        content: Text('确定要将《${item.name}》从书架中移除吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              try {
+                await OnlineBookShelfService.instance.removeBook(item.id);
+                ref.read(onlineBookShelfProvider.notifier).onBookRemoved();
+                if (mounted) {
+                  this.context.showSuccessToast('已从书架移除');
+                }
+              } catch (e, st) {
+                AppError.handleWithUI(this.context, e, st, '删除失败');
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 构建书源搜索结果
@@ -569,7 +795,9 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         // 图书页面 - 带大标题的滚动布局
         _buildScrollableContent(
           context, isDark, currentTab, safeTop,
-          child: const BookListContent(),
+          child: _bookSearchMode == BookSearchMode.online 
+              ? _buildOnlineBookShelf(isDark) 
+              : const BookListContent(),
         ),
         // 漫画页面
         _buildScrollableContent(

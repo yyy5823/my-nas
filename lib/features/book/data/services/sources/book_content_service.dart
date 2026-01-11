@@ -64,8 +64,21 @@ class BookContentService {
       final response = await _makeRequest(source, book.bookUrl);
       if (response == null) return null;
 
+      // 📋 记录原始响应数据结构（便于分析可用字段）
+      logger.w('📋 [${source.displayName}] 书籍详情原始数据:');
+      if (response is Map) {
+        for (final key in (response as Map).keys.take(15)) {
+          final value = response[key];
+          final valueStr = value?.toString() ?? 'null';
+          logger.w('   $key: ${valueStr.length > 100 ? '${valueStr.substring(0, 100)}...' : valueStr}');
+        }
+      } else if (response is String) {
+        logger.w('   [HTML内容] 长度: ${response.length} 字符');
+      }
+
       // 如果没有详情规则，使用搜索结果的信息
       if (rule == null) {
+        logger.i('📖 [${source.displayName}] 无详情规则，使用搜索结果信息');
         return BookInfo(
           name: book.name,
           author: book.author,
@@ -78,13 +91,26 @@ class BookContentService {
         );
       }
 
+      // 解析详情并记录
+      final parsedName = RuleParser.parseRule(rule.name, response, baseUrl: book.bookUrl);
+      final parsedAuthor = RuleParser.parseRule(rule.author, response, baseUrl: book.bookUrl);
+      final parsedCoverUrl = RuleParser.parseRule(rule.coverUrl, response, baseUrl: book.bookUrl);
+      final parsedIntro = RuleParser.parseRule(rule.intro, response, baseUrl: book.bookUrl);
+      
+      // 详细日志：记录各字段的规则和解析结果
+      logger.i('📖 [${source.displayName}] 详情解析结果:');
+      logger.i('   书名规则: "${rule.name}" → "$parsedName" (默认: ${book.name})');
+      logger.i('   作者规则: "${rule.author}" → "$parsedAuthor" (默认: ${book.author})');
+      logger.i('   封面规则: "${rule.coverUrl}" → "$parsedCoverUrl"');
+      logger.i('   简介规则: "${rule.intro}" → "${parsedIntro?.length ?? 0}字"');
+
       // 解析详情
       return BookInfo(
-        name: RuleParser.parseRule(rule.name, response, baseUrl: book.bookUrl) ?? book.name,
-        author: RuleParser.parseRule(rule.author, response, baseUrl: book.bookUrl) ?? book.author,
+        name: parsedName ?? book.name,
+        author: parsedAuthor ?? book.author,
         bookUrl: book.bookUrl,
-        coverUrl: RuleParser.parseRule(rule.coverUrl, response, baseUrl: book.bookUrl) ?? book.coverUrl,
-        intro: RuleParser.parseRule(rule.intro, response, baseUrl: book.bookUrl) ?? book.intro,
+        coverUrl: parsedCoverUrl ?? book.coverUrl,
+        intro: parsedIntro ?? book.intro,
         kind: RuleParser.parseRule(rule.kind, response, baseUrl: book.bookUrl) ?? book.kind,
         lastChapter: RuleParser.parseRule(rule.lastChapter, response, baseUrl: book.bookUrl),
         wordCount: RuleParser.parseRule(rule.wordCount, response, baseUrl: book.bookUrl),
