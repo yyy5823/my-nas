@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/online_book_shelf_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_source.dart';
 import 'package:my_nas/features/book/presentation/pages/online_book_reader_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_search_provider.dart';
+import 'package:my_nas/features/book/presentation/providers/online_book_shelf_provider.dart';
 import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_container.dart';
@@ -92,7 +94,46 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
   String get _displayAuthor {
     final author = widget.book.author;
     if (!_isValidText(author)) return '';
-    return _urlDecode(author);
+    return _sanitizeMetadataField(_urlDecode(author), '作者');
+  }
+
+  /// 清理可能被连接的元数据字段
+  /// 例如: "作者：虾写分类：其他状态：连载" -> "虾写"
+  String _sanitizeMetadataField(String text, String fieldLabel) {
+    if (text.isEmpty) return '';
+    
+    // 常见的中文元数据标签
+    const labels = ['作者', '分类', '类型', '状态', '字数', '最新', '更新', '连载', '完结', '标签'];
+    
+    var result = text;
+    
+    // 先去掉开头的标签（如 "作者："）
+    final labelPattern = RegExp('^($fieldLabel[:：]\\s*)', caseSensitive: false);
+    result = result.replaceFirst(labelPattern, '');
+    
+    // 找到下一个元信息标签的位置，截取之前的内容
+    int cutIndex = result.length;
+    for (final label in labels) {
+      if (label == fieldLabel) continue; // 跳过当前字段标签
+      
+      // 查找标签位置（"分类：" 或 "分类:"）
+      final idx = result.indexOf(RegExp('$label[:：]'));
+      if (idx > 0 && idx < cutIndex) {
+        cutIndex = idx;
+      }
+      // 也检查无冒号的情况（如 "分类其他"）
+      final idx2 = result.indexOf(label);
+      if (idx2 > 0 && idx2 < cutIndex) {
+        cutIndex = idx2;
+      }
+    }
+    
+    result = result.substring(0, cutIndex).trim();
+    
+    // 去除尾部空格和常见分隔符
+    result = result.replaceAll(RegExp(r'[\s,，、/]+$'), '');
+    
+    return result;
   }
 
   /// 获取可显示的简介
@@ -108,7 +149,8 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
     final kind = widget.book.kind;
     if (kind == null || kind.isEmpty) return null;
     if (!_isValidText(kind)) return null;
-    return _urlDecode(kind);
+    final sanitized = _sanitizeMetadataField(_urlDecode(kind), '分类');
+    return sanitized.isEmpty ? null : sanitized;
   }
 
   /// 获取可显示的字数
@@ -269,13 +311,6 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _displayAuthor,
-                      style: context.textTheme.bodyMedium?.copyWith(
-                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -330,6 +365,8 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
       await OnlineBookShelfService.instance.addBook(widget.book);
       if (mounted) {
         setState(() => _isInShelf = true);
+        // 刷新书架 Provider 状态
+        ref.read(onlineBookShelfProvider.notifier).onBookAdded();
         context.showToast('已加入书架: $_displayName');
       }
     } catch (e) {
@@ -349,11 +386,26 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
     await OnlineBookShelfService.instance.removeBook(shelfItem.id);
     if (mounted) {
       setState(() => _isInShelf = false);
+      // 刷新书架 Provider 状态
+      ref.read(onlineBookShelfProvider.notifier).onBookRemoved();
       context.showToast('已从书架移除');
     }
   }
 
-  void _startReading() {
+  Future<void> _startReading() async {
+    // 如果不在书架中，先加入书架
+    if (!_isInShelf) {
+      try {
+        await OnlineBookShelfService.instance.addBook(widget.book);
+        if (mounted) {
+          setState(() => _isInShelf = true);
+          ref.read(onlineBookShelfProvider.notifier).onBookAdded();
+        }
+      } catch (e) {
+        logger.w('加入书架失败，继续阅读', e);
+      }
+    }
+    
     if (_chapters != null && _chapters!.isNotEmpty) {
       _openReader(_chapters!.first);
     } else {
@@ -362,6 +414,36 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
   }
 
   Widget _buildBookInfo(bool isDark, UIStyle uiStyle) {
+    // 构建元信息列表（作者、分类、状态、字数）
+    final metaItems = <Widget>[];
+    
+    // 作者
+    if (_displayAuthor.isNotEmpty) {
+      metaItems.add(_buildMetaItem(
+        Icons.person_outline_rounded,
+        _displayAuthor,
+        isDark,
+      ));
+    }
+    
+    // 分类
+    if (_displayKind != null && _displayKind!.isNotEmpty) {
+      metaItems.add(_buildMetaItem(
+        Icons.category_outlined,
+        _displayKind!,
+        isDark,
+      ));
+    }
+    
+    // 字数
+    if (_displayWordCount != null && _displayWordCount!.isNotEmpty) {
+      metaItems.add(_buildMetaItem(
+        Icons.article_outlined,
+        _displayWordCount!,
+        isDark,
+      ));
+    }
+
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: AdaptiveGlassContainer(
@@ -373,44 +455,37 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 分类和字数
+              // 元信息网格
+              if (metaItems.isNotEmpty) ...[
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  children: metaItems,
+                ),
+                const SizedBox(height: 12),
+              ],
+              // 来源信息
               Row(
                 children: [
-                  if (_displayKind != null && _displayKind!.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        _displayKind!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                  if (_displayWordCount != null && _displayWordCount!.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      _displayWordCount!,
-                      style: context.textTheme.bodySmall?.copyWith(
-                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
+                  Icon(
+                    Icons.public_rounded,
+                    size: 14,
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
                   Text(
                     '来源: ${widget.book.source.displayName}',
                     style: context.textTheme.bodySmall?.copyWith(
                       color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                      fontSize: 12,
                     ),
                   ),
                 ],
               ),
               // 简介
               if (_displayIntro != null && _displayIntro!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
                 const SizedBox(height: 12),
                 Text(
                   '简介',
@@ -434,6 +509,28 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
           ),
         ),
       ),
+    );
+  }
+
+  /// 构建单个元信息项
+  Widget _buildMetaItem(IconData icon, String text, bool isDark) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 14,
+          color: AppColors.primary,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: context.textTheme.bodySmall?.copyWith(
+            color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+            fontSize: 13,
+          ),
+        ),
+      ],
     );
   }
 

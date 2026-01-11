@@ -15,9 +15,14 @@ import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
 import 'package:my_nas/features/book/data/services/book_metadata_service.dart';
 import 'package:my_nas/features/book/data/services/book_preload_service.dart';
+import 'package:my_nas/features/book/data/services/online_book_shelf_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
+import 'package:my_nas/features/book/domain/entities/book_source.dart';
+import 'package:my_nas/features/book/presentation/pages/online_book_detail_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_cover_provider.dart';
+import 'package:my_nas/features/book/presentation/providers/online_book_shelf_provider.dart';
 import 'package:my_nas/features/book/presentation/utils/book_navigator.dart';
+import 'package:my_nas/features/book/presentation/widgets/online_book_card.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -83,7 +88,8 @@ bool _isLocalBookSource(SourceType type) => type == SourceType.local;
 enum ReadingCategory {
   book('图书', Icons.menu_book_rounded),
   comic('漫画', Icons.collections_rounded),
-  note('笔记', Icons.note_alt_rounded);
+  note('笔记', Icons.note_alt_rounded),
+  online('在线', Icons.cloud_rounded);
 
   const ReadingCategory(this.label, this.icon);
   final String label;
@@ -1121,21 +1127,23 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         children: [
           _buildHeader(context, ref, isDark, state),
           Expanded(
-            child: switch (state) {
-              BookListLoading(:final progress, :final currentFolder, :final fromCache) =>
-                _buildLoadingState(progress, currentFolder, fromCache, isDark),
-              BookListNotConnected() => const MediaSetupWidget(
-                  mediaType: MediaType.book,
-                  icon: Icons.menu_book_outlined,
-                ),
-              BookListError(:final message) => AppErrorWidget(
-                  message: message,
-                  onRetry: () => ref.read(bookListProvider.notifier).loadBooks(),
-                ),
-              BookListLoaded(:final displayBooks) when displayBooks.isEmpty =>
-                _buildEmptyState(context, ref, isDark),
-              final BookListLoaded loaded => _buildBookContent(context, ref, loaded, isDark),
-            },
+            child: _selectedCategory == ReadingCategory.online
+                ? _buildOnlineBookContent(context, ref, isDark)
+                : switch (state) {
+                    BookListLoading(:final progress, :final currentFolder, :final fromCache) =>
+                      _buildLoadingState(progress, currentFolder, fromCache, isDark),
+                    BookListNotConnected() => const MediaSetupWidget(
+                        mediaType: MediaType.book,
+                        icon: Icons.menu_book_outlined,
+                      ),
+                    BookListError(:final message) => AppErrorWidget(
+                        message: message,
+                        onRetry: () => ref.read(bookListProvider.notifier).loadBooks(),
+                      ),
+                    BookListLoaded(:final displayBooks) when displayBooks.isEmpty =>
+                      _buildEmptyState(context, ref, isDark),
+                    final BookListLoaded loaded => _buildBookContent(context, ref, loaded, isDark),
+                  },
           ),
         ],
       ),
@@ -1599,6 +1607,144 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                     builder: (context) => const SourcesPage(),
                   ),
                 );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建在线书架内容
+  Widget _buildOnlineBookContent(BuildContext context, WidgetRef ref, bool isDark) {
+    final onlineShelfState = ref.watch(onlineBookShelfProvider);
+    
+    return onlineShelfState.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text('加载失败', style: TextStyle(color: Colors.grey[600])),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => ref.read(onlineBookShelfProvider.notifier).refresh(),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+      data: (items) {
+        if (items.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.cloud_off_rounded,
+                    size: 36,
+                    color: AppColors.primary.withValues(alpha: 0.5),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '在线书架为空',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '搜索并添加在线书籍开始阅读',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.grey[500] : Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        
+        // 网格布局
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: 0.65,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return OnlineBookCard(
+                item: item,
+                isDark: isDark,
+                onTap: () => _openOnlineBookDetail(item),
+                onLongPress: () => _showOnlineBookOptions(context, item),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  /// 打开在线书籍详情页
+  void _openOnlineBookDetail(OnlineBookShelfItem item) {
+    // 转换为 OnlineBook 供详情页使用
+    final book = OnlineBook(
+      name: item.name,
+      author: item.author,
+      bookUrl: item.bookUrl,
+      coverUrl: item.coverUrl,
+      intro: item.intro,
+      kind: item.kind,
+      lastChapter: item.lastChapter,
+      wordCount: item.wordCount,
+      source: BookSource(
+        bookSourceUrl: item.sourceUrl,
+        bookSourceName: item.sourceName,
+      ),
+    );
+    
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => OnlineBookDetailPage(book: book),
+      ),
+    );
+  }
+
+  /// 显示在线书籍操作选项
+  void _showOnlineBookOptions(BuildContext context, OnlineBookShelfItem item) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded),
+              title: const Text('从书架移除'),
+              onTap: () async {
+                Navigator.pop(context);
+                await OnlineBookShelfService.instance.removeBook(item.id);
+                if (mounted) {
+                  ref.read(onlineBookShelfProvider.notifier).onBookRemoved();
+                }
               },
             ),
           ],

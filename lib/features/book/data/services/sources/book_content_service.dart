@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:html/parser.dart' as html_parser;
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/sources/rule_parser.dart';
@@ -164,6 +165,7 @@ class BookContentService {
     '.mulu li a',            // 目录(中文)
     '#chapterList a',        // ID形式
     '#chapterlist a',
+    '#chapterList li a',     // ID+li形式
     'ul.chapter li a',
     '.volume dd a',          // 卷章结构
     '.box_con dd a',
@@ -172,6 +174,19 @@ class BookContentService {
     '.dirlist li a',         // 目录列表
     '.read-content-wrap li a',
     '.novel_list li a',
+    // 365小说网及类似站点
+    '.novel-chapter a',
+    '.book-chapter a',
+    '.chapter a',
+    '.chapters a',
+    '.toc a',
+    '.table-of-contents a',
+    // 表格形式的章节列表
+    'table.chapterlist a',
+    'table td a',
+    'table tbody tr td a',
+    '.grid a',
+    '.chapter-grid a',
     // 更通用的选择器
     'dd a',                  // 直接dd里的链接
     'dl a',                  // dl里的链接
@@ -242,12 +257,26 @@ class BookContentService {
         final item = chapterList[i];
         try {
           // 尝试从HTML元素中提取信息
-          final name = RuleParser.parseRule('@css:a@text', item, baseUrl: baseUrl) ??
-                       RuleParser.parseRule('text', item, baseUrl: baseUrl);
-          final url = RuleParser.parseRule('@css:a@href', item, baseUrl: baseUrl) ??
-                      RuleParser.parseRule('href', item, baseUrl: baseUrl);
+          // 首先尝试直接获取（当 item 本身就是 <a> 元素时）
+          String? name = RuleParser.parseRule('text', item, baseUrl: baseUrl);
+          String? url = RuleParser.parseRule('href', item, baseUrl: baseUrl);
+          
+          // 如果直接获取失败，尝试获取嵌套的 <a> 元素
+          if ((name == null || name.isEmpty) && (url == null || url.isEmpty)) {
+            name = RuleParser.parseRule('@css:a@text', item, baseUrl: baseUrl);
+            url = RuleParser.parseRule('@css:a@href', item, baseUrl: baseUrl);
+          }
+          
+          // 也尝试 outerHtml 提取 (用于调试)
+          if (i < 3 && (name == null || name.isEmpty || url == null || url.isEmpty)) {
+            final html = RuleParser.parseRule('outerHtml', item, baseUrl: baseUrl);
+            logger.d('备用选择器元素[$i]: name=$name, url=$url, html=${html?.substring(0, html.length > 100 ? 100 : html.length)}...');
+          }
           
           if (name != null && name.isNotEmpty && url != null && url.isNotEmpty) {
+            // 清理 URL（可能包含 HTML 片段）
+            url = _sanitizeChapterUrl(url, baseUrl);
+            
             // 过滤非章节链接
             if (_isLikelyChapterUrl(url, name)) {
               chapters.add(OnlineChapter(
@@ -379,11 +408,37 @@ class BookContentService {
     for (var i = 0; i < chapterList.length; i++) {
       final item = chapterList[i];
       try {
-        final name = RuleParser.parseRule(rule.chapterName, item, baseUrl: baseUrl);
-        final url = RuleParser.parseRule(rule.chapterUrl, item, baseUrl: baseUrl);
+        var name = RuleParser.parseRule(rule.chapterName, item, baseUrl: baseUrl);
+        var url = RuleParser.parseRule(rule.chapterUrl, item, baseUrl: baseUrl);
 
-        if (name == null || name.isEmpty || url == null || url.isEmpty) {
-          if (i < 3) {  // 只记录前几个失败的
+        // 修复 URL：如果返回的是 HTML 片段，提取其中的 href
+        if (url != null && url.isNotEmpty) {
+          url = _sanitizeChapterUrl(url, baseUrl);
+        }
+
+        if (url == null || url.isEmpty) {
+          if (i < 3) {
+            logger.d('章节项[$i] URL解析失败');
+          }
+          continue;
+        }
+
+        // 智能章节名修复：如果 name 为空或看起来像 URL，尝试从 HTML 提取文本
+        if (name == null || name.isEmpty || _isUrlLike(name)) {
+          final extractedName = _extractTextFromHtml(item);
+          if (extractedName != null && extractedName.isNotEmpty && !_isUrlLike(extractedName)) {
+            logger.d('章节名修复: 从URL/空值恢复为 "$extractedName"');
+            name = extractedName;
+          }
+        }
+
+        // 如果仍然没有有效名称，尝试从 URL 提取
+        if (name == null || name.isEmpty || _isUrlLike(name)) {
+          name = _extractNameFromUrl(url);
+        }
+
+        if (name == null || name.isEmpty) {
+          if (i < 3) {
             logger.d('章节项[$i] 解析失败: name=$name, url=$url');
           }
           continue;
@@ -407,6 +462,244 @@ class BookContentService {
     return chapters;
   }
 
+  /// 清理章节URL：从HTML片段中提取href
+  String _sanitizeChapterUrl(String url, String baseUrl) {
+    // 首先检查是否包含 URL 编码的 HTML（如 %3C = <）
+    // 即使 URL 以 http:// 开头也可能包含编码的 HTML
+    if (url.contains('%3C') || url.contains('%3c') || url.contains('%22') || url.contains('%27')) {
+      try {
+        final decodedUrl = Uri.decodeComponent(url);
+        // 如果解码后包含 HTML 标签，尝试提取 href
+        if (decodedUrl.contains('<') && decodedUrl.contains('href=')) {
+          final hrefMatch = RegExp(r'''href=["']([^"']+)["']''').firstMatch(decodedUrl);
+          if (hrefMatch != null) {
+            var extractedUrl = hrefMatch.group(1)!;
+            // 如果是相对路径，拼接 baseUrl
+            if (!extractedUrl.startsWith('http')) {
+              // 尝试从原 URL 提取域名
+              final urlMatch = RegExp(r'^(https?://[^/]+)').firstMatch(url);
+              if (urlMatch != null) {
+                extractedUrl = '${urlMatch.group(1)}$extractedUrl';
+              } else if (baseUrl.isNotEmpty) {
+                final baseUri = Uri.parse(baseUrl);
+                extractedUrl = '${baseUri.scheme}://${baseUri.host}$extractedUrl';
+              }
+            }
+            logger.d('URL修复: 从HTML提取 "$extractedUrl"');
+            return extractedUrl;
+          }
+        }
+      } catch (e) {
+        logger.d('URL解码失败: $e');
+      }
+    }
+    
+    // 如果已经是有效URL且不包含HTML编码，直接返回
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) {
+      return url;
+    }
+    
+    // 如果包含 HTML 标签（未编码），尝试提取 href
+    if (url.contains('<') && url.contains('href=')) {
+      final hrefMatch = RegExp(r'''href=["']([^"']+)["']''').firstMatch(url);
+      if (hrefMatch != null) {
+        var extractedUrl = hrefMatch.group(1)!;
+        if (!extractedUrl.startsWith('http') && baseUrl.isNotEmpty) {
+          final baseUri = Uri.parse(baseUrl);
+          extractedUrl = '${baseUri.scheme}://${baseUri.host}$extractedUrl';
+        }
+        logger.d('URL修复: 从HTML提取 "$extractedUrl"');
+        return extractedUrl;
+      }
+    }
+    
+    return url;
+  }
+
+  /// 检查字符串是否看起来像 URL
+  bool _isUrlLike(String text) {
+    if (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('//')) {
+      return true;
+    }
+    // 检查是否包含 URL 编码字符占比过高
+    final encodedCount = RegExp(r'%[0-9A-Fa-f]{2}').allMatches(text).length;
+    if (encodedCount > 5 && encodedCount > text.length / 10) {
+      return true;
+    }
+    // 检查是否是路径格式
+    if (text.contains('/') && !text.contains(' ') && RegExp(r'\.\w{2,5}$').hasMatch(text)) {
+      return true;
+    }
+    return false;
+  }
+
+  /// 从 HTML 字符串中提取文本内容
+  String? _extractTextFromHtml(dynamic item) {
+    if (item == null) return null;
+    
+    final html = item.toString();
+    if (html.isEmpty) return null;
+
+    try {
+      final document = html_parser.parse(html);
+      
+      // 尝试找 <a> 标签的文本
+      final aElement = document.querySelector('a');
+      if (aElement != null) {
+        final text = aElement.text.trim();
+        if (text.isNotEmpty) return text;
+        // 尝试获取 title 属性
+        final title = aElement.attributes['title'];
+        if (title != null && title.isNotEmpty) return title;
+      }
+      
+      // 直接获取所有文本
+      final allText = document.body?.text.trim();
+      if (allText != null && allText.isNotEmpty) return allText;
+    } catch (_) {
+      // 降级到正则提取
+      // 匹配 <a> 标签内的文本
+      final aMatch = RegExp(r'<a[^>]*>([^<]+)</a>', caseSensitive: false).firstMatch(html);
+      if (aMatch != null) {
+        final text = aMatch.group(1)?.trim();
+        if (text != null && text.isNotEmpty) return text;
+      }
+      
+      // 匹配 title 属性
+      final titleMatch = RegExp(r'title="([^"]+)"', caseSensitive: false).firstMatch(html);
+      if (titleMatch != null) {
+        final text = titleMatch.group(1)?.trim();
+        if (text != null && text.isNotEmpty) return text;
+      }
+      
+      // 去除所有 HTML 标签
+      final stripped = html.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+      if (stripped.isNotEmpty) return stripped;
+    }
+    
+    return null;
+  }
+
+  /// 从 URL 中提取可能的章节名
+  String? _extractNameFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      var path = uri.pathSegments.lastOrNull ?? '';
+      
+      // 去除扩展名
+      path = path.replaceAll(RegExp(r'\.(html?|php|aspx?|jsp)$', caseSensitive: false), '');
+      
+      // URL 解码
+      path = Uri.decodeComponent(path);
+      
+      // 如果只是数字，返回 "第X章"
+      if (RegExp(r'^\d+$').hasMatch(path)) {
+        return '第${path}章';
+      }
+      
+      // 如果包含中文，直接返回
+      if (RegExp(r'[\u4e00-\u9fa5]').hasMatch(path)) {
+        return path;
+      }
+    } catch (_) {}
+    
+    return null;
+  }
+
+  /// 备用内容选择器列表 - 常见的正文容器
+  static const List<String> _fallbackContentSelectors = [
+    '#chaptercontent',
+    '#content',
+    '#bookcontent',
+    '#readcontent',
+    '#article',
+    '#txtContent',
+    '#nr',
+    '#nr1',
+    '.content',
+    '.chaptercontent',
+    '.bookcontent',
+    '.readcontent',
+    '.article-content',
+    '.chapter-content',
+    '.novel-content',
+    '.read-content',
+    '.txt',
+    '.nr',
+    'article.content',
+    'article',
+    '.entry-content',
+    '.post-content',
+    'div.txt',
+    'div.text',
+    '#text',
+    '.text',
+  ];
+
+  /// 使用备用选择器解析正文内容
+  String? _parseContentWithFallback(dynamic response) {
+    if (response == null) return null;
+    
+    String htmlContent;
+    if (response is String) {
+      htmlContent = response;
+    } else {
+      return null;
+    }
+    
+    try {
+      final document = html_parser.parse(htmlContent);
+      
+      for (final selector in _fallbackContentSelectors) {
+        final element = document.querySelector(selector);
+        if (element != null) {
+          final text = element.text.trim();
+          // 至少包含100个字符才认为是有效内容
+          if (text.length >= 100) {
+            logger.i('备用内容选择器成功: "$selector", 内容长度: ${text.length}');
+            return text;
+          }
+        }
+      }
+      
+      // 如果所有选择器都失败，尝试找最长的文本块
+      final allDivs = document.querySelectorAll('div, p, article, section');
+      String? bestContent;
+      int bestLength = 0;
+      
+      for (final div in allDivs) {
+        final text = div.text.trim();
+        if (text.length > bestLength && text.length >= 200) {
+          // 排除明显的非正文区域
+          final className = div.className.toLowerCase();
+          final id = (div.id).toLowerCase();
+          if (!className.contains('header') && 
+              !className.contains('footer') &&
+              !className.contains('nav') &&
+              !className.contains('menu') &&
+              !className.contains('sidebar') &&
+              !id.contains('header') &&
+              !id.contains('footer') &&
+              !id.contains('nav') &&
+              !id.contains('menu') &&
+              !id.contains('sidebar')) {
+            bestContent = text;
+            bestLength = text.length;
+          }
+        }
+      }
+      
+      if (bestContent != null) {
+        logger.i('使用最长文本块作为正文, 长度: $bestLength');
+        return bestContent;
+      }
+    } catch (e) {
+      logger.w('备用内容选择器解析失败: $e');
+    }
+    
+    return null;
+  }
+
   /// 获取章节内容
   Future<String?> getChapterContent(
     BookSource source,
@@ -421,17 +714,48 @@ class BookContentService {
 
       // 获取所有页的内容
       final allContent = StringBuffer();
-      var currentUrl = chapter.url;
+      // 清理可能被污染的章节URL（如包含HTML片段）
+      final baseUrl = source.bookSourceUrl;
+      final originalUrl = chapter.url;
+      var currentUrl = _sanitizeChapterUrl(originalUrl, baseUrl);
+      
+      // 调试：记录URL处理结果
+      if (originalUrl != currentUrl) {
+        logger.i('章节URL已修复: 原始="$originalUrl" => 修复后="$currentUrl"');
+      } else {
+        logger.d('章节URL获取: "$currentUrl"');
+      }
       var pageCount = 0;
       const maxPages = 20; // 防止无限循环
 
       while (currentUrl.isNotEmpty && pageCount < maxPages) {
         final response = await _makeRequest(source, currentUrl);
-        if (response == null) break;
+        if (response == null) {
+          logger.w('章节内容请求失败: $currentUrl');
+          break;
+        }
+        
+        // 调试：记录响应信息
+        final responsePreview = response is String 
+            ? (response.length > 200 ? '${response.substring(0, 200)}...' : response)
+            : 'non-string response';
+        logger.d('章节内容响应(前200字): $responsePreview');
 
         // 解析正文
-        var content = RuleParser.parseRule(rule.content, response, baseUrl: currentUrl);
-        if (content == null || content.isEmpty) break;
+        final contentRule = rule.content;
+        logger.d('正文解析规则: $contentRule');
+        var content = RuleParser.parseRule(contentRule, response, baseUrl: currentUrl);
+        
+        // 如果主规则解析失败，尝试备用选择器
+        if (content == null || content.isEmpty) {
+          logger.d('主规则解析失败，尝试备用内容选择器...');
+          content = _parseContentWithFallback(response);
+        }
+        
+        if (content == null || content.isEmpty) {
+          logger.w('正文解析结果为空, 规则: $contentRule');
+          break;
+        }
 
         // 应用净化规则
         content = RuleParser.applyReplaceRules(content, rule.replaceRegex);

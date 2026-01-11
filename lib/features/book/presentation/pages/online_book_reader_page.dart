@@ -60,6 +60,9 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
   Future<void> _loadContent() async {
     if (_currentIndex < 0 || _currentIndex >= widget.chapters.length) return;
 
+    debugPrint('[阅读器] 开始加载章节 $_currentIndex: ${widget.chapters[_currentIndex].name}');
+    debugPrint('[阅读器] 章节URL: ${widget.chapters[_currentIndex].url}');
+
     setState(() {
       _isLoading = true;
       _error = null;
@@ -67,19 +70,41 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
 
     try {
       final contentService = ref.read(bookContentServiceProvider);
+      debugPrint('[阅读器] 调用 getChapterContent...');
       final content = await contentService.getChapterContent(
         widget.book.source,
         widget.chapters[_currentIndex],
       );
+      debugPrint('[阅读器] getChapterContent 返回, content长度: ${content?.length ?? "null"}');
+      
       if (mounted) {
-        setState(() {
-          _content = content;
-          _isLoading = false;
-        });
-        // 滚动到顶部
-        _scrollController.jumpTo(0);
+        if (content == null || content.isEmpty) {
+          // 内容为空视为加载失败
+          debugPrint('[阅读器] content 为 null 或空, 设置错误状态');
+          setState(() {
+            _error = '无法获取章节内容';
+            _isLoading = false;
+          });
+        } else {
+          debugPrint('[阅读器] content 有效, 设置到 _content');
+          setState(() {
+            _content = content;
+            _isLoading = false;
+          });
+          // 滚动到顶部 - 需要等待下一帧确保 ScrollController 已附加
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scrollController.hasClients) {
+              _scrollController.jumpTo(0);
+            }
+          });
+          debugPrint('[阅读器] 加载完成, _content长度: ${_content?.length}');
+        }
+      } else {
+        debugPrint('[阅读器] 组件已卸载, 不更新状态');
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[阅读器] 加载异常: $e');
+      debugPrint('[阅读器] 堆栈: $st');
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -148,9 +173,20 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
             const SizedBox(height: 16),
             Text('加载失败', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
             const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: _loadContent,
-              child: const Text('重试'),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('返回'),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: _loadContent,
+                  child: const Text('重试'),
+                ),
+              ],
             ),
           ],
         ),
@@ -159,9 +195,20 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
 
     if (_content == null || _content!.isEmpty) {
       return Center(
-        child: Text(
-          '暂无内容',
-          style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '暂无内容',
+              style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('返回'),
+            ),
+          ],
         ),
       );
     }
