@@ -15,6 +15,7 @@ import 'package:my_nas/features/music/data/services/music_favorites_service.dart
 import 'package:my_nas/features/music/data/services/music_tag_writer_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
+import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
@@ -155,8 +156,15 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       debugPrint('[ManualScraper] 搜索结果统计: $sourceStats, 总计: ${allItems.length}');
       debugPrint('[ManualScraper] 当前音乐时长: ${_musicDurationMs}ms (${widget.music.duration})');
 
-      // 按时长匹配度排序
-      _sortByDurationMatch(allItems);
+      // 获取刮削源优先级映射
+      final sources = await manager.getSources();
+      final sourcePriorities = <MusicScraperType, int>{};
+      for (final source in sources) {
+        sourcePriorities[source.type] = source.priority;
+      }
+
+      // 按时长匹配度排序（同等时长差时按刮削源优先级排序）
+      _sortByDurationMatch(allItems, sourcePriorities);
 
       // 打印排序后前10个结果的来源和时长差
       if (allItems.isNotEmpty) {
@@ -182,7 +190,11 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
   }
 
   /// 按时长匹配度排序（混合所有来源）
-  void _sortByDurationMatch(List<MusicScraperItem> items) {
+  /// [sourcePriorities] 刮削源优先级映射（优先级数值越小越优先）
+  void _sortByDurationMatch(
+    List<MusicScraperItem> items,
+    Map<MusicScraperType, int> sourcePriorities,
+  ) {
     // 如果播放歌曲有时长信息，按时长差值排序
     // 否则只按来源交替排序
     final hasMusicDuration = _musicDurationMs > 0;
@@ -204,11 +216,12 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         }
       }
 
-      // 2. 时长差值相同时，按来源类型排序（确保不同来源的结果交替出现）
-      final sourceA = a.source.index;
-      final sourceB = b.source.index;
-      if (sourceA != sourceB) {
-        return sourceA.compareTo(sourceB);
+      // 2. 时长差值相同时，按刮削源优先级排序（用户设置的顺序）
+      // 优先级数值越小越优先，未配置的源使用 999 作为默认值
+      final priorityA = sourcePriorities[a.source] ?? 999;
+      final priorityB = sourcePriorities[b.source] ?? 999;
+      if (priorityA != priorityB) {
+        return priorityA.compareTo(priorityB);
       }
 
       // 3. 同来源同时长时，按标题排序

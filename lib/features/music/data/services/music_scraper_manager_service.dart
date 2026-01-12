@@ -85,21 +85,22 @@ class MusicScraperManagerService {
   Future<void> _initDefaultSources() async {
     // 默认启用不需要额外配置的源
     // 优先级：酷狗 > 酷我 > 咪咕 > QQ音乐 > 网易云 > MusicBrainz（国内源优先，歌词库丰富的优先）
+    // 注意：MusicBrainz 默认禁用，用户可手动开启
     final defaultTypes = [
-      MusicScraperType.kugouMusic,    // 酷狗音乐（歌词库最丰富）
-      MusicScraperType.kuwoMusic,     // 酷我音乐
-      MusicScraperType.miguMusic,     // 咪咕音乐（无损音源丰富）
-      MusicScraperType.qqMusic,       // QQ音乐
-      MusicScraperType.neteaseMusic,  // 网易云音乐
-      MusicScraperType.musicBrainz,   // MusicBrainz（国际开源数据库）
+      (MusicScraperType.kugouMusic, true),    // 酷狗音乐（歌词库最丰富）
+      (MusicScraperType.kuwoMusic, true),     // 酷我音乐
+      (MusicScraperType.miguMusic, true),     // 咪咕音乐（无损音源丰富）
+      (MusicScraperType.qqMusic, true),       // QQ音乐
+      (MusicScraperType.neteaseMusic, true),  // 网易云音乐
+      (MusicScraperType.musicBrainz, false),  // MusicBrainz（国际开源数据库，默认禁用）
     ];
 
     for (var i = 0; i < defaultTypes.length; i++) {
-      final type = defaultTypes[i];
+      final (type, isEnabled) = defaultTypes[i];
       final source = MusicScraperSourceEntity(
         name: '',
         type: type,
-        isEnabled: true,
+        isEnabled: isEnabled,
         priority: i,
       );
       // 直接保存，不通过 addSource 避免重复计算优先级
@@ -110,13 +111,14 @@ class MusicScraperManagerService {
   /// 为已有用户添加缺失的默认刮削源
   Future<void> _addMissingDefaultSources() async {
     // 默认应该启用的无需配置的源
+    // 注意：MusicBrainz 新增时默认禁用
     final defaultTypes = [
-      MusicScraperType.kugouMusic,
-      MusicScraperType.kuwoMusic,
-      MusicScraperType.miguMusic,
-      MusicScraperType.qqMusic,
-      MusicScraperType.neteaseMusic,
-      MusicScraperType.musicBrainz,
+      (MusicScraperType.kugouMusic, true),
+      (MusicScraperType.kuwoMusic, true),
+      (MusicScraperType.miguMusic, true),
+      (MusicScraperType.qqMusic, true),
+      (MusicScraperType.neteaseMusic, true),
+      (MusicScraperType.musicBrainz, false),
     ];
 
     // 获取当前已有的源类型
@@ -136,8 +138,10 @@ class MusicScraperManagerService {
     }
 
     // 找出缺失的源类型
-    final missingTypes = defaultTypes.where((t) => !existingTypes.contains(t)).toList();
-    if (missingTypes.isEmpty) return;
+    final missingTypesWithEnabled = defaultTypes
+        .where((t) => !existingTypes.contains(t.$1))
+        .toList();
+    if (missingTypesWithEnabled.isEmpty) return;
 
     // 获取当前最大优先级
     var maxPriority = 0;
@@ -149,13 +153,13 @@ class MusicScraperManagerService {
       }
     }
 
-    // 添加缺失的源（追加到末尾，默认启用）
-    for (var i = 0; i < missingTypes.length; i++) {
-      final type = missingTypes[i];
+    // 添加缺失的源（追加到末尾）
+    for (var i = 0; i < missingTypesWithEnabled.length; i++) {
+      final (type, isEnabled) = missingTypesWithEnabled[i];
       final source = MusicScraperSourceEntity(
         name: '',
         type: type,
-        isEnabled: true,
+        isEnabled: isEnabled,
         priority: maxPriority + 1 + i,
       );
       await _box!.put(source.id, source.toJson());

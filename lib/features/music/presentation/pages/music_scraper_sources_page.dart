@@ -169,8 +169,16 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 
   /// 获取排序后的类型列表
   List<MusicScraperType> _getSortedTypes(List<MusicScraperSourceEntity> sources) {
-    final configuredTypes = sources.map((s) => s.type).toList();
-    final unconfiguredTypes = MusicScraperType.values.where((t) => !configuredTypes.contains(t)).toList();
+    // 隐藏 MusicTagWeb（暂不对外开放）
+    final hiddenTypes = {MusicScraperType.musicTagWeb};
+
+    final configuredTypes = sources
+        .map((s) => s.type)
+        .where((t) => !hiddenTypes.contains(t))
+        .toList();
+    final unconfiguredTypes = MusicScraperType.values
+        .where((t) => !configuredTypes.contains(t) && !hiddenTypes.contains(t))
+        .toList();
     return [...configuredTypes, ...unconfiguredTypes];
   }
 
