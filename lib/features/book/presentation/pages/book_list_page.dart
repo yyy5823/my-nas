@@ -1370,10 +1370,10 @@ class _BookListContentState extends ConsumerState<BookListContent> {
       child: GridView.builder(
         padding: const EdgeInsets.all(AppSpacing.md),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 180,
-          childAspectRatio: 0.65,
-          crossAxisSpacing: AppSpacing.md,
-          mainAxisSpacing: AppSpacing.md,
+          maxCrossAxisExtent: 130,
+          childAspectRatio: 0.55,
+          crossAxisSpacing: AppSpacing.sm,
+          mainAxisSpacing: AppSpacing.sm,
         ),
         itemCount: state.displayBooks.length,
         itemBuilder: (context, index) {
@@ -1578,57 +1578,40 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  flex: 3,
+                  flex: 4,
                   child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                     child: _buildCover(format),
                   ),
                 ),
                 Expanded(
                   flex: 2,
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(AppSpacing.sm),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Flexible(
-                          child: Text(
-                            displayName,
-                            maxLines: author != null ? 1 : 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: context.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: widget.isDark ? AppColors.darkOnSurface : null,
-                            ),
+                        Text(
+                          displayName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
                           ),
                         ),
-                        // 显示作者（如果有）
                         if (author != null && author.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              author,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: context.textTheme.labelSmall?.copyWith(
-                                color: widget.isDark
-                                    ? AppColors.darkOnSurfaceVariant
-                                    : context.colorScheme.onSurfaceVariant,
-                              ),
+                          Text(
+                            author,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: widget.isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                           ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            book.displaySize,
-                            style: context.textTheme.labelSmall?.copyWith(
-                              color: widget.isDark
-                                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.7)
-                                  : context.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),

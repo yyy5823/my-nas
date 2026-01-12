@@ -1,16 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/book/data/services/native_online_paginator.dart';
 import 'package:my_nas/features/book/domain/entities/book_source.dart';
 import 'package:my_nas/features/book/presentation/providers/book_search_provider.dart';
 import 'package:my_nas/features/book/presentation/providers/tts_provider.dart';
 import 'package:my_nas/features/book/presentation/widgets/floating_tts_control.dart';
+import 'package:my_nas/features/book/presentation/widgets/online_page_content.dart';
+import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
+import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
+import 'package:my_nas/features/reading/presentation/widgets/page_flip_effect.dart';
 import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
+import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// 在线书籍阅读页面
+///
+/// 使用原生 Flutter 渲染，支持分页、翻页效果、主题切换等高级功能。
 class OnlineBookReaderPage extends ConsumerStatefulWidget {
   const OnlineBookReaderPage({
     super.key,
@@ -29,39 +40,55 @@ class OnlineBookReaderPage extends ConsumerStatefulWidget {
 
 class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
     with TabBarVisibilityMixin {
-  late int _currentIndex;
-  String? _content;
+  // 章节状态
+  late int _currentChapterIndex;
+  String? _chapterContent;
   bool _isLoading = false;
   String? _error;
+
+  // 分页状态
+  final _paginator = NativeOnlinePaginator.instance;
+  List<OnlineBookPage> _pages = [];
+  int _currentPageIndex = 0;
+  final PageController _pageController = PageController();
+
+  // UI 状态
   bool _showControls = false;
   bool _showTTS = false;
-  bool _userClosedTTS = false; // 用户手动关闭 TTS
-  final _scrollController = ScrollController();
+  bool _userClosedTTS = false;
+
+  // 防抖保存进度
+  Timer? _saveProgressTimer;
 
   @override
   void initState() {
     super.initState();
     hideTabBar();
-    _currentIndex = widget.chapters.indexOf(widget.initialChapter);
-    if (_currentIndex == -1) _currentIndex = 0;
+    _currentChapterIndex = widget.chapters.indexOf(widget.initialChapter);
+    if (_currentChapterIndex == -1) _currentChapterIndex = 0;
     _loadContent();
-    // 隐藏状态栏
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _initWakelock();
+  }
+
+  Future<void> _initWakelock() async {
+    final settings = ref.read(bookReaderSettingsProvider);
+    if (settings.keepScreenOn) {
+      await WakelockPlus.enable();
+    }
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
-    // 恢复状态栏
+    _saveProgressTimer?.cancel();
+    _pageController.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    WakelockPlus.disable();
     super.dispose();
   }
 
   Future<void> _loadContent() async {
-    if (_currentIndex < 0 || _currentIndex >= widget.chapters.length) return;
-
-    debugPrint('[阅读器] 开始加载章节 $_currentIndex: ${widget.chapters[_currentIndex].name}');
-    debugPrint('[阅读器] 章节URL: ${widget.chapters[_currentIndex].url}');
+    if (_currentChapterIndex < 0 || _currentChapterIndex >= widget.chapters.length) return;
 
     setState(() {
       _isLoading = true;
@@ -70,41 +97,32 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
 
     try {
       final contentService = ref.read(bookContentServiceProvider);
-      debugPrint('[阅读器] 调用 getChapterContent...');
       final content = await contentService.getChapterContent(
         widget.book.source,
-        widget.chapters[_currentIndex],
+        widget.chapters[_currentChapterIndex],
       );
-      debugPrint('[阅读器] getChapterContent 返回, content长度: ${content?.length ?? "null"}');
-      
-      if (mounted) {
-        if (content == null || content.isEmpty) {
-          // 内容为空视为加载失败
-          debugPrint('[阅读器] content 为 null 或空, 设置错误状态');
-          setState(() {
-            _error = '无法获取章节内容';
-            _isLoading = false;
-          });
-        } else {
-          debugPrint('[阅读器] content 有效, 设置到 _content');
-          setState(() {
-            _content = content;
-            _isLoading = false;
-          });
-          // 滚动到顶部 - 需要等待下一帧确保 ScrollController 已附加
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_scrollController.hasClients) {
-              _scrollController.jumpTo(0);
-            }
-          });
-          debugPrint('[阅读器] 加载完成, _content长度: ${_content?.length}');
-        }
-      } else {
-        debugPrint('[阅读器] 组件已卸载, 不更新状态');
+
+      if (!mounted) return;
+
+      if (content == null || content.isEmpty) {
+        setState(() {
+          _error = '无法获取章节内容';
+          _isLoading = false;
+        });
+        return;
       }
+
+      setState(() {
+        _chapterContent = content;
+        _isLoading = false;
+      });
+
+      // 延迟分页，等待布局完成
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _paginateContent();
+      });
     } catch (e, st) {
-      debugPrint('[阅读器] 加载异常: $e');
-      debugPrint('[阅读器] 堆栈: $st');
+      debugPrint('[阅读器] 加载异常: $e\n$st');
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -114,34 +132,176 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
     }
   }
 
+  void _paginateContent() {
+    if (_chapterContent == null || _chapterContent!.isEmpty) return;
+
+    final settings = ref.read(bookReaderSettingsProvider);
+    final size = MediaQuery.of(context).size;
+
+    // 计算实际可用区域（减去固定Header/Footer）
+    final headerHeight = 40.0;
+    final footerHeight = settings.showProgress ? 32.0 : 0.0;
+    final safeArea = MediaQuery.of(context).padding;
+    final availableHeight = size.height - headerHeight - footerHeight - safeArea.top - safeArea.bottom;
+
+    final result = _paginator.paginateChapter(
+      content: _chapterContent!,
+      chapterIndex: _currentChapterIndex,
+      viewportSize: Size(size.width, availableHeight),
+      baseStyle: TextStyle(
+        fontSize: settings.fontSize,
+        height: settings.lineHeight,
+      ),
+      horizontalPadding: settings.horizontalPadding,
+      verticalPadding: settings.verticalPadding,
+    );
+
+    setState(() {
+      _pages = result.pages;
+      _currentPageIndex = 0;
+    });
+
+    // 重置 PageController
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(0);
+    }
+  }
+
+  void _goToPage(int page) {
+    final targetPage = page.clamp(0, _pages.length - 1);
+    _pageController.animateToPage(
+      targetPage,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _previousChapter() {
+    if (_currentChapterIndex > 0) {
+      setState(() => _currentChapterIndex--);
+      _loadContent();
+    }
+  }
+
+  void _nextChapter() {
+    if (_currentChapterIndex < widget.chapters.length - 1) {
+      setState(() => _currentChapterIndex++);
+      _loadContent();
+    }
+  }
+
+  void _toggleControls() {
+    setState(() => _showControls = !_showControls);
+    if (_showControls) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
+  }
+
+  Future<void> _startTTS() async {
+    if (_pages.isEmpty) return;
+
+    final ttsNotifier = ref.read(ttsProvider.notifier);
+    await ttsNotifier.init();
+
+    // 获取当前页面的文本内容
+    final currentContent = _pages[_currentPageIndex].content;
+    if (currentContent.isEmpty) return;
+
+    // 按段落分割
+    final paragraphs = currentContent
+        .split(RegExp(r'\n\n+'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+
+    _userClosedTTS = false;
+    setState(() => _showTTS = true);
+
+    await ttsNotifier.speakParagraphs(
+      paragraphs,
+      onParagraphChanged: (paragraphIndex) {
+        debugPrint('TTS: 当前段落 $paragraphIndex');
+      },
+      onAllComplete: () {
+        final settings = ref.read(ttsProvider).settings;
+        // 自动翻页或切换章节
+        if (!_userClosedTTS && settings.autoPlayNextChapter) {
+          if (_currentPageIndex < _pages.length - 1) {
+            _goToPage(_currentPageIndex + 1);
+            Future.delayed(const Duration(milliseconds: 300), _startTTS);
+          } else if (_currentChapterIndex < widget.chapters.length - 1) {
+            _nextChapter();
+            Future.delayed(const Duration(milliseconds: 500), _startTTS);
+          }
+        }
+      },
+    );
+  }
+
+  void _showChapterList() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => _ChapterListSheet(
+          chapters: widget.chapters,
+          currentIndex: _currentChapterIndex,
+          scrollController: scrollController,
+          onSelect: (index) {
+            Navigator.pop(context);
+            setState(() => _currentChapterIndex = index);
+            _loadContent();
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showSettingsSheet() {
+    showReaderSettingsSheet(
+      context,
+      title: '阅读设置',
+      icon: Icons.settings,
+      contentBuilder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final settings = ref.watch(bookReaderSettingsProvider);
+          return _buildSettingsContent(settings);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currentChapter = widget.chapters[_currentIndex];
+    final settings = ref.watch(bookReaderSettingsProvider);
+    final currentChapter = widget.chapters[_currentChapterIndex];
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5DC),
+      backgroundColor: settings.theme.backgroundColor,
       body: GestureDetector(
         onTap: _toggleControls,
         child: Stack(
           children: [
             // 内容区域
-            _buildContent(isDark),
+            _buildContent(settings),
             // 控制栏
             if (_showControls) ...[
-              // 顶部栏
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
-                child: _buildTopBar(isDark, currentChapter),
+                child: _buildTopBar(settings, currentChapter),
               ),
-              // 底部栏
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
-                child: _buildBottomBar(isDark),
+                child: _buildBottomBar(settings),
               ),
             ],
             // TTS 浮动控制栏
@@ -151,7 +311,7 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
                   _userClosedTTS = true;
                   setState(() => _showTTS = false);
                 },
-                backgroundColor: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5DC),
+                backgroundColor: settings.theme.backgroundColor,
               ),
           ],
         ),
@@ -159,9 +319,21 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
     );
   }
 
-  Widget _buildContent(bool isDark) {
+  Widget _buildContent(BookReaderSettings settings) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: settings.theme.textColor),
+            const SizedBox(height: 16),
+            Text(
+              '加载中...',
+              style: TextStyle(color: settings.theme.textColor),
+            ),
+          ],
+        ),
+      );
     }
 
     if (_error != null) {
@@ -171,7 +343,7 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
           children: [
             Icon(Icons.error_outline_rounded, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
-            Text('加载失败', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+            Text('加载失败', style: TextStyle(color: settings.theme.textColor)),
             const SizedBox(height: 8),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -193,89 +365,117 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
       );
     }
 
-    if (_content == null || _content!.isEmpty) {
+    if (_pages.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '暂无内容',
-              style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back_rounded),
-              label: const Text('返回'),
-            ),
-          ],
+        child: Text(
+          '暂无内容',
+          style: TextStyle(color: settings.theme.textColor.withValues(alpha: 0.7)),
         ),
       );
     }
 
-    return SingleChildScrollView(
-      controller: _scrollController,
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 16,
-        left: 20,
-        right: 20,
-        bottom: MediaQuery.of(context).padding.bottom + 60,
+    // 判断是否使用翻页效果
+    final useFlipEffect = settings.pageTurnMode == BookPageTurnMode.simulation ||
+        settings.pageTurnMode == BookPageTurnMode.cover;
+
+    Widget pageView = PageView.builder(
+      controller: _pageController,
+      physics: useFlipEffect ? const NeverScrollableScrollPhysics() : null,
+      itemCount: _pages.length,
+      onPageChanged: (page) {
+        setState(() => _currentPageIndex = page);
+      },
+      itemBuilder: (context, index) => SimplePageContent(
+        content: _pages[index].content,
+        settings: settings,
       ),
+    );
+
+    // 包装翻页效果
+    if (useFlipEffect) {
+      pageView = PageFlipEffect(
+        mode: settings.pageTurnMode == BookPageTurnMode.simulation
+            ? PageFlipMode.simulation
+            : PageFlipMode.cover,
+        backgroundColor: settings.theme.backgroundColor,
+        onNextPage: () async {
+          if (_currentPageIndex < _pages.length - 1) {
+            _goToPage(_currentPageIndex + 1);
+          } else if (_currentChapterIndex < widget.chapters.length - 1) {
+            _nextChapter();
+          }
+        },
+        onPrevPage: () async {
+          if (_currentPageIndex > 0) {
+            _goToPage(_currentPageIndex - 1);
+          } else if (_currentChapterIndex > 0) {
+            _previousChapter();
+          }
+        },
+        onTap: (details) => _toggleControls(),
+        child: pageView,
+      );
+    }
+
+    return SafeArea(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 章节标题
-          Text(
-            widget.chapters[_currentIndex].name,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Colors.black87,
+          // 固定顶栏
+          _buildFixedHeader(settings),
+          // 翻页内容
+          Expanded(child: pageView),
+          // 固定底栏
+          if (settings.showProgress) _buildFixedFooter(settings),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFixedHeader(BookReaderSettings settings) {
+    final textColor = settings.theme.textColor.withValues(alpha: 0.5);
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              widget.chapters[_currentChapterIndex].name,
+              style: TextStyle(color: textColor, fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(height: 24),
-          // 正文
           Text(
-            _content!,
-            style: TextStyle(
-              fontSize: 18,
-              height: 1.8,
-              color: isDark ? Colors.white70 : Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 40),
-          // 翻页按钮
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              if (_currentIndex > 0)
-                OutlinedButton.icon(
-                  onPressed: _previousChapter,
-                  icon: const Icon(Icons.chevron_left_rounded),
-                  label: const Text('上一章'),
-                )
-              else
-                const SizedBox(width: 120),
-              if (_currentIndex < widget.chapters.length - 1)
-                OutlinedButton.icon(
-                  onPressed: _nextChapter,
-                  icon: const Icon(Icons.chevron_right_rounded),
-                  label: const Text('下一章'),
-                )
-              else
-                const SizedBox(width: 120),
-            ],
+            '${_currentPageIndex + 1}/${_pages.length}',
+            style: TextStyle(color: textColor, fontSize: 12),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTopBar(bool isDark, OnlineChapter chapter) {
+  Widget _buildFixedFooter(BookReaderSettings settings) {
+    final textColor = settings.theme.textColor.withValues(alpha: 0.5);
+    final progress = _pages.isNotEmpty
+        ? ((_currentPageIndex + 1) / _pages.length * 100).toStringAsFixed(1)
+        : '0.0';
     return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top,
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('第 ${_currentPageIndex + 1} 页', style: TextStyle(color: textColor, fontSize: 11)),
+          Text('$progress%', style: TextStyle(color: textColor, fontSize: 11)),
+        ],
       ),
+    );
+  }
+
+  Widget _buildTopBar(BookReaderSettings settings, OnlineChapter chapter) {
+    return Container(
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -310,14 +510,10 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
     );
   }
 
-  Widget _buildBottomBar(bool isDark) {
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom + AppSpacing.sm,
-        left: AppSpacing.lg,
-        right: AppSpacing.lg,
-        top: AppSpacing.md,
-      ),
+  Widget _buildBottomBar(BookReaderSettings settings) {
+    final isDark = settings.theme == BookReaderTheme.dark ||
+        settings.theme == BookReaderTheme.black;
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -328,135 +524,284 @@ class _OnlineBookReaderPageState extends ConsumerState<OnlineBookReaderPage>
           ],
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildBarButton(
-            icon: Icons.skip_previous_rounded,
-            label: '上一章',
-            onTap: _currentIndex > 0 ? _previousChapter : null,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 进度条
+              if (_pages.isNotEmpty)
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: Colors.white,
+                    inactiveTrackColor: Colors.white24,
+                    thumbColor: Colors.white,
+                    overlayColor: Colors.white24,
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  ),
+                  child: Slider(
+                    value: _currentPageIndex.toDouble(),
+                    min: 0,
+                    max: (_pages.length - 1).toDouble().clamp(0, double.infinity),
+                    onChanged: (value) => _goToPage(value.round()),
+                  ),
+                ),
+              // 页码
+              Text(
+                '${_currentPageIndex + 1} / ${_pages.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              // 控制按钮 - 与本地阅读器一致（4个按钮）
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _BottomBarButton(
+                    icon: Icons.menu_book_rounded,
+                    label: '目录',
+                    isDark: isDark,
+                    onPressed: _showChapterList,
+                  ),
+                  _BottomBarButton(
+                    icon: Icons.headphones_rounded,
+                    label: '朗读',
+                    isDark: isDark,
+                    onPressed: _startTTS,
+                  ),
+                  _BottomBarButton(
+                    icon: isDark ? Icons.light_mode : Icons.dark_mode,
+                    label: isDark ? '日间' : '夜间',
+                    isDark: isDark,
+                    onPressed: () {
+                      final notifier = ref.read(bookReaderSettingsProvider.notifier);
+                      final newTheme = isDark ? BookReaderTheme.light : BookReaderTheme.dark;
+                      notifier.setTheme(newTheme);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _paginateContent();
+                      });
+                    },
+                  ),
+                  _BottomBarButton(
+                    icon: Icons.settings_rounded,
+                    label: '设置',
+                    isDark: isDark,
+                    onPressed: _showSettingsSheet,
+                  ),
+                ],
+              ),
+            ],
           ),
-          _buildBarButton(
-            icon: Icons.headphones_rounded,
-            label: '朗读',
-            onTap: _startTTS,
-          ),
-          _buildBarButton(
-            icon: Icons.format_list_bulleted_rounded,
-            label: '目录',
-            onTap: _showChapterList,
-          ),
-          _buildBarButton(
-            icon: Icons.skip_next_rounded,
-            label: '下一章',
-            onTap: _currentIndex < widget.chapters.length - 1 ? _nextChapter : null,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBarButton({
-    required IconData icon,
-    required String label,
-    VoidCallback? onTap,
-  }) {
-    final enabled = onTap != null;
-    return GestureDetector(
-      onTap: onTap,
-      child: Opacity(
-        opacity: enabled ? 1 : 0.4,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
-          ],
         ),
       ),
     );
   }
 
-  void _toggleControls() {
-    setState(() => _showControls = !_showControls);
-    if (_showControls) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    } else {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    }
-  }
+  Widget _buildSettingsContent(BookReaderSettings settings) {
+    final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
 
-  void _previousChapter() {
-    if (_currentIndex > 0) {
-      setState(() => _currentIndex--);
-      _loadContent();
-    }
-  }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 字体大小
+        SettingSliderRow(
+          label: '字体大小',
+          value: settings.fontSize,
+          min: 12,
+          max: 36,
+          divisions: 12,
+          valueLabel: '${settings.fontSize.toInt()}',
+          onChanged: (value) {
+            settingsNotifier.setFontSize(value);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _paginateContent();
+            });
+          },
+        ),
+        const SizedBox(height: 16),
 
-  void _nextChapter() {
-    if (_currentIndex < widget.chapters.length - 1) {
-      setState(() => _currentIndex++);
-      _loadContent();
-    }
-  }
+        // 行高
+        SettingSliderRow(
+          label: '行高',
+          value: settings.lineHeight,
+          min: 1,
+          max: 3,
+          divisions: 20,
+          onChanged: (value) {
+            settingsNotifier.setLineHeight(value);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _paginateContent();
+            });
+          },
+        ),
+        const SizedBox(height: 16),
 
-  /// 开始朗读当前章节
-  Future<void> _startTTS() async {
-    if (_content == null || _content!.isEmpty) return;
+        // 页边距
+        SettingSliderRow(
+          label: '页边距',
+          value: settings.horizontalPadding,
+          min: 8,
+          max: 64,
+          divisions: 14,
+          valueLabel: '${settings.horizontalPadding.toInt()}',
+          onChanged: (value) {
+            settingsNotifier.setHorizontalPadding(value);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _paginateContent();
+            });
+          },
+        ),
+        const SizedBox(height: 24),
 
-    final ttsNotifier = ref.read(ttsProvider.notifier);
-    await ttsNotifier.init();
+        // 阅读主题
+        const SettingSectionTitle(title: '阅读主题'),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: BookReaderTheme.values
+                .map(
+                  (theme) => Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: _buildThemeOption(
+                      theme: theme,
+                      isSelected: settings.theme == theme,
+                      onTap: () {
+                        settingsNotifier.setTheme(theme);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _paginateContent();
+                        });
+                      },
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        const SizedBox(height: 24),
 
-    // 按段落分割
-    final paragraphs = _content!
-        .split(RegExp(r'\n\n+'))
-        .where((p) => p.trim().isNotEmpty)
-        .toList();
+        // 翻页模式
+        const SettingSectionTitle(title: '翻页模式'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildPageModeChip('滑动', BookPageTurnMode.slide, settings, settingsNotifier),
+            _buildPageModeChip('覆盖', BookPageTurnMode.cover, settings, settingsNotifier),
+            _buildPageModeChip('仿真', BookPageTurnMode.simulation, settings, settingsNotifier),
+            _buildPageModeChip('无动画', BookPageTurnMode.none, settings, settingsNotifier),
+          ],
+        ),
+        const SizedBox(height: 24),
 
-    // 用户开始 TTS，清除关闭标志
-    _userClosedTTS = false;
-    setState(() => _showTTS = true);
-
-    await ttsNotifier.speakParagraphs(
-      paragraphs,
-      onParagraphChanged: (paragraphIndex) {
-        // TTS 段落变化时的回调
-        debugPrint('TTS: 当前段落 $paragraphIndex');
-      },
-      onAllComplete: () {
-        // 朗读完成，检查是否自动播放下一章
-        final settings = ref.read(ttsProvider).settings;
-        // 用户已关闭则不自动播放
-        if (!_userClosedTTS && settings.autoPlayNextChapter && _currentIndex < widget.chapters.length - 1) {
-          _nextChapter();
-          Future.delayed(const Duration(milliseconds: 500), _startTTS);
-        }
-      },
+        // 其他设置
+        const SettingSectionTitle(title: '其他设置'),
+        SettingSwitchRow(
+          title: '屏幕常亮',
+          value: settings.keepScreenOn,
+          onChanged: (value) {
+            settingsNotifier.setKeepScreenOn(value: value);
+            if (value) {
+              WakelockPlus.enable();
+            } else {
+              WakelockPlus.disable();
+            }
+          },
+        ),
+        SettingSwitchRow(
+          title: '显示进度',
+          value: settings.showProgress,
+          onChanged: (value) {
+            settingsNotifier.setShowProgress(value: value);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _paginateContent();
+            });
+          },
+        ),
+      ],
     );
   }
 
-  void _showChapterList() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        builder: (context, scrollController) => _ChapterListSheet(
-          chapters: widget.chapters,
-          currentIndex: _currentIndex,
-          scrollController: scrollController,
-          onSelect: (index) {
-            Navigator.pop(context);
-            setState(() => _currentIndex = index);
-            _loadContent();
-          },
+  Widget _buildThemeOption({
+    required BookReaderTheme theme,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: theme.backgroundColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : Colors.grey.withValues(alpha: 0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            theme.label,
+            style: TextStyle(
+              color: theme.textColor,
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPageModeChip(
+    String label,
+    BookPageTurnMode mode,
+    BookReaderSettings settings,
+    BookReaderSettingsNotifier notifier,
+  ) {
+    final isSelected = settings.pageTurnMode == mode;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => notifier.setPageTurnMode(mode),
+    );
+  }
+}
+
+/// 底部控制栏按钮（与本地阅读器一致）
+class _BottomBarButton extends StatelessWidget {
+  const _BottomBarButton({
+    required this.icon,
+    required this.label,
+    required this.isDark,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isDark;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Colors.white;
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(color: color, fontSize: 11),
+            ),
+          ],
         ),
       ),
     );
