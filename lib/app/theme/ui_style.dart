@@ -7,12 +7,10 @@ import 'package:my_nas/app/theme/app_colors.dart';
 
 /// UI 风格枚举
 /// - classic: 经典不透明风格
-/// - liquidClear: 液态玻璃 - 清澈模式（更透明）
-/// - liquidTinted: 液态玻璃 - 染色模式（更高对比度）
+/// - glass: 玻璃风格（磨砂半透明效果）
 enum UIStyle {
   classic('经典', Icons.square_rounded),
-  liquidClear('玻璃 · 清澈', Icons.blur_on),
-  liquidTinted('玻璃 · 染色', Icons.blur_circular);
+  glass('玻璃', Icons.blur_on);
 
   const UIStyle(this.label, this.icon);
 
@@ -20,10 +18,7 @@ enum UIStyle {
   final IconData icon;
 
   /// 是否为玻璃风格
-  bool get isGlass => this != classic;
-
-  /// 是否为染色模式
-  bool get isTinted => this == liquidTinted;
+  bool get isGlass => this == glass;
 }
 
 /// 玻璃效果样式配置
@@ -74,7 +69,7 @@ class GlassStyle {
 abstract final class GlassTheme {
   static GlassStyle getStyle(UIStyle style, {required bool isDark}) => switch (style) {
       UIStyle.classic => GlassStyle.classic,
-      UIStyle.liquidClear => isDark
+      UIStyle.glass => isDark
           ? const GlassStyle(
               blurIntensity: 25,
               backgroundOpacity: 0.5,
@@ -87,21 +82,6 @@ abstract final class GlassTheme {
               backgroundOpacity: 0.6,
               tintOpacity: 0.05,
               borderOpacity: 0.15,
-              enableBorderGlow: true,
-            ),
-      UIStyle.liquidTinted => isDark
-          ? const GlassStyle(
-              blurIntensity: 30,
-              backgroundOpacity: 0.75,
-              tintOpacity: 0.15,
-              borderOpacity: 0.25,
-              enableBorderGlow: true,
-            )
-          : const GlassStyle(
-              blurIntensity: 25,
-              backgroundOpacity: 0.85,
-              tintOpacity: 0.1,
-              borderOpacity: 0.2,
               enableBorderGlow: true,
             ),
     };
@@ -254,15 +234,13 @@ abstract final class PlatformGlassConfig {
       // iOS 使用 UIBlurEffect 样式
       return switch (style) {
         UIStyle.classic => 'regular',
-        UIStyle.liquidClear => 'systemThinMaterial',
-        UIStyle.liquidTinted => 'systemMaterial',
+        UIStyle.glass => 'systemThinMaterial',
       };
     } else if (Platform.isMacOS) {
       // macOS 使用 NSVisualEffectView.Material
       return switch (style) {
         UIStyle.classic => 'contentBackground',
-        UIStyle.liquidClear => 'hudWindow',
-        UIStyle.liquidTinted => 'contentBackground',
+        UIStyle.glass => 'hudWindow',
       };
     }
     return 'systemMaterial';

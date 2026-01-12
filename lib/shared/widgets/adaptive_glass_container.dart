@@ -273,7 +273,8 @@ class AdaptiveGlassNavBar extends StatelessWidget {
   }
 
   Widget _buildNativeNavBar(BuildContext context) {
-    final nativeStyle = uiStyle == UIStyle.liquidClear ? 'systemChromeMaterial' : 'systemMaterial';
+    // 玻璃模式使用 systemChromeMaterial
+    const nativeStyle = 'systemChromeMaterial';
 
     final creationParams = <String, dynamic>{
       'style': nativeStyle,

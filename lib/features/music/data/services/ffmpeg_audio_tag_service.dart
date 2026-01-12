@@ -51,7 +51,11 @@ class FfmpegAudioTagService {
 
     try {
       final updatedFields = <String>[];
-      final tempOutput = File('${inputFile.path}.ffmpeg_tmp');
+      // 使用正确的扩展名，FFmpeg 需要根据扩展名确定输出格式
+      // 例如: input.flac -> input_ffmpeg_tmp.flac
+      final ext = p.extension(inputFile.path); // .flac
+      final basePath = inputFile.path.substring(0, inputFile.path.length - ext.length);
+      final tempOutput = File('${basePath}_ffmpeg_tmp$ext');
 
       // 构建 FFmpeg 参数
       final args = <String>[

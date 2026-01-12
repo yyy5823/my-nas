@@ -336,29 +336,33 @@ class HeroPlayerCard extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(height: 6),
+        const Spacer(), // 使用 Spacer 替代固定 SizedBox，自适应空间
         // 歌曲名（限制为1行防止溢出）
-        Text(
-          currentMusic.displayTitle,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            letterSpacing: -0.3,
+        Flexible(
+          child: Text(
+            currentMusic.displayTitle,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.3,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 2),
         // 艺术家
-        Text(
-          currentMusic.displayArtist,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.8),
-            fontSize: 12,
+        Flexible(
+          child: Text(
+            currentMusic.displayArtist,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 12,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
       ],
     );

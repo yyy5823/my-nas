@@ -272,12 +272,8 @@ class MinePage extends ConsumerWidget {
                     ),
                   ],
                 ),
-                // 底部间距：玻璃模式需要更大间距以避免被导航栏遮住
-                SizedBox(
-                  height: uiStyle.isGlass
-                      ? kBottomNavigationBarHeight + context.padding.bottom + AppSpacing.md
-                      : AppSpacing.xxxl,
-                ),
+                // 底部间距：使用统一的滚动底部间距，自动适配玻璃/经典模式和平台
+                SizedBox(height: context.scrollBottomPadding),
               ],
             ),
           ),

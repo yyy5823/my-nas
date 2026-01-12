@@ -58,7 +58,7 @@ class UIStyleNotifier extends StateNotifier<UIStyle> {
     if (Platform.isIOS) {
       final supported = await LiquidGlassService.instance.isSupported;
       if (supported) {
-        return UIStyle.liquidClear;
+        return UIStyle.glass;
       }
     }
 
@@ -95,10 +95,11 @@ class UIStyleNotifier extends StateNotifier<UIStyle> {
   }
 
   /// 解析 UI 风格
+  /// 支持从旧版名称迁移：liquidClear, liquidTinted 都映射到新的 glass
   UIStyle? _parseUIStyle(String value) {
-    // 处理旧版名称迁移：如果用户之前设置的是 'glass'，转换为 liquidClear
-    if (value == 'glass') {
-      return UIStyle.liquidClear;
+    // 处理旧版名称迁移
+    if (value == 'liquidClear' || value == 'liquidTinted') {
+      return UIStyle.glass;
     }
     for (final style in UIStyle.values) {
       if (style.name == value) {

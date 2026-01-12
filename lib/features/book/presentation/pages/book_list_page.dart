@@ -1370,10 +1370,10 @@ class _BookListContentState extends ConsumerState<BookListContent> {
       child: GridView.builder(
         padding: const EdgeInsets.all(AppSpacing.md),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 130,
-          childAspectRatio: 0.55,
-          crossAxisSpacing: AppSpacing.sm,
-          mainAxisSpacing: AppSpacing.sm,
+          maxCrossAxisExtent: 140,
+          childAspectRatio: 0.6,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
         ),
         itemCount: state.displayBooks.length,
         itemBuilder: (context, index) {
@@ -1547,103 +1547,94 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
       key: Key('book_${book.sourceId}_${book.filePath}'),
       onVisibilityChanged: _onVisibilityChanged,
       child: GestureDetector(
-      onTap: widget.isSelectMode
-          ? widget.onTap
-          : () => _openBook(context, ref),
-      onLongPress: widget.isSelectMode ? null : widget.onLongPress ?? () => _showContextMenu(context, ref),
-      onSecondaryTap: () => _showContextMenu(context, ref),
-      child: Stack(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.isDark ? AppColors.darkSurfaceVariant : context.colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: widget.isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : widget.isDark
-                        ? AppColors.darkOutline.withValues(alpha: 0.2)
-                        : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                width: widget.isSelected ? 2 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: widget.isDark ? 0.2 : 0.08),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 4,
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                    child: _buildCover(format),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          displayName,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                          ),
+        onTap: widget.isSelectMode
+            ? widget.onTap
+            : () => _openBook(context, ref),
+        onLongPress: widget.isSelectMode ? null : widget.onLongPress ?? () => _showContextMenu(context, ref),
+        onSecondaryTap: () => _showContextMenu(context, ref),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 封面区域（带卡片样式）
+            Expanded(
+              flex: 4,
+              child: Stack(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: widget.isDark ? 0.3 : 0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
-                        if (author != null && author.isNotEmpty)
-                          Text(
-                            author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: widget.isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-                            ),
-                          ),
                       ],
                     ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: _buildCover(format),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          // 选择模式勾选框
-          if (widget.isSelectMode)
-            Positioned(
-              top: 8,
-              left: 8,
-              child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: widget.isSelected
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.black.withValues(alpha: 0.3),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 2,
-                  ),
-                ),
-                child: widget.isSelected
-                    ? const Icon(Icons.check, color: Colors.white, size: 16)
-                    : null,
+                  // 选择模式勾选框
+                  if (widget.isSelectMode)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: widget.isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.black.withValues(alpha: 0.3),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2,
+                          ),
+                        ),
+                        child: widget.isSelected
+                            ? const Icon(Icons.check, color: Colors.white, size: 16)
+                            : null,
+                      ),
+                    ),
+                ],
               ),
             ),
-        ],
-      ),
+            // 标题/作者区域（固定高度，与在线书籍一致）
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 40,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: widget.isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    author?.isNotEmpty == true ? author! : '佚名',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
