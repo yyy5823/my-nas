@@ -1515,6 +1515,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 _getGreeting(),

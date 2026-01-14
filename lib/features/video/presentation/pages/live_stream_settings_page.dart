@@ -160,6 +160,11 @@ class _LiveStreamSettingsPageState
               onPressed: () => _showAddSourceDialog(context),
               icon: const Icon(Icons.add_rounded),
               label: const Text('添加直播源'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              ),
             ),
           ],
         ),
