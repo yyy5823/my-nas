@@ -31,10 +31,8 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
+    namespace 'com.tundralabs.fluttertts'
     compileSdk 36
-    if (project.android.hasProperty("namespace")) {
-        namespace 'com.eyedeadevelopment.fluttertts'
-    }
 
     defaultConfig {
         minSdkVersion 24

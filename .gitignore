@@ -227,3 +227,12 @@ macos/Runner/Resources/ffmpeg/ffmpeg
 windows/ffmpeg/ffmpeg.exe
 # Linux: ~80MB
 linux/ffmpeg/ffmpeg
+
+# audiotags_fixed build artifacts
+packages/audiotags_fixed/android/.cxx/
+packages/audiotags_fixed/android/src/main/jniLibs/
+packages/audiotags_fixed/android/android.tar.gz
+packages/audiotags_fixed/logs/
+
+# Android build reports (generated during build)
+android/build/
