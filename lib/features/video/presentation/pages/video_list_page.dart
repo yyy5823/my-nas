@@ -3477,6 +3477,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
 
     return CustomScrollView(
       slivers: [
+        // 顶部安全区域留白（避免与状态栏重叠）
+        SliverPadding(padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top)),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),

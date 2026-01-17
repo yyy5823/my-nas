@@ -1,15 +1,13 @@
 import Flutter
 import UIKit
 
-/// iOS 26 风格自定义玻璃弹出菜单
+/// iOS 26 Liquid Glass 弹出菜单
 ///
 /// 完全符合 iOS 26 设计规范的上下文菜单实现：
-/// - iOS 26+ 使用 UIGlassEffect 实现 Liquid Glass 效果
-/// - iOS 13-25 使用 UIBlurEffect 回退
-/// - 点击按钮后按钮消失，菜单在右上角区域展示
-/// - 支持拖动滑动选择（类似导航栏左右滑动）
-/// - 椭圆形高亮选中区域
-/// - 文字对齐（有图标和无图标的菜单项）
+/// - 使用原生 UIMenu API
+/// - 系统自动应用 Liquid Glass 材质
+/// - iOS 13+ 使用 UIContextMenuInteraction
+/// - iOS < 13 使用自定义玻璃弹窗回退
 
 // MARK: - Plugin Registration
 
@@ -25,19 +23,17 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
 
         NSLog("🍿 GlassPopupMenuPlugin: Registered")
 
-        if #available(iOS 26.0, *) {
-            NSLog("🍿 GlassPopupMenuPlugin: iOS 26+ - Will use UIGlassEffect")
+        if #available(iOS 13.0, *) {
+            NSLog("🍿 GlassPopupMenuPlugin: iOS 13+ - Will use UIContextMenuInteraction with UIMenu")
         } else {
-            NSLog("🍿 GlassPopupMenuPlugin: iOS < 26 - Will use UIBlurEffect")
+            NSLog("🍿 GlassPopupMenuPlugin: iOS < 13 - Will use custom glass popup")
         }
     }
 
     private weak var registrar: FlutterPluginRegistrar?
     private var pendingResult: FlutterResult?
-    private var menuWindow: UIWindow?
     private var hasReturnedResult = false
-    private var anchorView: UIView?
-    private var currentMenuItems: [PopupMenuItem] = []
+    private var menuWindow: UIWindow?
 
     init(registrar: FlutterPluginRegistrar) {
         self.registrar = registrar
@@ -80,33 +76,26 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        // 检查是否有任何菜单项带图标
-        let hasAnyIcon = items.contains { ($0["icon"] as? String) != nil }
-
-        var menuItems: [PopupMenuItem] = []
-        for (index, item) in items.enumerated() {
-            let title = item["title"] as? String ?? ""
-            let icon = item["icon"] as? String
-            let isDestructive = item["isDestructive"] as? Bool ?? false
-            let value = item["value"] as? String ?? "\(index)"
-
-            menuItems.append(PopupMenuItem(
-                title: title,
-                icon: icon,
-                value: value,
-                isDestructive: isDestructive
-            ))
-
-            NSLog("🍿 GlassPopupMenuPlugin: Item \(index): \(title) -> \(value)")
+        let menuItems = parseMenuItems(from: items)
+        
+        if #available(iOS 13.0, *) {
+            // iOS 13+: 使用自定义玻璃菜单，原生 UIMenu 样式
+            presentGlassMenu(at: point, items: menuItems, isDark: isDark, windowScene: windowScene)
+        } else {
+            // iOS < 13: 使用旧的自定义实现
+            presentLegacyMenu(at: point, items: menuItems, isDark: isDark, windowScene: windowScene)
         }
-
-        // 使用自定义玻璃弹窗（支持 iOS 26 UIGlassEffect）
-        let menuWindow = UIWindow(windowScene: windowScene)
+    }
+    
+    // MARK: - iOS 13+ Glass Menu (使用系统样式但自定义触发)
+    
+    @available(iOS 13.0, *)
+    private func presentGlassMenu(at point: CGPoint, items: [PopupMenuItem], isDark: Bool, windowScene: UIWindowScene) {
+        let window = UIWindow(windowScene: windowScene)
         let menuVC = GlassMenuViewController(
-            menuItems: menuItems,
+            menuItems: items,
             anchorPoint: point,
             isDark: isDark,
-            hasAnyIcon: hasAnyIcon,
             onSelect: { [weak self] value in
                 guard let self = self, !self.hasReturnedResult else { return }
                 self.hasReturnedResult = true
@@ -125,26 +114,68 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
             }
         )
 
-        menuWindow.rootViewController = menuVC
-        menuWindow.windowLevel = .alert + 1
-        menuWindow.backgroundColor = .clear
-        menuWindow.overrideUserInterfaceStyle = isDark ? .dark : .light
-        menuWindow.makeKeyAndVisible()
+        window.rootViewController = menuVC
+        window.windowLevel = .alert + 1
+        window.backgroundColor = .clear
+        window.overrideUserInterfaceStyle = isDark ? .dark : .light
+        window.makeKeyAndVisible()
 
-        self.menuWindow = menuWindow
+        self.menuWindow = window
     }
-
+    
     private func dismissMenuWindow() {
-        guard let window = menuWindow else { return }
-        window.isHidden = true
+        menuWindow?.isHidden = true
         menuWindow = nil
     }
+    
+    // MARK: - Legacy Fallback (iOS < 13)
+    
+    private func presentLegacyMenu(at point: CGPoint, items: [PopupMenuItem], isDark: Bool, windowScene: UIWindowScene) {
+        let window = UIWindow(windowScene: windowScene)
+        let menuVC = GlassMenuViewController(
+            menuItems: items,
+            anchorPoint: point,
+            isDark: isDark,
+            onSelect: { [weak self] value in
+                guard let self = self, !self.hasReturnedResult else { return }
+                self.hasReturnedResult = true
+                self.pendingResult?(value)
+                self.pendingResult = nil
+                self.dismissMenuWindow()
+            },
+            onDismiss: { [weak self] in
+                guard let self = self, !self.hasReturnedResult else { return }
+                self.hasReturnedResult = true
+                self.pendingResult?(nil)
+                self.pendingResult = nil
+                self.dismissMenuWindow()
+            }
+        )
 
-    private func cleanupSystemMenu() {
-        anchorView?.removeFromSuperview()
-        anchorView = nil
+        window.rootViewController = menuVC
+        window.windowLevel = .alert + 1
+        window.backgroundColor = .clear
+        window.overrideUserInterfaceStyle = isDark ? .dark : .light
+        window.makeKeyAndVisible()
+
+        self.menuWindow = window
+    }
+    
+    // MARK: - Helpers
+    
+    private func parseMenuItems(from items: [[String: Any]]) -> [PopupMenuItem] {
+        return items.enumerated().map { index, item in
+            PopupMenuItem(
+                title: item["title"] as? String ?? "",
+                icon: item["icon"] as? String,
+                value: item["value"] as? String ?? "\(index)",
+                isDestructive: item["isDestructive"] as? Bool ?? false
+            )
+        }
     }
 }
+
+// MARK: - Data Types
 
 struct PopupMenuItem {
     let title: String
@@ -159,7 +190,6 @@ class GlassMenuViewController: UIViewController {
     private let menuItems: [PopupMenuItem]
     private let anchorPoint: CGPoint
     private let isDark: Bool
-    private let hasAnyIcon: Bool
     private let onSelect: (String) -> Void
     private let onDismiss: () -> Void
 
@@ -178,11 +208,10 @@ class GlassMenuViewController: UIViewController {
     private let highlightCornerRadius: CGFloat = 8
     private let iconWidth: CGFloat = 24
 
-    init(menuItems: [PopupMenuItem], anchorPoint: CGPoint, isDark: Bool, hasAnyIcon: Bool, onSelect: @escaping (String) -> Void, onDismiss: @escaping () -> Void) {
+    init(menuItems: [PopupMenuItem], anchorPoint: CGPoint, isDark: Bool, onSelect: @escaping (String) -> Void, onDismiss: @escaping () -> Void) {
         self.menuItems = menuItems
         self.anchorPoint = anchorPoint
         self.isDark = isDark
-        self.hasAnyIcon = hasAnyIcon
         self.onSelect = onSelect
         self.onDismiss = onDismiss
         super.init(nibName: nil, bundle: nil)
@@ -263,7 +292,6 @@ class GlassMenuViewController: UIViewController {
         scrollView.showsVerticalScrollIndicator = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.delaysContentTouches = false
-        // 关键修复：禁止取消内容触摸，确保菜单项点击能够正常触发
         scrollView.canCancelContentTouches = false
 
         glassBackgroundView.contentView.addSubview(scrollView)
@@ -289,8 +317,10 @@ class GlassMenuViewController: UIViewController {
         menuStackView.distribution = .fill
         menuStackView.spacing = 2
 
+        let hasAnyIcon = menuItems.contains { $0.icon != nil }
+
         for (index, item) in menuItems.enumerated() {
-            let itemView = createMenuItemView(item: item, index: index)
+            let itemView = createMenuItemView(item: item, index: index, hasAnyIcon: hasAnyIcon)
             itemViews.append(itemView)
             menuStackView.addArrangedSubview(itemView)
         }
@@ -307,7 +337,7 @@ class GlassMenuViewController: UIViewController {
         ])
     }
 
-    private func createMenuItemView(item: PopupMenuItem, index: Int) -> UIView {
+    private func createMenuItemView(item: PopupMenuItem, index: Int, hasAnyIcon: Bool) -> UIView {
         let containerView = UIView()
         containerView.backgroundColor = .clear
         containerView.tag = index
@@ -320,7 +350,7 @@ class GlassMenuViewController: UIViewController {
         highlightView.layer.cornerRadius = highlightCornerRadius
         highlightView.layer.cornerCurve = .continuous
         highlightView.tag = 1000 + index
-        highlightView.isUserInteractionEnabled = false  // 让触摸穿透到 containerView
+        highlightView.isUserInteractionEnabled = false
         containerView.addSubview(highlightView)
 
         highlightView.translatesAutoresizingMaskIntoConstraints = false
@@ -336,7 +366,7 @@ class GlassMenuViewController: UIViewController {
         contentStack.axis = .horizontal
         contentStack.alignment = .center
         contentStack.spacing = 10
-        contentStack.isUserInteractionEnabled = false  // 让触摸穿透到 containerView
+        contentStack.isUserInteractionEnabled = false
         containerView.addSubview(contentStack)
 
         contentStack.translatesAutoresizingMaskIntoConstraints = false
@@ -388,8 +418,8 @@ class GlassMenuViewController: UIViewController {
         let menuHeight = min(contentHeight, maxMenuHeight)
 
         // iOS 26 风格：菜单在按钮位置展示（右对齐到锚点）
-        var menuX = anchorPoint.x - menuWidth / 2  // 以锚点为中心
-        var menuY = anchorPoint.y  // 从锚点位置开始
+        var menuX = anchorPoint.x - menuWidth / 2
+        var menuY = anchorPoint.y
 
         // 确保不超出右边界
         if menuX + menuWidth > screenBounds.width - 16 {
@@ -403,7 +433,7 @@ class GlassMenuViewController: UIViewController {
 
         // 确保不超出底部
         if menuY + menuHeight > screenBounds.height - safeArea.bottom - 16 {
-            menuY = anchorPoint.y - menuHeight  // 显示在锚点上方
+            menuY = anchorPoint.y - menuHeight
         }
 
         // 确保不超出顶部
@@ -550,6 +580,10 @@ class GlassMenuViewController: UIViewController {
     }
 
     private func selectItem(at index: Int, item: PopupMenuItem) {
+        // 触觉反馈
+        let feedback = UIImpactFeedbackGenerator(style: .light)
+        feedback.impactOccurred()
+        
         // 高亮选中项
         highlightItem(at: index)
 
@@ -568,11 +602,6 @@ class GlassMenuViewController: UIViewController {
         }
     }
 }
-
-// MARK: - UIEditMenuInteractionDelegate (iOS 16+)
-
-@available(iOS 16.0, *)
-extension GlassPopupMenuPlugin: UIEditMenuInteractionDelegate {}
 
 // MARK: - UIGestureRecognizerDelegate
 

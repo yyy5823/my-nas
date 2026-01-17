@@ -3,10 +3,11 @@ import UIKit
 
 /// iOS 26 Liquid Glass 搜索栏
 ///
-/// 使用原生 UIGlassEffect 实现真正的 iOS 26 玻璃搜索框
-/// 胶囊形状，包含搜索图标和文本输入框
+/// 提供两种模式：
+/// 1. **默认模式**: 使用 UIGlassEffect + UITextField 自定义搜索栏（精确控制外观）
+/// 2. **原生模式**: 使用 UISearchBar（完全系统原生体验）
 ///
-/// iOS 26+: 使用 UIGlassEffect
+/// iOS 26+: 使用 UIGlassEffect，系统自动应用 Liquid Glass 材质
 /// iOS 13-25: 使用 UIVisualEffectView + UIBlurEffect 回退
 
 // MARK: - Platform View Factory
@@ -24,12 +25,24 @@ class GlassSearchBarFactory: NSObject, FlutterPlatformViewFactory {
         viewIdentifier viewId: Int64,
         arguments args: Any?
     ) -> FlutterPlatformView {
-        return GlassSearchBarPlatformView(
-            frame: frame,
-            viewIdentifier: viewId,
-            arguments: args,
-            binaryMessenger: messenger
-        )
+        let params = args as? [String: Any] ?? [:]
+        let useNativeSearchBar = params["useNativeSearchBar"] as? Bool ?? false
+        
+        if useNativeSearchBar {
+            return NativeSearchBarPlatformView(
+                frame: frame,
+                viewIdentifier: viewId,
+                arguments: args,
+                binaryMessenger: messenger
+            )
+        } else {
+            return GlassSearchBarPlatformView(
+                frame: frame,
+                viewIdentifier: viewId,
+                arguments: args,
+                binaryMessenger: messenger
+            )
+        }
     }
 
     func createArgsCodec() -> FlutterMessageCodec & NSObjectProtocol {
@@ -37,7 +50,7 @@ class GlassSearchBarFactory: NSObject, FlutterPlatformViewFactory {
     }
 }
 
-// MARK: - Platform View
+// MARK: - Custom Glass Search Bar (Default Mode)
 
 class GlassSearchBarPlatformView: NSObject, FlutterPlatformView, UITextFieldDelegate {
     private let containerView: UIView
@@ -77,7 +90,6 @@ class GlassSearchBarPlatformView: NSObject, FlutterPlatformView, UITextFieldDele
         if #available(iOS 26.0, *) {
             let glassEffect = UIGlassEffect()
             glassEffect.isInteractive = true
-            // 直接使用 glassEffect 初始化，避免动画块中的捕获问题
             glassView = UIVisualEffectView(effect: glassEffect)
         } else {
             // iOS 13-25 回退
@@ -109,7 +121,7 @@ class GlassSearchBarPlatformView: NSObject, FlutterPlatformView, UITextFieldDele
         textField.font = UIFont.systemFont(ofSize: 16, weight: .regular)
         textField.textColor = isDark ? .white : UIColor(white: 0.13, alpha: 1.0)
         textField.tintColor = isDark ? .white : .systemBlue
-        textField.clearButtonMode = .never  // 我们使用自定义清除按钮
+        textField.clearButtonMode = .never  // 使用自定义清除按钮
         textField.returnKeyType = .search
         textField.autocorrectionType = .no
         textField.autocapitalizationType = .none
@@ -125,21 +137,16 @@ class GlassSearchBarPlatformView: NSObject, FlutterPlatformView, UITextFieldDele
             ]
         )
 
-        // 创建清除按钮
+        // 创建清除按钮 - 使用系统标准 xmark.circle.fill 图标
         clearButton = UIButton(type: .system)
-        let clearConfig = UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
-        clearButton.setImage(UIImage(systemName: "xmark", withConfiguration: clearConfig), for: .normal)
-        clearButton.tintColor = isDark ? UIColor.white.withAlphaComponent(0.7) : UIColor.black.withAlphaComponent(0.54)
-        clearButton.backgroundColor = isDark
-            ? UIColor.white.withAlphaComponent(0.2)
-            : UIColor.black.withAlphaComponent(0.15)
-        clearButton.layer.cornerRadius = 9
-        clearButton.clipsToBounds = true
+        let clearConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        clearButton.setImage(UIImage(systemName: "xmark.circle.fill", withConfiguration: clearConfig), for: .normal)
+        clearButton.tintColor = isDark ? UIColor.white.withAlphaComponent(0.5) : UIColor.black.withAlphaComponent(0.3)
         clearButton.isHidden = initialText.isEmpty
         clearButton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            clearButton.widthAnchor.constraint(equalToConstant: 18),
-            clearButton.heightAnchor.constraint(equalToConstant: 18)
+            clearButton.widthAnchor.constraint(equalToConstant: 20),
+            clearButton.heightAnchor.constraint(equalToConstant: 20)
         ])
 
         // 创建内容堆叠视图
@@ -265,11 +272,8 @@ class GlassSearchBarPlatformView: NSObject, FlutterPlatformView, UITextFieldDele
 
         // 更新清除按钮
         clearButton.tintColor = isDark
-            ? UIColor.white.withAlphaComponent(0.7)
-            : UIColor.black.withAlphaComponent(0.54)
-        clearButton.backgroundColor = isDark
-            ? UIColor.white.withAlphaComponent(0.2)
-            : UIColor.black.withAlphaComponent(0.15)
+            ? UIColor.white.withAlphaComponent(0.5)
+            : UIColor.black.withAlphaComponent(0.3)
     }
 
     @objc private func textFieldDidChange(_ textField: UITextField) {
@@ -309,6 +313,150 @@ class GlassSearchBarPlatformView: NSObject, FlutterPlatformView, UITextFieldDele
     }
 }
 
+// MARK: - Native UISearchBar Mode
+
+/// 完全使用原生 UISearchBar 的搜索栏
+/// 优点：完全系统原生体验，自动适配 iOS 26 Liquid Glass
+/// 缺点：外观定制有限
+class NativeSearchBarPlatformView: NSObject, FlutterPlatformView, UISearchBarDelegate {
+    private let containerView: UIView
+    private let searchBar: UISearchBar
+    private var methodChannel: FlutterMethodChannel?
+    private let viewId: Int64
+    private var isDark: Bool
+    private var height: CGFloat
+
+    init(
+        frame: CGRect,
+        viewIdentifier viewId: Int64,
+        arguments args: Any?,
+        binaryMessenger messenger: FlutterBinaryMessenger?
+    ) {
+        self.viewId = viewId
+
+        let params = args as? [String: Any] ?? [:]
+        isDark = params["isDark"] as? Bool ?? false
+        let placeholder = params["placeholder"] as? String ?? "搜索"
+        let initialText = params["text"] as? String ?? ""
+        let autofocus = params["autofocus"] as? Bool ?? false
+        height = CGFloat(params["height"] as? Double ?? 44.0)
+
+        // 创建容器
+        containerView = UIView()
+        containerView.backgroundColor = .clear
+        containerView.overrideUserInterfaceStyle = isDark ? .dark : .light
+
+        // 创建原生 UISearchBar
+        searchBar = UISearchBar()
+        searchBar.searchBarStyle = .minimal
+        searchBar.placeholder = placeholder
+        searchBar.text = initialText
+        searchBar.overrideUserInterfaceStyle = isDark ? .dark : .light
+        
+        // 配置搜索框文本字段
+        searchBar.searchTextField.clearButtonMode = .whileEditing
+        searchBar.searchTextField.returnKeyType = .search
+        searchBar.searchTextField.autocorrectionType = .no
+        searchBar.searchTextField.autocapitalizationType = .none
+        
+        // iOS 26+ 自动应用 Liquid Glass 效果
+        // iOS 15+ 可以自定义背景
+        if #available(iOS 15.0, *) {
+            searchBar.searchTextField.backgroundColor = .clear
+        }
+
+        super.init()
+
+        searchBar.delegate = self
+
+        containerView.addSubview(searchBar)
+        setupConstraints()
+
+        if let messenger = messenger {
+            setupMethodChannel(messenger: messenger)
+        }
+
+        if autofocus {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.searchBar.becomeFirstResponder()
+            }
+        }
+    }
+
+    private func setupConstraints() {
+        searchBar.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            searchBar.topAnchor.constraint(equalTo: containerView.topAnchor),
+            searchBar.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            searchBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            searchBar.heightAnchor.constraint(equalToConstant: height)
+        ])
+    }
+
+    private func setupMethodChannel(messenger: FlutterBinaryMessenger) {
+        let channelName = "com.kkape.mynas/glass_search_bar_\(viewId)"
+        methodChannel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
+
+        methodChannel?.setMethodCallHandler { [weak self] call, result in
+            switch call.method {
+            case "updateTheme":
+                if let isDark = call.arguments as? Bool {
+                    self?.updateTheme(isDark: isDark)
+                }
+                result(nil)
+            case "setText":
+                if let text = call.arguments as? String {
+                    self?.searchBar.text = text
+                }
+                result(nil)
+            case "getText":
+                result(self?.searchBar.text ?? "")
+            case "focus":
+                self?.searchBar.becomeFirstResponder()
+                result(nil)
+            case "unfocus":
+                self?.searchBar.resignFirstResponder()
+                result(nil)
+            case "clear":
+                self?.searchBar.text = ""
+                self?.methodChannel?.invokeMethod("onChanged", arguments: "")
+                result(nil)
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
+    }
+
+    private func updateTheme(isDark: Bool) {
+        self.isDark = isDark
+        containerView.overrideUserInterfaceStyle = isDark ? .dark : .light
+        searchBar.overrideUserInterfaceStyle = isDark ? .dark : .light
+    }
+
+    // MARK: - UISearchBarDelegate
+
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        methodChannel?.invokeMethod("onChanged", arguments: searchText)
+    }
+
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        methodChannel?.invokeMethod("onFocusChanged", arguments: true)
+    }
+
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        methodChannel?.invokeMethod("onFocusChanged", arguments: false)
+    }
+
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        methodChannel?.invokeMethod("onSubmitted", arguments: searchBar.text ?? "")
+    }
+
+    func view() -> UIView {
+        return containerView
+    }
+}
+
 // MARK: - Plugin Registration
 
 class GlassSearchBarPlugin: NSObject, FlutterPlugin {
@@ -319,7 +467,7 @@ class GlassSearchBarPlugin: NSObject, FlutterPlugin {
         NSLog("🔍 GlassSearchBarPlugin: Registered")
 
         if #available(iOS 26.0, *) {
-            NSLog("🔍 GlassSearchBarPlugin: iOS 26+ - Using UIGlassEffect")
+            NSLog("🔍 GlassSearchBarPlugin: iOS 26+ - Using UIGlassEffect with Liquid Glass")
         } else {
             NSLog("🔍 GlassSearchBarPlugin: iOS < 26 - Using UIBlurEffect fallback")
         }

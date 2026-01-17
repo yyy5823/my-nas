@@ -791,13 +791,18 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
         configs.add({
           'icon': sfSymbol,
           'tooltip': child.tooltip,
+          'isMenuButton': false,
+          'menuItems': <Map<String, dynamic>>[],
         });
       } else if (child is GlassGroupPopupMenuButton) {
-        // PopupMenu 按钮也支持
+        // PopupMenu 按钮 - 提取菜单项传递给原生端
         final sfSymbol = _iconDataToSFSymbol(child.icon);
+        final menuItems = _extractMenuItems(child);
         configs.add({
           'icon': sfSymbol,
           'tooltip': child.tooltip,
+          'isMenuButton': true,
+          'menuItems': menuItems,
         });
       } else if (child is GlassGroupDynamicButton) {
         // 动态图标按钮
@@ -805,10 +810,68 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
         configs.add({
           'icon': sfSymbol,
           'tooltip': child.tooltip,
+          'isMenuButton': false,
+          'menuItems': <Map<String, dynamic>>[],
         });
       }
     }
     return configs;
+  }
+
+  /// 从 GlassGroupPopupMenuButton 提取菜单项
+  List<Map<String, dynamic>> _extractMenuItems(GlassGroupPopupMenuButton button) {
+    try {
+      // 使用 dynamic 绕过泛型
+      // ignore: avoid_dynamic_calls
+      final dynamic dynamicButton = button;
+      // ignore: avoid_dynamic_calls
+      final itemBuilderCallback = dynamicButton.itemBuilder as List<PopupMenuEntry<dynamic>> Function(BuildContext);
+      
+      final items = itemBuilderCallback(context);
+      final menuItems = <Map<String, dynamic>>[];
+      
+      for (final item in items) {
+        if (item is PopupMenuItem) {
+          // 提取 PopupMenuItem 的信息
+          final menuItem = item as PopupMenuItem<dynamic>;
+          String title = '';
+          String? iconName;
+          bool isDestructive = false;
+          
+          // 尝试从 child 提取文本
+          final child = menuItem.child;
+          if (child is Text) {
+            title = child.data ?? '';
+          } else if (child is Row) {
+            // 常见模式: Row(children: [Icon, SizedBox, Text])
+            for (final rowChild in child.children) {
+              if (rowChild is Text) {
+                title = rowChild.data ?? '';
+              } else if (rowChild is Icon) {
+                iconName = _iconDataToSFSymbol(rowChild.icon ?? Icons.circle);
+              }
+            }
+          }
+          
+          // 检查是否为红色/破坏性操作
+          if (child is Text && child.style?.color == Colors.red) {
+            isDestructive = true;
+          }
+          
+          menuItems.add({
+            'title': title,
+            'icon': iconName,
+            'value': menuItem.value?.toString() ?? '',
+            'isDestructive': isDestructive,
+          });
+        }
+      }
+      
+      return menuItems;
+    } catch (e) {
+      debugPrint('GlassButtonGroup._extractMenuItems: Error extracting menu items: $e');
+      return [];
+    }
   }
 
   /// 将 Flutter IconData 转换为 iOS SF Symbol 名称
@@ -972,11 +1035,66 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
     _channel?.setMethodCallHandler((call) async {
       // 检查是否已 dispose，防止崩溃
       if (!mounted) return;
-      if (call.method == 'onButtonTap') {
-        final index = call.arguments as int;
-        _handleButtonTap(index);
+      
+      switch (call.method) {
+        case 'onButtonTap':
+          final index = call.arguments as int;
+          _handleButtonTap(index);
+          break;
+        case 'onMenuItemSelected':
+          // iOS 14+ 原生菜单选中回调
+          final args = call.arguments as Map<Object?, Object?>;
+          final buttonIndex = args['buttonIndex'] as int;
+          final value = args['value'] as String?;
+          debugPrint('GlassButtonGroup: onMenuItemSelected buttonIndex=$buttonIndex, value=$value');
+          if (value != null) {
+            _handleMenuItemSelected(buttonIndex, value);
+          }
+          break;
+        case 'onMenuButtonTap':
+          // iOS 13 回退: 需要 Flutter 显示菜单
+          final index = call.arguments as int;
+          _handleButtonTap(index);
+          break;
       }
     });
+  }
+
+  /// 处理原生菜单选中
+  void _handleMenuItemSelected(int buttonIndex, String value) {
+    var currentIndex = 0;
+    for (final child in widget.children) {
+      if (currentIndex == buttonIndex) {
+        if (child is GlassGroupPopupMenuButton) {
+          try {
+            // ignore: avoid_dynamic_calls
+            final dynamic dynamicButton = child;
+            // ignore: avoid_dynamic_calls
+            final onSelectedCallback = dynamicButton.onSelected as Function?;
+            if (onSelectedCallback != null) {
+              debugPrint('GlassButtonGroup: calling onSelected with value: $value');
+              // 尝试解析 value 为原始类型
+              dynamic parsedValue = value;
+              // 尝试解析为整数
+              final intValue = int.tryParse(value);
+              if (intValue != null) {
+                parsedValue = intValue;
+              }
+              // ignore: avoid_dynamic_calls
+              (onSelectedCallback as Function)(parsedValue);
+            }
+          } catch (e) {
+            debugPrint('GlassButtonGroup._handleMenuItemSelected: Error: $e');
+          }
+        }
+        return;
+      }
+      if (child is GlassGroupIconButton || 
+          child is GlassGroupPopupMenuButton || 
+          child is GlassGroupDynamicButton) {
+        currentIndex++;
+      }
+    }
   }
 
   @override
