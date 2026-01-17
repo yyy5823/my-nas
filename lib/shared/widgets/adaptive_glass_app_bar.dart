@@ -1358,6 +1358,7 @@ class GlassGroupIconButton extends StatelessWidget {
     this.tooltip,
     this.size = 18,
     this.color,
+    this.badge = false,
     super.key,
   });
 
@@ -1366,6 +1367,8 @@ class GlassGroupIconButton extends StatelessWidget {
   final String? tooltip;
   final double size;
   final Color? color;
+  /// 是否显示角标（用于指示有筛选等状态）
+  final bool badge;
 
   @override
   Widget build(BuildContext context) {
@@ -1385,7 +1388,26 @@ class GlassGroupIconButton extends StatelessWidget {
           width: 40,
           height: 40,
           alignment: Alignment.center,
-          child: Icon(icon, size: size, color: iconColor),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(icon, size: size, color: iconColor),
+              // 角标指示器
+              if (badge)
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -2790,17 +2812,38 @@ class GlassFloatingBackButton extends ConsumerWidget {
       );
     }
 
-    // 仅图标时使用圆形
-    return GlassButtonGroup(
-      children: [
-        GlassGroupIconButton(
-          icon: icon,
-          size: iconSize,
-          color: color,
-          onPressed: onTap,
-          tooltip: '返回',
+    // 仅图标时：使用胶囊形状而不是圆形，更符合 iOS 26 返回按钮风格
+    // 添加 "返回" 文字或使用较宽的胶囊以区别于普通圆形按钮
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : Colors.black.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : Colors.black.withValues(alpha: 0.08),
+                width: 0.5,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: iconSize, color: iconColor),
+              ],
+            ),
+          ),
         ),
-      ],
+      ),
     );
   }
 }

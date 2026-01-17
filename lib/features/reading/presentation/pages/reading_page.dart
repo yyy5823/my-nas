@@ -748,6 +748,30 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
   Widget _buildFloatingButtons(BuildContext context, bool isDark, int currentTab) =>
     GlassButtonGroup(
       children: [
+        // 搜索按钮
+        GlassGroupIconButton(
+          icon: Icons.search_rounded,
+          tooltip: '搜索',
+          onPressed: () => _triggerSearch(currentTab),
+        ),
+        // 本地/在线切换按钮（仅在图书页显示）
+        if (currentTab == 0)
+          GlassGroupIconButton(
+            icon: _bookSearchMode == BookSearchMode.online 
+                ? Icons.cloud_rounded 
+                : Icons.folder_rounded,
+            tooltip: _bookSearchMode == BookSearchMode.online 
+                ? '查看本地图书' 
+                : '查看在线书架',
+            onPressed: () {
+              setState(() {
+                _bookSearchMode = _bookSearchMode == BookSearchMode.online
+                    ? BookSearchMode.local
+                    : BookSearchMode.online;
+              });
+            },
+          ),
+        // 内容类型切换
         GlassGroupPopupMenuButton<int>(
           icon: ReadingContentType.values[currentTab].icon,
           tooltip: '切换内容类型',

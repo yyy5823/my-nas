@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 import 'package:my_nas/features/video/domain/entities/live_stream_models.dart';
 import 'package:my_nas/features/video/presentation/pages/live_player_page.dart';
 import 'package:my_nas/features/video/presentation/pages/live_stream_settings_page.dart';
@@ -40,12 +42,100 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final channels = ref.watch(searchedLiveChannelsProvider);
     final hasLiveSources = ref.watch(hasLiveSourcesProvider);
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 玻璃模式：使用悬浮头部
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容
+            Column(
+              children: [
+                SizedBox(height: safeTop + 60), // 留出头部空间
+                // 搜索栏
+                if (_showSearch)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: _buildSearchField(isDark),
+                  ),
+                // 频道列表
+                Expanded(
+                  child: !hasLiveSources
+                      ? _buildEmptyState(context)
+                      : channels.isEmpty
+                          ? _buildNoResultsState()
+                          : _isGridView
+                              ? _buildGridView(channels, isDark)
+                              : _buildListView(channels, isDark),
+                ),
+              ],
+            ),
+            // 悬浮头部
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              right: 16,
+              child: Row(
+                children: [
+                  const GlassFloatingBackButton(),
+                  const Spacer(),
+                  GlassButtonGroup(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '直播频道',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  GlassButtonGroup(
+                    children: [
+                      GlassGroupIconButton(
+                        icon: _showSearch ? Icons.close_rounded : Icons.search_rounded,
+                        tooltip: '搜索频道',
+                        onPressed: () => setState(() {
+                          _showSearch = !_showSearch;
+                          if (!_showSearch) {
+                            _searchController.clear();
+                            ref.read(liveChannelSearchQueryProvider.notifier).state = '';
+                          }
+                        }),
+                      ),
+                      GlassGroupIconButton(
+                        icon: _isGridView ? Icons.list_rounded : Icons.grid_view_rounded,
+                        tooltip: _isGridView ? '列表视图' : '网格视图',
+                        onPressed: () => setState(() => _isGridView = !_isGridView),
+                      ),
+                      GlassGroupIconButton(
+                        icon: Icons.settings_rounded,
+                        tooltip: '直播源管理',
+                        onPressed: () => _openSettings(context),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：保留 AppBar
     return Scaffold(
       appBar: AppBar(
         title: const Text('直播频道'),
         actions: [
-          // 搜索按钮
           IconButton(
             icon: Icon(_showSearch ? Icons.close_rounded : Icons.search_rounded),
             onPressed: () => setState(() {
@@ -57,13 +147,11 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
             }),
             tooltip: '搜索频道',
           ),
-          // 切换视图
           IconButton(
             icon: Icon(_isGridView ? Icons.list_rounded : Icons.grid_view_rounded),
             onPressed: () => setState(() => _isGridView = !_isGridView),
             tooltip: _isGridView ? '列表视图' : '网格视图',
           ),
-          // 设置
           IconButton(
             icon: const Icon(Icons.settings_rounded),
             onPressed: () => _openSettings(context),
@@ -73,41 +161,11 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
       ),
       body: Column(
         children: [
-          // 搜索栏（只在点击搜索按钮后显示）
           if (_showSearch)
             Padding(
               padding: const EdgeInsets.all(16),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: '搜索频道...',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () {
-                            _searchController.clear();
-                            ref.read(liveChannelSearchQueryProvider.notifier).state = '';
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: isDark
-                      ? AppColors.darkSurfaceVariant
-                      : AppColors.lightSurfaceVariant,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-                onChanged: (value) {
-                  ref.read(liveChannelSearchQueryProvider.notifier).state = value;
-                },
-              ),
+              child: _buildSearchField(isDark),
             ),
-
-          // 频道列表
           Expanded(
             child: !hasLiveSources
                 ? _buildEmptyState(context)
@@ -119,6 +177,38 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
           ),
         ],
       ),
+    );
+  }
+
+  /// 构建搜索框
+  Widget _buildSearchField(bool isDark) {
+    return TextField(
+      controller: _searchController,
+      autofocus: true,
+      decoration: InputDecoration(
+        hintText: '搜索频道...',
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: _searchController.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear_rounded),
+                onPressed: () {
+                  _searchController.clear();
+                  ref.read(liveChannelSearchQueryProvider.notifier).state = '';
+                },
+              )
+            : null,
+        filled: true,
+        fillColor: isDark
+            ? AppColors.darkSurfaceVariant
+            : AppColors.lightSurfaceVariant,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      onChanged: (value) {
+        ref.read(liveChannelSearchQueryProvider.notifier).state = value;
+      },
     );
   }
 

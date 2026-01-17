@@ -30,6 +30,82 @@ struct GlassMenuItem {
     let isDestructive: Bool
 }
 
+// MARK: - Custom Glass Container View
+
+/// 自定义玻璃容器视图，确保圆角始终正确应用
+/// 解决菜单弹出/关闭时圆角闪烁的问题
+class GlassContainerView: UIView {
+    private let glassView: UIVisualEffectView
+    private let cornerRadius: CGFloat
+    
+    init(cornerRadius: CGFloat, isDark: Bool) {
+        self.cornerRadius = cornerRadius
+        
+        // 创建玻璃效果视图
+        if #available(iOS 26.0, *) {
+            let glassEffect = UIGlassEffect()
+            glassEffect.isInteractive = true
+            glassView = UIVisualEffectView(effect: glassEffect)
+        } else {
+            let blurStyle: UIBlurEffect.Style = isDark ? .systemThinMaterialDark : .systemThinMaterialLight
+            glassView = UIVisualEffectView(effect: UIBlurEffect(style: blurStyle))
+        }
+        
+        super.init(frame: .zero)
+        
+        // 设置视图属性
+        backgroundColor = .clear
+        clipsToBounds = true
+        layer.cornerRadius = cornerRadius
+        layer.cornerCurve = .continuous
+        
+        // 设置玻璃视图
+        glassView.translatesAutoresizingMaskIntoConstraints = false
+        glassView.clipsToBounds = true
+        glassView.layer.cornerRadius = cornerRadius
+        glassView.layer.cornerCurve = .continuous
+        glassView.overrideUserInterfaceStyle = isDark ? .dark : .light
+        
+        addSubview(glassView)
+        
+        NSLayoutConstraint.activate([
+            glassView.topAnchor.constraint(equalTo: topAnchor),
+            glassView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            glassView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            glassView.trailingAnchor.constraint(equalTo: trailingAnchor)
+        ])
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    var contentView: UIView {
+        return glassView.contentView
+    }
+    
+    func updateTheme(isDark: Bool) {
+        glassView.overrideUserInterfaceStyle = isDark ? .dark : .light
+        
+        // 只在非 iOS 26 时更新 blur effect（iOS 26 使用 UIGlassEffect 自动响应主题）
+        if #unavailable(iOS 26.0) {
+            let blurStyle: UIBlurEffect.Style = isDark ? .systemThinMaterialDark : .systemThinMaterialLight
+            glassView.effect = UIBlurEffect(style: blurStyle)
+        }
+    }
+    
+    /// 强制在 layout 时重新应用圆角，防止系统重置
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        
+        // 确保圆角始终正确应用
+        layer.cornerRadius = cornerRadius
+        layer.cornerCurve = .continuous
+        glassView.layer.cornerRadius = cornerRadius
+        glassView.layer.cornerCurve = .continuous
+    }
+}
+
 // MARK: - Platform View Factory
 
 class GlassButtonGroupFactory: NSObject, FlutterPlatformViewFactory {
@@ -62,7 +138,7 @@ class GlassButtonGroupFactory: NSObject, FlutterPlatformViewFactory {
 
 class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
     private let containerView: UIView
-    private let glassView: UIVisualEffectView
+    private let glassContainer: GlassContainerView
     private let stackView: UIStackView
     private var buttons: [UIButton] = []
     private var methodChannel: FlutterMethodChannel?
@@ -83,7 +159,7 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         isDark = params["isDark"] as? Bool ?? false
         let buttonSize = params["buttonSize"] as? Double ?? 36.0
         let spacing = params["spacing"] as? Double ?? 0.0
-        let cornerRadius = params["cornerRadius"] as? Double ?? 20.0
+        let cornerRadius = params["cornerRadius"] as? Double ?? 22.0
 
         // 解析按钮数据
         if let itemsData = params["items"] as? [[String: Any]] {
@@ -113,20 +189,10 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         containerView.backgroundColor = .clear
         containerView.overrideUserInterfaceStyle = isDark ? .dark : .light
 
-        // 创建玻璃效果视图
-        if #available(iOS 26.0, *) {
-            let glassEffect = UIGlassEffect()
-            glassEffect.isInteractive = true
-            glassView = UIVisualEffectView(effect: glassEffect)
-        } else {
-            let blurStyle: UIBlurEffect.Style = isDark ? .systemThinMaterialDark : .systemThinMaterialLight
-            glassView = UIVisualEffectView(effect: UIBlurEffect(style: blurStyle))
-        }
-
-        glassView.layer.cornerRadius = CGFloat(cornerRadius)
-        glassView.layer.cornerCurve = .continuous
-        glassView.clipsToBounds = true
-        glassView.overrideUserInterfaceStyle = isDark ? .dark : .light
+        // 创建自定义玻璃容器（确保圆角始终正确）
+        glassContainer = GlassContainerView(cornerRadius: CGFloat(cornerRadius), isDark: isDark)
+        glassContainer.translatesAutoresizingMaskIntoConstraints = false
+        glassContainer.overrideUserInterfaceStyle = isDark ? .dark : .light
 
         // 创建按钮堆叠视图
         stackView = UIStackView()
@@ -134,6 +200,7 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         stackView.alignment = .center
         stackView.distribution = .fill
         stackView.spacing = CGFloat(max(spacing, 8.0))
+        stackView.translatesAutoresizingMaskIntoConstraints = false
 
         super.init()
 
@@ -145,11 +212,11 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         }
 
         // 设置视图层级
-        glassView.contentView.addSubview(stackView)
-        containerView.addSubview(glassView)
+        glassContainer.contentView.addSubview(stackView)
+        containerView.addSubview(glassContainer)
 
         // 设置布局约束
-        setupConstraints(buttonSize: buttonSize, cornerRadius: cornerRadius)
+        setupConstraints()
 
         // 设置 Method Channel
         if let messenger = messenger {
@@ -231,21 +298,18 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         }
     }
 
-    private func setupConstraints(buttonSize: Double, cornerRadius: Double) {
-        glassView.translatesAutoresizingMaskIntoConstraints = false
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-
+    private func setupConstraints() {
         NSLayoutConstraint.activate([
-            // Glass view 填充容器
-            glassView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            glassView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            glassView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            glassView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            // Glass container 填充容器
+            glassContainer.topAnchor.constraint(equalTo: containerView.topAnchor),
+            glassContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            glassContainer.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            glassContainer.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
 
-            // Stack view 在 glass view 内部居中
-            stackView.centerYAnchor.constraint(equalTo: glassView.contentView.centerYAnchor),
-            stackView.leadingAnchor.constraint(equalTo: glassView.contentView.leadingAnchor, constant: 10),
-            stackView.trailingAnchor.constraint(equalTo: glassView.contentView.trailingAnchor, constant: -10)
+            // Stack view 在 glass container 内部居中
+            stackView.centerYAnchor.constraint(equalTo: glassContainer.contentView.centerYAnchor),
+            stackView.leadingAnchor.constraint(equalTo: glassContainer.contentView.leadingAnchor, constant: 10),
+            stackView.trailingAnchor.constraint(equalTo: glassContainer.contentView.trailingAnchor, constant: -10)
         ])
     }
 
@@ -323,7 +387,8 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
     private func updateTheme(isDark: Bool) {
         self.isDark = isDark
         containerView.overrideUserInterfaceStyle = isDark ? .dark : .light
-        glassView.overrideUserInterfaceStyle = isDark ? .dark : .light
+        glassContainer.overrideUserInterfaceStyle = isDark ? .dark : .light
+        glassContainer.updateTheme(isDark: isDark)
 
         for button in buttons {
             button.tintColor = isDark ? .white : UIColor(white: 0.2, alpha: 1.0)

@@ -7273,7 +7273,72 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 玻璃模式：使用悬浮头部
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容区域
+            _buildContent(context, isDark, safeTop + 60), // 留出头部空间
+            // 悬浮头部
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              right: 16,
+              child: Row(
+                children: [
+                  // 返回按钮
+                  const GlassFloatingBackButton(),
+                  const Spacer(),
+                  // 标题和计数
+                  GlassButtonGroup(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '${widget.title} ($_filteredCount)',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  // 操作按钮组
+                  GlassButtonGroup(
+                    children: [
+                      GlassGroupIconButton(
+                        icon: Icons.swap_vert_rounded,
+                        tooltip: '排序',
+                        onPressed: () => _showSortMenu(context, isDark),
+                      ),
+                      GlassGroupIconButton(
+                        icon: Icons.filter_alt_rounded,
+                        tooltip: '筛选',
+                        onPressed: _isLoadingFilters
+                            ? null
+                            : () => _showFilterSheet(context, isDark),
+                        // 显示筛选指示器
+                        badge: _hasFilters,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：保留原有 AppBar
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
       appBar: AppBar(
@@ -7332,144 +7397,151 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // 筛选标签
-          if (_hasFilters)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (_selectedGenre != null)
-                    _FilterChip(
-                      label: _selectedGenre!,
-                      onRemove: () {
-                        setState(() => _selectedGenre = null);
-                        _resetAndReload();
-                      },
-                      isDark: isDark,
-                    ),
-                  if (_selectedYear != null)
-                    _FilterChip(
-                      label: '$_selectedYear年',
-                      onRemove: () {
-                        setState(() => _selectedYear = null);
-                        _resetAndReload();
-                      },
-                      isDark: isDark,
-                    ),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedGenre = null;
-                        _selectedYear = null;
-                      });
+      body: _buildContent(context, isDark, 0),
+    );
+  }
+
+  /// 构建主内容区域
+  Widget _buildContent(BuildContext context, bool isDark, double topPadding) {
+    return Column(
+      children: [
+        // 顶部留白（玻璃模式用于避开浮动头部）
+        if (topPadding > 0) SizedBox(height: topPadding),
+        // 筛选标签
+        if (_hasFilters)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (_selectedGenre != null)
+                  _FilterChip(
+                    label: _selectedGenre!,
+                    onRemove: () {
+                      setState(() => _selectedGenre = null);
                       _resetAndReload();
                     },
-                    child: Text(
-                      '清除全部',
-                      style: TextStyle(fontSize: 12, color: Colors.blue),
-                    ),
+                    isDark: isDark,
                   ),
-                ],
-              ),
+                if (_selectedYear != null)
+                  _FilterChip(
+                    label: '$_selectedYear年',
+                    onRemove: () {
+                      setState(() => _selectedYear = null);
+                      _resetAndReload();
+                    },
+                    isDark: isDark,
+                  ),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedGenre = null;
+                      _selectedYear = null;
+                    });
+                    _resetAndReload();
+                  },
+                  child: Text(
+                    '清除全部',
+                    style: TextStyle(fontSize: 12, color: Colors.blue),
+                  ),
+                ),
+              ],
             ),
-          // 排序标签（当前排序不是默认时显示）
-          if (_sortOption != VideoSortOption.yearDesc)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.swap_vert_rounded,
-                    size: 14,
+          ),
+        // 排序标签（当前排序不是默认时显示）
+        if (_sortOption != VideoSortOption.yearDesc)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.swap_vert_rounded,
+                  size: 14,
+                  color: isDark ? Colors.white54 : Colors.black45,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '按${_sortOption.displayName}排序',
+                  style: TextStyle(
+                    fontSize: 12,
                     color: isDark ? Colors.white54 : Colors.black45,
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '按${_sortOption.displayName}排序',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? Colors.white54 : Colors.black45,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          // 内容区域
-          Expanded(
-            child: _movies.isEmpty && _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _movies.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.movie_filter_outlined,
-                          size: 64,
-                          color: isDark ? Colors.white30 : Colors.black26,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '没有找到匹配的电影',
-                          style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.black45,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      // 根据屏幕宽度调整卡片大小
-                      final screenWidth = constraints.maxWidth;
-                      final isMobile = screenWidth < 600;
-
-                      // 移动端使用更小的卡片
-                      final maxExtent = isMobile ? 120.0 : 150.0;
-                      // 调整宽高比，确保有足够空间显示标题
-                      // 海报比例 2:3 (0.667)，加上标题区域约 45px
-                      final aspectRatio = isMobile ? 0.48 : 0.52;
-
-                      return GridView.builder(
-                        controller: _scrollController,
-                        padding: EdgeInsets.all(isMobile ? 12 : 16),
-                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: maxExtent,
-                          childAspectRatio: aspectRatio,
-                          crossAxisSpacing: isMobile ? 10 : 12,
-                          mainAxisSpacing: isMobile ? 12 : 16,
-                        ),
-                        itemCount: _movies.length + (_hasMore ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index >= _movies.length) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
-
-                          final movie = _movies[index];
-                          return _VerticalPosterCard(
-                            metadata: movie,
-                            onTap: () => _openVideoDetail(context, movie),
-                            isDark: isDark,
-                            showMargin: false,
-                          );
-                        },
-                      );
-                    },
-                  ),
           ),
-        ],
-      ),
+        // 内容区域
+        Expanded(
+          child: _movies.isEmpty && _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _movies.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.movie_filter_outlined,
+                        size: 64,
+                        color: isDark ? Colors.white30 : Colors.black26,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '没有找到匹配的电影',
+                        style: TextStyle(
+                          color: isDark ? Colors.white54 : Colors.black45,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    // 根据屏幕宽度调整卡片大小
+                    final screenWidth = constraints.maxWidth;
+                    final isMobile = screenWidth < 600;
+
+                    // 移动端使用更小的卡片
+                    final maxExtent = isMobile ? 120.0 : 150.0;
+                    // 调整宽高比，确保有足够空间显示标题
+                    // 海报比例 2:3 (0.667)，加上标题区域约 45px
+                    final aspectRatio = isMobile ? 0.48 : 0.52;
+
+                    return GridView.builder(
+                      controller: _scrollController,
+                      padding: EdgeInsets.all(isMobile ? 12 : 16),
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: maxExtent,
+                        childAspectRatio: aspectRatio,
+                        crossAxisSpacing: isMobile ? 10 : 12,
+                        mainAxisSpacing: isMobile ? 12 : 16,
+                      ),
+                      itemCount: _movies.length + (_hasMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index >= _movies.length) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+                        }
+
+                        final movie = _movies[index];
+                        return _VerticalPosterCard(
+                          metadata: movie,
+                          onTap: () => _openVideoDetail(context, movie),
+                          isDark: isDark,
+                          showMargin: false,
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -8080,7 +8152,68 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 玻璃模式：使用悬浮头部
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容区域
+            _buildContent(context, isDark, safeTop + 60),
+            // 悬浮头部
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              right: 16,
+              child: Row(
+                children: [
+                  const GlassFloatingBackButton(),
+                  const Spacer(),
+                  GlassButtonGroup(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '${widget.title} ($_filteredCount)',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  GlassButtonGroup(
+                    children: [
+                      GlassGroupIconButton(
+                        icon: Icons.swap_vert_rounded,
+                        tooltip: '排序',
+                        onPressed: () => _showSortMenu(context, isDark),
+                      ),
+                      GlassGroupIconButton(
+                        icon: Icons.filter_alt_rounded,
+                        tooltip: '筛选',
+                        onPressed: _isLoadingFilters
+                            ? null
+                            : () => _showFilterSheet(context, isDark),
+                        badge: _hasFilters,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：保留 AppBar
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
       appBar: AppBar(
@@ -8101,7 +8234,6 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
           ),
         ),
         actions: [
-          // 排序按钮
           IconButton(
             icon: Icon(
               Icons.swap_vert_rounded,
@@ -8110,7 +8242,6 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
             tooltip: '排序',
             onPressed: () => _showSortMenu(context, isDark),
           ),
-          // 筛选按钮
           Stack(
             children: [
               IconButton(
@@ -8139,120 +8270,122 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // 筛选标签
-          if (_hasFilters)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (_selectedGenre != null)
-                    _FilterChip(
-                      label: _selectedGenre!,
-                      onRemove: () {
-                        setState(() => _selectedGenre = null);
-                        _resetAndReload();
-                      },
-                      isDark: isDark,
-                    ),
-                  if (_selectedYear != null)
-                    _FilterChip(
-                      label: '$_selectedYear年',
-                      onRemove: () {
-                        setState(() => _selectedYear = null);
-                        _resetAndReload();
-                      },
-                      isDark: isDark,
-                    ),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedGenre = null;
-                        _selectedYear = null;
-                      });
+      body: _buildContent(context, isDark, 0),
+    );
+  }
+
+  /// 构建主内容区域
+  Widget _buildContent(BuildContext context, bool isDark, double topPadding) {
+    return Column(
+      children: [
+        if (topPadding > 0) SizedBox(height: topPadding),
+        // 筛选标签
+        if (_hasFilters)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (_selectedGenre != null)
+                  _FilterChip(
+                    label: _selectedGenre!,
+                    onRemove: () {
+                      setState(() => _selectedGenre = null);
                       _resetAndReload();
                     },
-                    child: Text(
-                      '清除全部',
-                      style: TextStyle(fontSize: 12, color: Colors.blue),
-                    ),
+                    isDark: isDark,
                   ),
-                ],
-              ),
-            ),
-          // 内容区域
-          Expanded(
-            child: _tvShows.isEmpty && _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _tvShows.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.live_tv_outlined,
-                          size: 64,
-                          color: isDark ? Colors.white30 : Colors.black26,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '没有找到匹配的剧集',
-                          style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.black45,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      // 根据屏幕宽度调整卡片大小
-                      final screenWidth = constraints.maxWidth;
-                      final isMobile = screenWidth < 600;
-
-                      // 移动端使用更小的卡片
-                      final maxExtent = isMobile ? 120.0 : 150.0;
-                      // 调整宽高比，确保有足够空间显示标题
-                      final aspectRatio = isMobile ? 0.48 : 0.52;
-
-                      return GridView.builder(
-                        controller: _scrollController,
-                        padding: EdgeInsets.all(isMobile ? 12 : 16),
-                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: maxExtent,
-                          childAspectRatio: aspectRatio,
-                          crossAxisSpacing: isMobile ? 10 : 12,
-                          mainAxisSpacing: isMobile ? 12 : 16,
-                        ),
-                        itemCount: _tvShows.length + (_hasMore ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index >= _tvShows.length) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
-
-                          final tvShow = _tvShows[index];
-                          return _VerticalPosterCard(
-                            metadata: tvShow,
-                            onTap: () => _openVideoDetail(context, tvShow),
-                            isDark: isDark,
-                            showMargin: false,
-                          );
-                        },
-                      );
+                if (_selectedYear != null)
+                  _FilterChip(
+                    label: '$_selectedYear年',
+                    onRemove: () {
+                      setState(() => _selectedYear = null);
+                      _resetAndReload();
                     },
+                    isDark: isDark,
                   ),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedGenre = null;
+                      _selectedYear = null;
+                    });
+                    _resetAndReload();
+                  },
+                  child: Text(
+                    '清除全部',
+                    style: TextStyle(fontSize: 12, color: Colors.blue),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        // 内容区域
+        Expanded(
+          child: _tvShows.isEmpty && _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _tvShows.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.live_tv_outlined,
+                        size: 64,
+                        color: isDark ? Colors.white30 : Colors.black26,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '没有找到匹配的剧集',
+                        style: TextStyle(
+                          color: isDark ? Colors.white54 : Colors.black45,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final screenWidth = constraints.maxWidth;
+                    final isMobile = screenWidth < 600;
+                    final maxExtent = isMobile ? 120.0 : 150.0;
+                    final aspectRatio = isMobile ? 0.48 : 0.52;
+
+                    return GridView.builder(
+                      controller: _scrollController,
+                      padding: EdgeInsets.all(isMobile ? 12 : 16),
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: maxExtent,
+                        childAspectRatio: aspectRatio,
+                        crossAxisSpacing: isMobile ? 10 : 12,
+                        mainAxisSpacing: isMobile ? 12 : 16,
+                      ),
+                      itemCount: _tvShows.length + (_hasMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index >= _tvShows.length) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+                        }
+
+                        final tvShow = _tvShows[index];
+                        return _VerticalPosterCard(
+                          metadata: tvShow,
+                          onTap: () => _openVideoDetail(context, tvShow),
+                          isDark: isDark,
+                          showMargin: false,
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 

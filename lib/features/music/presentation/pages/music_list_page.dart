@@ -2602,6 +2602,8 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     // 搜索结果不使用 RefreshIndicator，避免下拉触发重新扫描
     return CustomScrollView(
       slivers: [
+        // 顶部安全区域留白（避免与状态栏重叠）
+        SliverPadding(padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top)),
         // 音乐列表
         SliverPadding(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
