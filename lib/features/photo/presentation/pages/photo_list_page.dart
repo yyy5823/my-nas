@@ -1325,6 +1325,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final uiStyle = ref.watch(uiStyleProvider);
     final safeTop = MediaQuery.of(context).padding.top;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     // iOS 26 Liquid Glass 风格：悬浮布局
     if (uiStyle.isGlass) {
@@ -1363,11 +1364,21 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   ? _buildEmptyState(context, ref, isDark)
                   : _buildPhotoContentWithLargeTitle(context, ref, loaded, isDark, safeTop),
             },
+            if (_showSearch)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => setState(() => _showSearch = false),
+                ),
+              ),
             // 悬浮按钮组（右上角）- 多选模式时显示多选头部
-            Positioned(
-              top: safeTop + 8,
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              top: _showSearch && !isSelectMode && keyboardInset > 0 ? null : safeTop + 8,
               left: isSelectMode ? 16 : null,
               right: 16,
+              bottom: _showSearch && !isSelectMode && keyboardInset > 0 ? keyboardInset + 12 : null,
               child: isSelectMode && loadedState != null
                   ? _buildFloatingSelectModeHeader(context, ref, isDark, loadedState)
                   : (_showSearch
@@ -1768,10 +1779,15 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     BuildContext context,
     WidgetRef ref,
     bool isDark,
-  ) => GlassFloatingSearchBar(
+  ) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final available = screenWidth - 96; // padding + gap + close button
+    final searchWidth = available.clamp(220.0, 480.0);
+
+    return GlassFloatingSearchBar(
       controller: _searchController,
       hintText: '搜索照片...',
-      width: 220,
+      width: searchWidth,
       onChanged: (query) {
         ref.read(photoListProvider.notifier).setSearchQuery(query);
       },
@@ -1779,6 +1795,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         setState(() => _showSearch = false);
       },
     );
+  }
 
   /// iOS 26 悬浮多选模式头部
   Widget _buildFloatingSelectModeHeader(

@@ -990,8 +990,8 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
     }
 
     // 玻璃模式
-    // iOS: 使用原生 UIGlassEffect
-    if (!kIsWeb && Platform.isIOS) {
+    // Apple 平台: 使用原生玻璃效果
+    if (!kIsWeb && (Platform.isIOS || Platform.isMacOS)) {
       return _buildNativeGlassButtonGroup(isDark);
     }
 
@@ -1157,17 +1157,37 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
       'cornerRadius': 22.0,
     };
 
-    return SizedBox(
-      width: width,
-      height: height,
-      child: UiKitView(
-        viewType: 'com.kkape.mynas/glass_button_group',
-        creationParams: creationParams,
-        creationParamsCodec: const StandardMessageCodec(),
-        onPlatformViewCreated: _setupChannel,
-        hitTestBehavior: PlatformViewHitTestBehavior.opaque,
-      ),
-    );
+    final viewType = 'com.kkape.mynas/glass_button_group';
+
+    if (Platform.isIOS) {
+      return SizedBox(
+        width: width,
+        height: height,
+        child: UiKitView(
+          viewType: viewType,
+          creationParams: creationParams,
+          creationParamsCodec: const StandardMessageCodec(),
+          onPlatformViewCreated: _setupChannel,
+          hitTestBehavior: PlatformViewHitTestBehavior.opaque,
+        ),
+      );
+    }
+
+    if (Platform.isMacOS) {
+      return SizedBox(
+        width: width,
+        height: height,
+        child: AppKitView(
+          viewType: viewType,
+          creationParams: creationParams,
+          creationParamsCodec: const StandardMessageCodec(),
+          onPlatformViewCreated: _setupChannel,
+          hitTestBehavior: PlatformViewHitTestBehavior.opaque,
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildFlutterGlassButtonGroup(bool isDark) {
@@ -1534,15 +1554,15 @@ Future<T?> showGlassPopupMenu<T>({
 
   // 玻璃模式
   // iOS 平台使用原生弹出菜单
-  if (!kIsWeb && Platform.isIOS) {
-    debugPrint('showGlassPopupMenu: using native iOS popup menu');
-    final result = await _showNativeIOSPopupMenu<T>(
+  if (!kIsWeb && (Platform.isIOS || Platform.isMacOS)) {
+    debugPrint('showGlassPopupMenu: using native Apple popup menu');
+    final result = await _showNativeApplePopupMenu<T>(
       context: context,
       position: position,
       items: items,
       isDark: isDark,
     );
-    debugPrint('showGlassPopupMenu: native iOS returned: $result');
+    debugPrint('showGlassPopupMenu: native Apple returned: $result');
     return result;
   }
 
@@ -1563,7 +1583,7 @@ Future<T?> showGlassPopupMenu<T>({
 }
 
 /// iOS 原生弹出菜单实现
-Future<T?> _showNativeIOSPopupMenu<T>({
+Future<T?> _showNativeApplePopupMenu<T>({
   required BuildContext context,
   required RelativeRect position,
   required List<PopupMenuEntry<T>> items,
@@ -1632,6 +1652,8 @@ Future<T?> _showNativeIOSPopupMenu<T>({
       'y': y,
       'isDark': isDark,
       'items': menuItems,
+      'screenWidth': size.width,
+      'screenHeight': size.height,
     });
 
     if (result != null && valueMap.containsKey(result)) {
@@ -2382,8 +2404,8 @@ class _GlassSearchBarState extends State<GlassSearchBar>
         : Colors.black.withValues(alpha: 0.08);
 
     final focusedBorderColor = isDark
-        ? Colors.white.withValues(alpha: 0.3)
-        : Colors.black.withValues(alpha: 0.15);
+        ? Colors.white.withValues(alpha: 0.28)
+        : Colors.black.withValues(alpha: 0.14);
 
     final iconColor = isDark ? Colors.white60 : Colors.black45;
     final textColor = isDark ? Colors.white : Colors.black87;
@@ -2476,17 +2498,17 @@ class _GlassSearchBarState extends State<GlassSearchBar>
                         child: Padding(
                           padding: const EdgeInsets.only(left: 8),
                           child: Container(
-                            width: 18,
-                            height: 18,
+                            width: 16,
+                            height: 16,
                             decoration: BoxDecoration(
                               color: isDark
-                                  ? Colors.white.withValues(alpha: 0.2)
-                                  : Colors.black.withValues(alpha: 0.15),
+                                  ? Colors.white.withValues(alpha: 0.18)
+                                  : Colors.black.withValues(alpha: 0.12),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
                               Icons.close_rounded,
-                              size: 12,
+                              size: 11,
                               color: isDark ? Colors.white70 : Colors.black54,
                             ),
                           ),

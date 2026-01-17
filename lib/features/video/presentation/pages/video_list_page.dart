@@ -1793,6 +1793,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final uiStyle = ref.watch(uiStyleProvider);
     final safeTop = MediaQuery.of(context).padding.top;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     // iOS 26 Liquid Glass 风格：悬浮布局
     if (uiStyle.isGlass) {
@@ -1829,10 +1831,20 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                     ? _buildEmptyOrFilteredState(context, ref, loaded, isDark)
                     : _buildVideoContentWithLargeTitle(context, ref, loaded, isDark, safeTop),
             },
+            if (_showSearch)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => setState(() => _showSearch = false),
+                ),
+              ),
             // 悬浮按钮组（右上角）
-            Positioned(
-              top: safeTop + 8,
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              top: _showSearch ? null : safeTop + 8,
               right: 16,
+              bottom: _showSearch ? (keyboardInset > 0 ? keyboardInset + 16 : bottomPadding + 16) : null,
               child: _showSearch
                   ? _buildFloatingSearchBar(context, ref, isDark)
                   : _buildFloatingButtons(context, ref, isDark, state),
@@ -1973,10 +1985,16 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     BuildContext context,
     WidgetRef ref,
     bool isDark,
-  ) => GlassFloatingSearchBar(
+  ) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Reserve space for close button (~48px) and side padding/gap
+    final available = screenWidth - 96; // padding + gap + close button
+    final searchWidth = available.clamp(220.0, 480.0);
+
+    return GlassFloatingSearchBar(
       controller: _searchController,
       hintText: '搜索视频...',
-      width: 220,
+      width: searchWidth,
       onChanged: (query) {
         ref.read(videoListProvider.notifier).setSearchQuery(query);
       },
@@ -1984,6 +2002,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         setState(() => _showSearch = false);
       },
     );
+  }
 
   /// iOS 26 带大标题的视频内容
   Widget _buildVideoContentWithLargeTitle(

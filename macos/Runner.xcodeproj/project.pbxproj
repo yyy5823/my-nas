@@ -38,6 +38,8 @@
 		65NAVP122F01A100003CEDC6 /* NativeAVPlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NAVP022F01A100003CEDC6 /* NativeAVPlayerController.swift */; };
 		65NAVP132F01A100003CEDC6 /* NativeAVPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NAVP032F01A100003CEDC6 /* NativeAVPlayerView.swift */; };
 		65NBLUR012F00F300003CEDC6 /* NativeBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65NBLUR022F00F300003CEDC6 /* NativeBlurView.swift */; };
+		65GLBG012F05A500003CEDC6 /* GlassButtonGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLBG022F05A500003CEDC6 /* GlassButtonGroup.swift */; };
+		65GLPM012F05A500003CEDC6 /* GlassPopupMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65GLPM022F05A500003CEDC6 /* GlassPopupMenu.swift */; };
 		65SBAR112F02A000003CEDC6 /* StatusBarChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65SBAR012F02A000003CEDC6 /* StatusBarChannel.swift */; };
 		65SBAR122F02A000003CEDC6 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65SBAR022F02A000003CEDC6 /* StatusBarController.swift */; };
 		65WDCH002F00F000003CEDC6 /* WidgetDataChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65WDCH012F00F000003CEDC6 /* WidgetDataChannel.swift */; };
@@ -125,6 +127,8 @@
 		65NAVP022F01A100003CEDC6 /* NativeAVPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerController.swift; sourceTree = "<group>"; };
 		65NAVP032F01A100003CEDC6 /* NativeAVPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAVPlayerView.swift; sourceTree = "<group>"; };
 		65NBLUR022F00F300003CEDC6 /* NativeBlurView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBlurView.swift; sourceTree = "<group>"; };
+		65GLBG022F05A500003CEDC6 /* GlassButtonGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButtonGroup.swift; sourceTree = "<group>"; };
+		65GLPM022F05A500003CEDC6 /* GlassPopupMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassPopupMenu.swift; sourceTree = "<group>"; };
 		65SBAR012F02A000003CEDC6 /* StatusBarChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarChannel.swift; sourceTree = "<group>"; };
 		65SBAR022F02A000003CEDC6 /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
 		65WDCH012F00F000003CEDC6 /* WidgetDataChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataChannel.swift; sourceTree = "<group>"; };
@@ -278,6 +282,8 @@
 				65DSPC022F00F100003CEDC6 /* DisplayCapabilityChannel.swift */,
 				65AUDC022F00F200003CEDC6 /* AudioCapabilityChannel.swift */,
 				65NBLUR022F00F300003CEDC6 /* NativeBlurView.swift */,
+				65GLBG022F05A500003CEDC6 /* GlassButtonGroup.swift */,
+				65GLPM022F05A500003CEDC6 /* GlassPopupMenu.swift */,
 				65NAVP002F01A100003CEDC6 /* NativeAVPlayer */,
 				65DLYR002F02A000003CEDC6 /* DesktopLyric */,
 				65SBAR002F02A000003CEDC6 /* StatusBar */,
@@ -615,6 +621,8 @@
 				65DSPC012F00F100003CEDC6 /* DisplayCapabilityChannel.swift in Sources */,
 				65AUDC012F00F200003CEDC6 /* AudioCapabilityChannel.swift in Sources */,
 				65NBLUR012F00F300003CEDC6 /* NativeBlurView.swift in Sources */,
+				65GLBG012F05A500003CEDC6 /* GlassButtonGroup.swift in Sources */,
+				65GLPM012F05A500003CEDC6 /* GlassPopupMenu.swift in Sources */,
 				65NAVP112F01A100003CEDC6 /* NativeAVPlayerChannel.swift in Sources */,
 				65NAVP122F01A100003CEDC6 /* NativeAVPlayerController.swift in Sources */,
 				65NAVP132F01A100003CEDC6 /* NativeAVPlayerView.swift in Sources */,

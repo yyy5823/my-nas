@@ -85,6 +85,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     final currentTab = ref.watch(readingTabProvider);
     final uiStyle = ref.watch(uiStyleProvider);
     final safeTop = MediaQuery.of(context).padding.top;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     // iOS 26 玻璃模式：悬浮布局
     if (uiStyle.isGlass) {
@@ -94,10 +95,20 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
           children: [
             // 主内容区域
             _buildReadingContentWithLargeTitle(context, isDark, currentTab, safeTop),
+            if (_showSearch)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => setState(() => _showSearch = false),
+                ),
+              ),
             // 悬浮按钮组或搜索栏（右上角）
-            Positioned(
-              top: safeTop + 8,
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              top: _showSearch && keyboardInset > 0 ? null : safeTop + 8,
               right: 16,
+              bottom: _showSearch && keyboardInset > 0 ? keyboardInset + 12 : null,
               child: _showSearch
                   ? _buildFloatingSearchBar(context, isDark, currentTab)
                   : _buildFloatingButtons(context, isDark, currentTab),
@@ -646,6 +657,10 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
 
   /// iOS 26 悬浮搜索栏（玻璃模式）
   Widget _buildFloatingSearchBar(BuildContext context, bool isDark, int currentTab) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final available = screenWidth - 96; // padding + gap + close button
+    final searchWidth = available.clamp(220.0, 480.0);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
@@ -656,7 +671,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
           hintText: currentTab == 0 && _bookSearchMode == BookSearchMode.online
               ? '搜索书源...'
               : '搜索${ReadingContentType.values[currentTab].label}...',
-          width: 260,
+          width: searchWidth,
           onChanged: (query) {
             setState(() {}); // 触发重建以更新模式切换可见性
             _performSearch(query, currentTab);

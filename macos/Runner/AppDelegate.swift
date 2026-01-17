@@ -45,6 +45,14 @@ class AppDelegate: FlutterAppDelegate {
       with: controller.engine.registrar(forPlugin: "NativeAVPlayerChannel")
     )
 
+    // 注册玻璃按钮组 / 弹出菜单 (macOS Liquid Glass)
+    GlassButtonGroupPlugin.register(
+      with: controller.engine.registrar(forPlugin: "GlassButtonGroupPlugin")
+    )
+    GlassPopupMenuPlugin.register(
+      with: controller.engine.registrar(forPlugin: "GlassPopupMenuPlugin")
+    )
+
     // 注册桌面歌词通道
     // 用于在独立窗口显示歌词
     DesktopLyricChannel.register(
