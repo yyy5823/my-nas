@@ -236,3 +236,4 @@ packages/audiotags_fixed/logs/
 
 # Android build reports (generated during build)
 android/build/
+AGENTS.md

@@ -2912,23 +2912,20 @@ class GlassFloatingSearchBar extends StatelessWidget {
           onChanged: onChanged,
           autofocus: true,
           showCancelButton: false,
-          height: 40,
+          height: 44,
           width: width,
         ),
         const SizedBox(width: 8),
-        // 关闭按钮（使用 GlassButtonGroup 样式）
-        GlassButtonGroup(
-          children: [
-            GlassGroupIconButton(
-              icon: Icons.close_rounded,
-              onPressed: () {
-                controller.clear();
-                onChanged('');
-                onClose();
-              },
-              tooltip: '关闭搜索',
-            ),
-          ],
+        // 关闭按钮（圆形玻璃图标）
+        GlassIconButton(
+          icon: Icons.close_rounded,
+          size: 18,
+          onPressed: () {
+            controller.clear();
+            onChanged('');
+            onClose();
+          },
+          tooltip: '关闭搜索',
         ),
       ],
     );

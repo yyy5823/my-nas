@@ -1326,6 +1326,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     final uiStyle = ref.watch(uiStyleProvider);
     final safeTop = MediaQuery.of(context).padding.top;
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     // iOS 26 Liquid Glass 风格：悬浮布局
     if (uiStyle.isGlass) {
@@ -1375,10 +1376,12 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             AnimatedPositioned(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              top: _showSearch && !isSelectMode && keyboardInset > 0 ? null : safeTop + 8,
+              top: _showSearch ? null : safeTop + 8,
               left: isSelectMode ? 16 : null,
               right: 16,
-              bottom: _showSearch && !isSelectMode && keyboardInset > 0 ? keyboardInset + 12 : null,
+              bottom: _showSearch
+                  ? (keyboardInset > 0 ? keyboardInset + 16 : bottomPadding + 16)
+                  : null,
               child: isSelectMode && loadedState != null
                   ? _buildFloatingSelectModeHeader(context, ref, isDark, loadedState)
                   : (_showSearch

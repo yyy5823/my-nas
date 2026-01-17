@@ -37,13 +37,6 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
     private var menuWindow: UIWindow?
     private var hasReturnedResult = false
     private var anchorView: UIView?
-    // Use Any? to store UIEditMenuInteraction since stored properties cannot use @available
-    private var _editMenuInteraction: Any?
-    @available(iOS 16.0, *)
-    private var editMenuInteraction: UIEditMenuInteraction? {
-        get { _editMenuInteraction as? UIEditMenuInteraction }
-        set { _editMenuInteraction = newValue }
-    }
     private var currentMenuItems: [PopupMenuItem] = []
 
     init(registrar: FlutterPluginRegistrar) {
@@ -107,13 +100,7 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
             NSLog("🍿 GlassPopupMenuPlugin: Item \(index): \(title) -> \(value)")
         }
 
-        // iOS 16+ 使用系统级 UIEditMenuInteraction，自动获得 iOS 26 的玻璃效果与交互
-        if #available(iOS 16.0, *) {
-            presentSystemMenu(at: point, windowScene: windowScene, items: menuItems)
-            return
-        }
-
-        // 旧版回退：自定义玻璃弹窗
+        // 使用自定义玻璃弹窗（支持 iOS 26 UIGlassEffect）
         let menuWindow = UIWindow(windowScene: windowScene)
         let menuVC = GlassMenuViewController(
             menuItems: menuItems,
@@ -147,30 +134,6 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
         self.menuWindow = menuWindow
     }
 
-    @available(iOS 16.0, *)
-    private func presentSystemMenu(at point: CGPoint, windowScene: UIWindowScene, items: [PopupMenuItem]) {
-        guard let window = windowScene.keyWindow ?? windowScene.windows.first else {
-            pendingResult?(FlutterError(code: "NO_WINDOW", message: "No key window", details: nil))
-            pendingResult = nil
-            return
-        }
-
-        // 锚点视图：位于屏幕坐标 point 位置
-        let anchor = UIView(frame: CGRect(x: point.x, y: point.y, width: 1, height: 1))
-        anchor.backgroundColor = .clear
-        window.addSubview(anchor)
-
-        currentMenuItems = items
-        anchorView = anchor
-
-        let interaction = UIEditMenuInteraction(delegate: self)
-        editMenuInteraction = interaction
-        anchor.addInteraction(interaction)
-
-        let config = UIEditMenuConfiguration(identifier: nil, sourcePoint: CGPoint.zero)
-        interaction.presentEditMenu(with: config)
-    }
-
     private func dismissMenuWindow() {
         guard let window = menuWindow else { return }
         window.isHidden = true
@@ -180,9 +143,6 @@ class GlassPopupMenuPlugin: NSObject, FlutterPlugin {
     private func cleanupSystemMenu() {
         anchorView?.removeFromSuperview()
         anchorView = nil
-        if #available(iOS 16.0, *) {
-            editMenuInteraction = nil
-        }
     }
 }
 
@@ -612,35 +572,7 @@ class GlassMenuViewController: UIViewController {
 // MARK: - UIEditMenuInteractionDelegate (iOS 16+)
 
 @available(iOS 16.0, *)
-extension GlassPopupMenuPlugin: UIEditMenuInteractionDelegate {
-    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, defaultMenu: UIMenu) -> UIMenu? {
-        let actions = currentMenuItems.enumerated().map { index, item in
-            UIAction(
-                title: item.title,
-                image: item.icon.flatMap { UIImage(systemName: $0) },
-                attributes: item.isDestructive ? [.destructive] : [],
-                handler: { [weak self] _ in
-                    guard let self, !self.hasReturnedResult else { return }
-                    self.hasReturnedResult = true
-                    self.pendingResult?(item.value)
-                    self.pendingResult = nil
-                    self.cleanupSystemMenu()
-                }
-            )
-        }
-        return UIMenu(children: actions)
-    }
-
-    func editMenuInteraction(_ interaction: UIEditMenuInteraction, didEndMenuFor configuration: UIEditMenuConfiguration, animator: UIEditMenuInteractionAnimating?) {
-        // 菜单收起且未选择时返回 null
-        if !hasReturnedResult {
-            hasReturnedResult = true
-            pendingResult?(nil)
-            pendingResult = nil
-        }
-        cleanupSystemMenu()
-    }
-}
+extension GlassPopupMenuPlugin: UIEditMenuInteractionDelegate {}
 
 // MARK: - UIGestureRecognizerDelegate
 
