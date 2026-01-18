@@ -26,6 +26,7 @@ class _BottomSheetCallbackManager {
   static final _BottomSheetCallbackManager _instance = _BottomSheetCallbackManager._();
 
   final Map<int, Completer<String?>> _completers = {};
+  final Map<int, void Function(String)> _actionCallbacks = {};
 
   void registerCompleter(int sheetId, Completer<String?> completer) {
     _completers[sheetId] = completer;
@@ -35,6 +36,14 @@ class _BottomSheetCallbackManager {
     _completers.remove(sheetId);
   }
 
+  void registerActionCallback(int sheetId, void Function(String) callback) {
+    _actionCallbacks[sheetId] = callback;
+  }
+
+  void removeActionCallback(int sheetId) {
+    _actionCallbacks.remove(sheetId);
+  }
+
   Future<void> _handleMethodCall(MethodCall call) async {
     final args = call.arguments as Map<dynamic, dynamic>?;
     if (args == null) return;
@@ -42,18 +51,26 @@ class _BottomSheetCallbackManager {
     final sheetId = args['sheetId'] as int?;
     if (sheetId == null) return;
 
-    final completer = _completers[sheetId];
-    if (completer == null || completer.isCompleted) return;
-
     switch (call.method) {
       case 'onItemSelected':
-        final value = args['value'] as String?;
-        completer.complete(value);
-        _completers.remove(sheetId);
+        final completer = _completers[sheetId];
+        if (completer != null && !completer.isCompleted) {
+          final value = args['value'] as String?;
+          completer.complete(value);
+          _completers.remove(sheetId);
+        }
       case 'onDismiss':
-        final selectedValue = args['selectedValue'] as String?;
-        completer.complete(selectedValue);
-        _completers.remove(sheetId);
+        final completer = _completers[sheetId];
+        if (completer != null && !completer.isCompleted) {
+          final selectedValue = args['selectedValue'] as String?;
+          completer.complete(selectedValue);
+          _completers.remove(sheetId);
+        }
+      case 'onActionTapped':
+        final actionId = args['actionId'] as String?;
+        if (actionId != null) {
+          _actionCallbacks[sheetId]?.call(actionId);
+        }
     }
   }
 }
@@ -417,6 +434,628 @@ Future<T?> showOptionsBottomSheet<T>({
   );
 }
 
+/// 列表选择项（用于 showNativeListSheet）
+class ListSheetItem<T> {
+  const ListSheetItem({
+    required this.title,
+    this.subtitle,
+    this.icon,
+    this.value,
+    this.isSelected = false,
+  });
+
+  final String title;
+  final String? subtitle;
+  final IconData? icon;
+  final T? value;
+  final bool isSelected;
+}
+
+/// 显示原生列表选择底部弹框
+///
+/// 适用于音轨选择、字幕选择、画质选择等场景
+/// iOS 26+: 使用原生 UISheetPresentationController (Liquid Glass 自动效果)
+/// 其他平台: 使用 Flutter 暗色风格底部弹框
+Future<T?> showNativeListSheet<T>({
+  required BuildContext context,
+  required List<ListSheetItem<T>> items,
+  required String title,
+  IconData? titleIcon,
+  bool showCancelButton = true,
+  String? emptyMessage,
+  IconData? emptyIcon,
+  String initialDetent = 'medium',
+}) async {
+  // iOS 平台使用原生底部弹框
+  if (!kIsWeb && Platform.isIOS) {
+    return _showNativeListSheet<T>(
+      context: context,
+      items: items,
+      title: title,
+      showCancelButton: showCancelButton,
+      initialDetent: initialDetent,
+    );
+  }
+
+  // 其他平台使用 Flutter 暗色风格实现
+  return showModalBottomSheet<T>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (context) => _FlutterListSheet<T>(
+      items: items,
+      title: title,
+      titleIcon: titleIcon,
+      emptyMessage: emptyMessage,
+      emptyIcon: emptyIcon,
+    ),
+  );
+}
+
+/// iOS 原生列表选择底部弹框
+Future<T?> _showNativeListSheet<T>({
+  required BuildContext context,
+  required List<ListSheetItem<T>> items,
+  required String title,
+  bool showCancelButton = true,
+  String initialDetent = 'medium',
+}) async {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  // 构建选项列表
+  final nativeItems = <Map<String, dynamic>>[];
+  final valueMap = <String, T>{};
+
+  for (var i = 0; i < items.length; i++) {
+    final item = items[i];
+    final valueKey = 'item_$i';
+
+    if (item.value != null) {
+      valueMap[valueKey] = item.value as T;
+    }
+
+    nativeItems.add({
+      'title': item.title,
+      'subtitle': item.subtitle,
+      'icon': _iconDataToSFSymbol(item.icon),
+      'value': valueKey,
+      'isSelected': item.isSelected,
+      'isDestructive': false,
+      'autoDismiss': true,
+    });
+  }
+
+  try {
+    final sheetId = await _nativeBottomSheetChannel.invokeMethod<int>('showSheet', {
+      'isDark': isDark,
+      'title': title,
+      'items': nativeItems,
+      'showDragHandle': true,
+      'showCancelButton': showCancelButton,
+      'dismissOnTapBackground': true,
+      'initialDetent': initialDetent,
+      'allowedDetents': ['medium', 'large'],
+    });
+
+    if (sheetId == null) return null;
+
+    // 使用回调管理器等待用户选择
+    final completer = Completer<String?>();
+    _callbackManager.registerCompleter(sheetId, completer);
+
+    final selectedValueKey = await completer.future.timeout(
+      const Duration(minutes: 5),
+      onTimeout: () {
+        _callbackManager.removeCompleter(sheetId);
+        return null;
+      },
+    );
+
+    if (selectedValueKey != null && valueMap.containsKey(selectedValueKey)) {
+      return valueMap[selectedValueKey];
+    }
+    return null;
+  } catch (e) {
+    // 回退到 Flutter 实现
+    debugPrint('Native list sheet failed: $e, falling back to Flutter implementation');
+    return showModalBottomSheet<T>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _FlutterListSheet<T>(
+        items: items,
+        title: title,
+      ),
+    );
+  }
+}
+
+/// Flutter 暗色风格列表选择弹框
+class _FlutterListSheet<T> extends StatelessWidget {
+  const _FlutterListSheet({
+    required this.items,
+    required this.title,
+    this.titleIcon,
+    this.emptyMessage,
+    this.emptyIcon,
+  });
+
+  final List<ListSheetItem<T>> items;
+  final String title;
+  final IconData? titleIcon;
+  final String? emptyMessage;
+  final IconData? emptyIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.6,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.92),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 拖拽指示器
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // 标题栏
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+            child: Row(
+              children: [
+                if (titleIcon != null) ...[
+                  Icon(titleIcon, color: Colors.white70, size: 20),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white24, height: 1),
+          // 列表内容
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                children: [
+                  Icon(
+                    emptyIcon ?? Icons.inbox_rounded,
+                    size: 48,
+                    color: Colors.white38,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    emptyMessage ?? '无可用选项',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 16,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return _ListSheetTile<T>(item: item);
+                },
+              ),
+            ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+        ],
+      ),
+    );
+  }
+}
+
+/// 列表选项项
+class _ListSheetTile<T> extends StatelessWidget {
+  const _ListSheetTile({required this.item});
+
+  final ListSheetItem<T> item;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.pop(context, item.value),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              children: [
+                if (item.icon != null) ...[
+                  Icon(
+                    item.icon,
+                    color: item.isSelected ? Colors.white : Colors.white60,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        style: TextStyle(
+                          color: item.isSelected ? Colors.white : Colors.white70,
+                          fontSize: 14,
+                          fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      if (item.subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          item.subtitle!,
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 11,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (item.isSelected)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+// MARK: - Sectioned Sheet Support
+
+/// 分区（用于 showNativeSectionedSheet）
+class SectionedSheetSection<T> {
+  const SectionedSheetSection({
+    required this.items,
+    this.header,
+  });
+
+  final String? header;
+  final List<ListSheetItem<T>> items;
+}
+
+/// 操作按钮（用于 showNativeSectionedSheet）
+class SectionedSheetAction {
+  const SectionedSheetAction({
+    required this.id,
+    required this.title,
+    this.icon,
+  });
+
+  final String id;
+  final String title;
+  final IconData? icon;
+}
+
+/// 显示原生分区列表底部弹框
+///
+/// 适用于字幕选择（多分区）、设置列表等场景
+/// iOS: 使用原生 UISheetPresentationController
+/// 其他平台: 使用 Flutter 暗色风格底部弹框
+Future<SectionedSheetResult<T>?> showNativeSectionedSheet<T>({
+  required BuildContext context,
+  required List<SectionedSheetSection<T>> sections,
+  required String title,
+  List<SectionedSheetAction> actions = const [],
+  String? headerInfo,
+  bool showCancelButton = true,
+  String initialDetent = 'medium',
+  void Function(String actionId)? onActionTapped,
+}) async {
+  if (!kIsWeb && Platform.isIOS) {
+    return _showNativeSectionedSheet<T>(
+      context: context,
+      sections: sections,
+      title: title,
+      actions: actions,
+      headerInfo: headerInfo,
+      showCancelButton: showCancelButton,
+      initialDetent: initialDetent,
+      onActionTapped: onActionTapped,
+    );
+  }
+
+  // 其他平台使用 Flutter 实现
+  return showModalBottomSheet<SectionedSheetResult<T>>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (context) => _FlutterSectionedSheet<T>(
+      sections: sections,
+      title: title,
+      actions: actions,
+      onActionTapped: onActionTapped,
+    ),
+  );
+}
+
+/// 分区选择结果
+class SectionedSheetResult<T> {
+  const SectionedSheetResult({
+    required this.sectionIndex,
+    required this.itemIndex,
+    required this.value,
+  });
+
+  final int sectionIndex;
+  final int itemIndex;
+  final T value;
+}
+
+/// iOS 原生分区列表
+Future<SectionedSheetResult<T>?> _showNativeSectionedSheet<T>({
+  required BuildContext context,
+  required List<SectionedSheetSection<T>> sections,
+  required String title,
+  List<SectionedSheetAction> actions = const [],
+  String? headerInfo,
+  bool showCancelButton = true,
+  String initialDetent = 'medium',
+  void Function(String actionId)? onActionTapped,
+}) async {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  // 构建分区数据并建立值映射
+  final nativeSections = <Map<String, dynamic>>[];
+  final valueMap = <String, (int, int, T)>{}; // value -> (sectionIndex, itemIndex, actualValue)
+
+  for (var si = 0; si < sections.length; si++) {
+    final section = sections[si];
+    final nativeItems = <Map<String, dynamic>>[];
+
+    for (var ii = 0; ii < section.items.length; ii++) {
+      final item = section.items[ii];
+      final valueKey = 'section_${si}_item_$ii';
+
+      if (item.value != null) {
+        valueMap[valueKey] = (si, ii, item.value as T);
+      }
+
+      nativeItems.add({
+        'title': item.title,
+        'subtitle': item.subtitle,
+        'icon': _iconDataToSFSymbol(item.icon),
+        'value': valueKey,
+        'isSelected': item.isSelected,
+        'autoDismiss': true,
+      });
+    }
+
+    nativeSections.add({
+      'header': section.header,
+      'items': nativeItems,
+    });
+  }
+
+  // 构建操作按钮
+  final nativeActions = actions.map((a) => {
+    'id': a.id,
+    'title': a.title,
+    'icon': _iconDataToSFSymbol(a.icon),
+  }).toList();
+
+  try {
+    final sheetId = await _nativeBottomSheetChannel.invokeMethod<int>('showSectionedSheet', {
+      'isDark': isDark,
+      'title': title,
+      'sections': nativeSections,
+      'actions': nativeActions,
+      'headerInfo': headerInfo,
+      'showDragHandle': true,
+      'showCancelButton': showCancelButton,
+      'initialDetent': initialDetent,
+      'allowedDetents': ['medium', 'large'],
+    });
+
+    if (sheetId == null) return null;
+
+    // 注册操作回调
+    if (onActionTapped != null) {
+      _callbackManager.registerActionCallback(sheetId, onActionTapped);
+    }
+
+    // 等待选择结果
+    final completer = Completer<String?>();
+    _callbackManager.registerCompleter(sheetId, completer);
+
+    final selectedValueKey = await completer.future.timeout(
+      const Duration(minutes: 5),
+      onTimeout: () {
+        _callbackManager.removeCompleter(sheetId);
+        _callbackManager.removeActionCallback(sheetId);
+        return null;
+      },
+    );
+
+    _callbackManager.removeActionCallback(sheetId);
+
+    if (selectedValueKey != null && valueMap.containsKey(selectedValueKey)) {
+      final (si, ii, value) = valueMap[selectedValueKey]!;
+      return SectionedSheetResult<T>(sectionIndex: si, itemIndex: ii, value: value);
+    }
+    return null;
+  } catch (e) {
+    debugPrint('Native sectioned sheet failed: $e');
+    return null;
+  }
+}
+
+/// Flutter 分区列表弹框
+class _FlutterSectionedSheet<T> extends StatelessWidget {
+  const _FlutterSectionedSheet({
+    required this.sections,
+    required this.title,
+    required this.actions,
+    this.onActionTapped,
+  });
+
+  final List<SectionedSheetSection<T>> sections;
+  final String title;
+  final List<SectionedSheetAction> actions;
+  final void Function(String actionId)? onActionTapped;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.92),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+              child: Row(
+                children: [
+                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+                  const Spacer(),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white70)),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white24, height: 1),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: sections.fold<int>(0, (sum, s) => sum + s.items.length + (s.header != null ? 1 : 0)),
+                itemBuilder: (context, index) {
+                  var currentIndex = 0;
+                  for (var si = 0; si < sections.length; si++) {
+                    final section = sections[si];
+                    if (section.header != null) {
+                      if (currentIndex == index) {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                          child: Text(section.header!, style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600, decoration: TextDecoration.none)),
+                        );
+                      }
+                      currentIndex++;
+                    }
+                    for (var ii = 0; ii < section.items.length; ii++) {
+                      if (currentIndex == index) {
+                        final item = section.items[ii];
+                        return _SectionedItemTile<T>(item: item, sectionIndex: si, itemIndex: ii);
+                      }
+                      currentIndex++;
+                    }
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+            if (actions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Row(
+                  children: actions.map((action) => Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: ElevatedButton.icon(
+                        onPressed: () => onActionTapped?.call(action.id),
+                        icon: action.icon != null ? Icon(action.icon, size: 18) : const SizedBox.shrink(),
+                        label: Text(action.title),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white12,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  )).toList(),
+                ),
+              ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+          ],
+        ),
+      );
+}
+
+class _SectionedItemTile<T> extends StatelessWidget {
+  const _SectionedItemTile({required this.item, required this.sectionIndex, required this.itemIndex});
+
+  final ListSheetItem<T> item;
+  final int sectionIndex;
+  final int itemIndex;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.pop(context, SectionedSheetResult<T>(sectionIndex: sectionIndex, itemIndex: itemIndex, value: item.value as T)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              children: [
+                if (item.icon != null) ...[
+                  Icon(item.icon, color: item.isSelected ? Colors.white : Colors.white60, size: 20),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.title, style: TextStyle(color: item.isSelected ? Colors.white : Colors.white70, fontSize: 14, fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal, decoration: TextDecoration.none)),
+                      if (item.subtitle != null)
+                        Text(item.subtitle!, style: const TextStyle(color: Colors.white38, fontSize: 11, decoration: TextDecoration.none)),
+                    ],
+                  ),
+                ),
+                if (item.isSelected) const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+
 /// iOS 原生选项底部弹框
 Future<T?> _showNativeOptionsBottomSheet<T>({
   required BuildContext context,
@@ -624,6 +1263,7 @@ String? _iconDataToSFSymbol(IconData? icon) {
 
     // 排序与筛选
     Icons.sort_rounded.codePoint: 'arrow.up.arrow.down',
+    Icons.sort_by_alpha_rounded.codePoint: 'textformat.abc',
     Icons.filter_list_rounded.codePoint: 'line.3.horizontal.decrease',
     Icons.filter_alt_rounded.codePoint: 'line.3.horizontal.decrease.circle',
 

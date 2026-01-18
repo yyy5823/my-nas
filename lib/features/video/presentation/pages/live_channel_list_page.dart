@@ -49,6 +49,7 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
     if (uiStyle.isGlass) {
       return Scaffold(
         backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        resizeToAvoidBottomInset: true,
         body: Stack(
           children: [
             // 主内容 - 直接使用带滚动边距的视图，无需固定顶栏
