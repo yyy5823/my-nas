@@ -9886,7 +9886,7 @@ class _DynamicCategorySectionState extends State<_DynamicCategorySection> {
 }
 
 /// 筛选视频分页页面（用于动态分类卡片点击后的全部视频展示）
-class _FilteredVideosPaginatedPage extends StatefulWidget {
+class _FilteredVideosPaginatedPage extends ConsumerStatefulWidget {
   const _FilteredVideosPaginatedPage({
     required this.category,
     required this.filter,
@@ -9900,12 +9900,12 @@ class _FilteredVideosPaginatedPage extends StatefulWidget {
   final List<({String sourceId, String path})>? enabledPaths;
 
   @override
-  State<_FilteredVideosPaginatedPage> createState() =>
+  ConsumerState<_FilteredVideosPaginatedPage> createState() =>
       _FilteredVideosPaginatedPageState();
 }
 
 class _FilteredVideosPaginatedPageState
-    extends State<_FilteredVideosPaginatedPage> {
+    extends ConsumerState<_FilteredVideosPaginatedPage> {
   final List<VideoMetadata> _videos = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -9919,6 +9919,8 @@ class _FilteredVideosPaginatedPageState
   @override
   void initState() {
     super.initState();
+    // 隐藏底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).hide();
     _loadMore();
     _scrollController.addListener(_onScroll);
   }
@@ -9926,6 +9928,8 @@ class _FilteredVideosPaginatedPageState
   @override
   void dispose() {
     _scrollController.dispose();
+    // 显示底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).show();
     super.dispose();
   }
 
@@ -10083,7 +10087,43 @@ class _FilteredVideosPaginatedPageState
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 玻璃模式：使用悬浮头部
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容 - 使用滚动边距，无固定顶栏
+            _buildGlassContent(context, isDark, safeTop + 60),
+            // 悬浮按钮 - 左侧返回按钮
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              child: const GlassFloatingBackButton(),
+            ),
+            // 悬浮按钮 - 右侧操作按钮
+            Positioned(
+              top: safeTop + 8,
+              right: 16,
+              child: GlassButtonGroup(
+                children: [
+                  GlassGroupIconButton(
+                    icon: Icons.swap_vert_rounded,
+                    tooltip: '排序',
+                    onPressed: () => _showSortMenu(context, isDark),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式：保留原有 AppBar
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.filter),
@@ -10105,72 +10145,159 @@ class _FilteredVideosPaginatedPageState
           const SizedBox(width: 8),
         ],
       ),
-      body: _videos.isEmpty && _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _videos.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.movie_outlined,
-                    size: 64,
-                    color: isDark ? Colors.grey[600] : Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '暂无视频',
-                    style: TextStyle(
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
+      body: _buildContent(context, isDark),
+    );
+  }
+
+  /// 玻璃模式内容 - 带顶部滚动边距
+  Widget _buildGlassContent(BuildContext context, bool isDark, double topPadding) {
+    if (_videos.isEmpty && _isLoading) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: topPadding),
+          child: const CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_videos.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: topPadding),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.movie_outlined,
+                size: 64,
+                color: isDark ? Colors.grey[600] : Colors.grey[400],
               ),
-            )
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                // 根据屏幕宽度调整卡片大小
-                final screenWidth = constraints.maxWidth;
-                final isMobile = screenWidth < 600;
+              const SizedBox(height: 16),
+              Text(
+                '暂无视频',
+                style: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-                // 移动端使用更小的卡片
-                final maxExtent = isMobile ? 120.0 : 150.0;
-                // 调整宽高比，确保有足够空间显示标题
-                final aspectRatio = isMobile ? 0.48 : 0.52;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        final isMobile = screenWidth < 600;
+        final maxExtent = isMobile ? 120.0 : 150.0;
+        final aspectRatio = isMobile ? 0.48 : 0.52;
+        final gridPadding = isMobile ? 10.0 : 12.0;
 
-                return GridView.builder(
-                  controller: _scrollController,
-                  padding: EdgeInsets.all(isMobile ? 10 : 12),
-                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: maxExtent,
-                    // 海报比例 2:3 + 标题区域
-                    childAspectRatio: aspectRatio,
-                    crossAxisSpacing: isMobile ? 8 : 10,
-                    mainAxisSpacing: isMobile ? 10 : 12,
-                  ),
-                  itemCount: _videos.length + (_hasMore ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index >= _videos.length) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      );
-                    }
+        return GridView.builder(
+          controller: _scrollController,
+          padding: EdgeInsets.fromLTRB(
+            gridPadding,
+            topPadding + gridPadding,
+            gridPadding,
+            gridPadding,
+          ),
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: maxExtent,
+            childAspectRatio: aspectRatio,
+            crossAxisSpacing: isMobile ? 8 : 10,
+            mainAxisSpacing: isMobile ? 10 : 12,
+          ),
+          itemCount: _videos.length + (_hasMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index >= _videos.length) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            }
 
-                    final video = _videos[index];
-                    return _VerticalPosterCard(
-                      metadata: video,
-                      isDark: isDark,
-                      onTap: () => widget.onVideoTap(video),
-                      showMargin: false,
-                    );
-                  },
-                );
-              },
+            final video = _videos[index];
+            return _VerticalPosterCard(
+              metadata: video,
+              isDark: isDark,
+              onTap: () => widget.onVideoTap(video),
+              showMargin: false,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 经典模式内容
+  Widget _buildContent(BuildContext context, bool isDark) {
+    if (_videos.isEmpty && _isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_videos.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.movie_outlined,
+              size: 64,
+              color: isDark ? Colors.grey[600] : Colors.grey[400],
             ),
+            const SizedBox(height: 16),
+            Text(
+              '暂无视频',
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        final isMobile = screenWidth < 600;
+        final maxExtent = isMobile ? 120.0 : 150.0;
+        final aspectRatio = isMobile ? 0.48 : 0.52;
+
+        return GridView.builder(
+          controller: _scrollController,
+          padding: EdgeInsets.all(isMobile ? 10 : 12),
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: maxExtent,
+            childAspectRatio: aspectRatio,
+            crossAxisSpacing: isMobile ? 8 : 10,
+            mainAxisSpacing: isMobile ? 10 : 12,
+          ),
+          itemCount: _videos.length + (_hasMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index >= _videos.length) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            }
+
+            final video = _videos[index];
+            return _VerticalPosterCard(
+              metadata: video,
+              isDark: isDark,
+              onTap: () => widget.onVideoTap(video),
+              showMargin: false,
+            );
+          },
+        );
+      },
     );
   }
 }
