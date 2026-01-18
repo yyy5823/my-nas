@@ -9,6 +9,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
@@ -7144,6 +7145,8 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).hide();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -7152,6 +7155,8 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    // 显示底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).show();
     super.dispose();
   }
 
@@ -7381,147 +7386,168 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
     );
   }
 
-  /// 构建主内容区域
+  /// 构建主内容区域 - 使用 CustomScrollView 让所有内容一起滚动
   Widget _buildContent(BuildContext context, bool isDark, double topPadding) {
-    return Column(
-      children: [
-        // 顶部留白（玻璃模式用于避开浮动头部）
-        if (topPadding > 0) SizedBox(height: topPadding),
-        // 筛选标签
-        if (_hasFilters)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (_selectedGenre != null)
-                  _FilterChip(
-                    label: _selectedGenre!,
-                    onRemove: () {
-                      setState(() => _selectedGenre = null);
-                      _resetAndReload();
-                    },
-                    isDark: isDark,
+    // 加载中状态
+    if (_movies.isEmpty && _isLoading) {
+      return Column(
+        children: [
+          if (topPadding > 0) SizedBox(height: topPadding),
+          const Expanded(child: Center(child: CircularProgressIndicator())),
+        ],
+      );
+    }
+
+    // 空状态
+    if (_movies.isEmpty) {
+      return Column(
+        children: [
+          if (topPadding > 0) SizedBox(height: topPadding),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.movie_filter_outlined,
+                    size: 64,
+                    color: isDark ? Colors.white30 : Colors.black26,
                   ),
-                if (_selectedYear != null)
-                  _FilterChip(
-                    label: '$_selectedYear年',
-                    onRemove: () {
-                      setState(() => _selectedYear = null);
-                      _resetAndReload();
-                    },
-                    isDark: isDark,
+                  const SizedBox(height: 16),
+                  Text(
+                    '没有找到匹配的电影',
+                    style: TextStyle(
+                      color: isDark ? Colors.white54 : Colors.black45,
+                    ),
                   ),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedGenre = null;
-                      _selectedYear = null;
-                    });
-                    _resetAndReload();
-                  },
-                  child: Text(
-                    '清除全部',
-                    style: TextStyle(fontSize: 12, color: Colors.blue),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        // 排序标签（当前排序不是默认时显示）
-        if (_sortOption != VideoSortOption.yearDesc)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.swap_vert_rounded,
-                  size: 14,
-                  color: isDark ? Colors.white54 : Colors.black45,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '按${_sortOption.displayName}排序',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white54 : Colors.black45,
+        ],
+      );
+    }
+
+    // 有内容时：使用 CustomScrollView 让所有内容一起滚动
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        final isMobile = screenWidth < 600;
+        final maxExtent = isMobile ? 120.0 : 150.0;
+        final aspectRatio = isMobile ? 0.48 : 0.52;
+        final gridPadding = isMobile ? 12.0 : 16.0;
+
+        return CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            // 顶部留白（玻璃模式用于避开浮动头部）
+            if (topPadding > 0)
+              SliverToBoxAdapter(child: SizedBox(height: topPadding)),
+            // 筛选标签
+            if (_hasFilters)
+              SliverToBoxAdapter(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (_selectedGenre != null)
+                        _FilterChip(
+                          label: _selectedGenre!,
+                          onRemove: () {
+                            setState(() => _selectedGenre = null);
+                            _resetAndReload();
+                          },
+                          isDark: isDark,
+                        ),
+                      if (_selectedYear != null)
+                        _FilterChip(
+                          label: '$_selectedYear年',
+                          onRemove: () {
+                            setState(() => _selectedYear = null);
+                            _resetAndReload();
+                          },
+                          isDark: isDark,
+                        ),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedGenre = null;
+                            _selectedYear = null;
+                          });
+                          _resetAndReload();
+                        },
+                        child: Text(
+                          '清除全部',
+                          style: TextStyle(fontSize: 12, color: Colors.blue),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-        // 内容区域
-        Expanded(
-          child: _movies.isEmpty && _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _movies.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+              ),
+            // 排序标签
+            if (_sortOption != VideoSortOption.yearDesc)
+              SliverToBoxAdapter(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
                     children: [
                       Icon(
-                        Icons.movie_filter_outlined,
-                        size: 64,
-                        color: isDark ? Colors.white30 : Colors.black26,
+                        Icons.swap_vert_rounded,
+                        size: 14,
+                        color: isDark ? Colors.white54 : Colors.black45,
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(width: 4),
                       Text(
-                        '没有找到匹配的电影',
+                        '按${_sortOption.displayName}排序',
                         style: TextStyle(
+                          fontSize: 12,
                           color: isDark ? Colors.white54 : Colors.black45,
                         ),
                       ),
                     ],
                   ),
-                )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    // 根据屏幕宽度调整卡片大小
-                    final screenWidth = constraints.maxWidth;
-                    final isMobile = screenWidth < 600;
-
-                    // 移动端使用更小的卡片
-                    final maxExtent = isMobile ? 120.0 : 150.0;
-                    // 调整宽高比，确保有足够空间显示标题
-                    // 海报比例 2:3 (0.667)，加上标题区域约 45px
-                    final aspectRatio = isMobile ? 0.48 : 0.52;
-
-                    return GridView.builder(
-                      controller: _scrollController,
-                      padding: EdgeInsets.all(isMobile ? 12 : 16),
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: maxExtent,
-                        childAspectRatio: aspectRatio,
-                        crossAxisSpacing: isMobile ? 10 : 12,
-                        mainAxisSpacing: isMobile ? 12 : 16,
-                      ),
-                      itemCount: _movies.length + (_hasMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index >= _movies.length) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
-                        }
-
-                        final movie = _movies[index];
-                        return _VerticalPosterCard(
-                          metadata: movie,
-                          onTap: () => _openVideoDetail(context, movie),
-                          isDark: isDark,
-                          showMargin: false,
-                        );
-                      },
+                ),
+              ),
+            // 网格内容
+            SliverPadding(
+              padding: EdgeInsets.all(gridPadding),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: maxExtent,
+                  childAspectRatio: aspectRatio,
+                  crossAxisSpacing: isMobile ? 10 : 12,
+                  mainAxisSpacing: isMobile ? 12 : 16,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (index >= _movies.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+                    final movie = _movies[index];
+                    return _VerticalPosterCard(
+                      metadata: movie,
+                      onTap: () => _openVideoDetail(context, movie),
+                      isDark: isDark,
+                      showMargin: false,
                     );
                   },
+                  childCount: _movies.length + (_hasMore ? 1 : 0),
                 ),
-        ),
-      ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -7933,6 +7959,8 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).hide();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -7941,6 +7969,8 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    // 显示底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).show();
     super.dispose();
   }
 
@@ -8237,118 +8267,143 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
     );
   }
 
-  /// 构建主内容区域
+  /// 构建主内容区域 - 使用 CustomScrollView 让所有内容一起滚动
   Widget _buildContent(BuildContext context, bool isDark, double topPadding) {
-    return Column(
-      children: [
-        if (topPadding > 0) SizedBox(height: topPadding),
-        // 筛选标签
-        if (_hasFilters)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (_selectedGenre != null)
-                  _FilterChip(
-                    label: _selectedGenre!,
-                    onRemove: () {
-                      setState(() => _selectedGenre = null);
-                      _resetAndReload();
-                    },
-                    isDark: isDark,
+    // 加载中状态
+    if (_tvShows.isEmpty && _isLoading) {
+      return Column(
+        children: [
+          if (topPadding > 0) SizedBox(height: topPadding),
+          const Expanded(child: Center(child: CircularProgressIndicator())),
+        ],
+      );
+    }
+
+    // 空状态
+    if (_tvShows.isEmpty) {
+      return Column(
+        children: [
+          if (topPadding > 0) SizedBox(height: topPadding),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.live_tv_outlined,
+                    size: 64,
+                    color: isDark ? Colors.white30 : Colors.black26,
                   ),
-                if (_selectedYear != null)
-                  _FilterChip(
-                    label: '$_selectedYear年',
-                    onRemove: () {
-                      setState(() => _selectedYear = null);
-                      _resetAndReload();
-                    },
-                    isDark: isDark,
+                  const SizedBox(height: 16),
+                  Text(
+                    '没有找到匹配的剧集',
+                    style: TextStyle(
+                      color: isDark ? Colors.white54 : Colors.black45,
+                    ),
                   ),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedGenre = null;
-                      _selectedYear = null;
-                    });
-                    _resetAndReload();
-                  },
-                  child: Text(
-                    '清除全部',
-                    style: TextStyle(fontSize: 12, color: Colors.blue),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        // 内容区域
-        Expanded(
-          child: _tvShows.isEmpty && _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _tvShows.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+        ],
+      );
+    }
+
+    // 有内容时：使用 CustomScrollView 让所有内容一起滚动
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        final isMobile = screenWidth < 600;
+        final maxExtent = isMobile ? 120.0 : 150.0;
+        final aspectRatio = isMobile ? 0.48 : 0.52;
+        final gridPadding = isMobile ? 12.0 : 16.0;
+
+        return CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            // 顶部留白
+            if (topPadding > 0)
+              SliverToBoxAdapter(child: SizedBox(height: topPadding)),
+            // 筛选标签
+            if (_hasFilters)
+              SliverToBoxAdapter(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Icon(
-                        Icons.live_tv_outlined,
-                        size: 64,
-                        color: isDark ? Colors.white30 : Colors.black26,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '没有找到匹配的剧集',
-                        style: TextStyle(
-                          color: isDark ? Colors.white54 : Colors.black45,
+                      if (_selectedGenre != null)
+                        _FilterChip(
+                          label: _selectedGenre!,
+                          onRemove: () {
+                            setState(() => _selectedGenre = null);
+                            _resetAndReload();
+                          },
+                          isDark: isDark,
+                        ),
+                      if (_selectedYear != null)
+                        _FilterChip(
+                          label: '$_selectedYear年',
+                          onRemove: () {
+                            setState(() => _selectedYear = null);
+                            _resetAndReload();
+                          },
+                          isDark: isDark,
+                        ),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedGenre = null;
+                            _selectedYear = null;
+                          });
+                          _resetAndReload();
+                        },
+                        child: Text(
+                          '清除全部',
+                          style: TextStyle(fontSize: 12, color: Colors.blue),
                         ),
                       ),
                     ],
                   ),
-                )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final screenWidth = constraints.maxWidth;
-                    final isMobile = screenWidth < 600;
-                    final maxExtent = isMobile ? 120.0 : 150.0;
-                    final aspectRatio = isMobile ? 0.48 : 0.52;
-
-                    return GridView.builder(
-                      controller: _scrollController,
-                      padding: EdgeInsets.all(isMobile ? 12 : 16),
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: maxExtent,
-                        childAspectRatio: aspectRatio,
-                        crossAxisSpacing: isMobile ? 10 : 12,
-                        mainAxisSpacing: isMobile ? 12 : 16,
-                      ),
-                      itemCount: _tvShows.length + (_hasMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index >= _tvShows.length) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
-                        }
-
-                        final tvShow = _tvShows[index];
-                        return _VerticalPosterCard(
-                          metadata: tvShow,
-                          onTap: () => _openVideoDetail(context, tvShow),
-                          isDark: isDark,
-                          showMargin: false,
-                        );
-                      },
+                ),
+              ),
+            // 网格内容
+            SliverPadding(
+              padding: EdgeInsets.all(gridPadding),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: maxExtent,
+                  childAspectRatio: aspectRatio,
+                  crossAxisSpacing: isMobile ? 10 : 12,
+                  mainAxisSpacing: isMobile ? 12 : 16,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (index >= _tvShows.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+                    final tvShow = _tvShows[index];
+                    return _VerticalPosterCard(
+                      metadata: tvShow,
+                      onTap: () => _openVideoDetail(context, tvShow),
+                      isDark: isDark,
+                      showMargin: false,
                     );
                   },
+                  childCount: _tvShows.length + (_hasMore ? 1 : 0),
                 ),
-        ),
-      ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -8391,6 +8446,8 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   @override
   void initState() {
     super.initState();
+    // 隐藏底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).hide();
     _loadCount();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -8399,6 +8456,8 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    // 显示底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).show();
     super.dispose();
   }
 
@@ -8553,15 +8612,18 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
         backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
         body: Stack(
           children: [
-            // 主内容
-            Column(
-              children: [
-                SizedBox(height: safeTop + 60),
-                Expanded(
-                  child: _videos.isEmpty && _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _videos.isEmpty
-                      ? Center(
+            // 主内容 - 使用 CustomScrollView 让内容滚动到按钮下方
+            _videos.isEmpty && _isLoading
+                ? Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: safeTop + 60),
+                      child: const CircularProgressIndicator(),
+                    ),
+                  )
+                : _videos.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: EdgeInsets.only(top: safeTop + 60),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -8580,33 +8642,36 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
                               ),
                             ],
                           ),
-                        )
-                      : GridView.builder(
-                          controller: _scrollController,
-                          padding: EdgeInsets.all(spacing),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            childAspectRatio: aspectRatio,
-                            crossAxisSpacing: spacing,
-                            mainAxisSpacing: spacing,
-                          ),
-                          itemCount: _videos.length + (_hasMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index >= _videos.length) {
-                              return const Center(child: CircularProgressIndicator());
-                            }
-                            final video = _videos[index];
-                            return _VerticalPosterCard(
-                              metadata: video,
-                              onTap: () => _openVideoDetail(context, video),
-                              isDark: isDark,
-                              showMargin: false,
-                            );
-                          },
                         ),
-                ),
-              ],
-            ),
+                      )
+                    : GridView.builder(
+                        controller: _scrollController,
+                        padding: EdgeInsets.fromLTRB(
+                          spacing,
+                          safeTop + 60 + spacing,
+                          spacing,
+                          spacing,
+                        ),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          childAspectRatio: aspectRatio,
+                          crossAxisSpacing: spacing,
+                          mainAxisSpacing: spacing,
+                        ),
+                        itemCount: _videos.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= _videos.length) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          final video = _videos[index];
+                          return _VerticalPosterCard(
+                            metadata: video,
+                            onTap: () => _openVideoDetail(context, video),
+                            isDark: isDark,
+                            showMargin: false,
+                          );
+                        },
+                      ),
             // 悬浮按钮 - 左侧返回按钮
             Positioned(
               top: safeTop + 8,

@@ -51,22 +51,14 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
         backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
         body: Stack(
           children: [
-            // 主内容
-            Column(
-              children: [
-                SizedBox(height: safeTop + 60), // 留出头部空间
-                // 频道列表
-                Expanded(
-                  child: !hasLiveSources
-                      ? _buildEmptyState(context)
-                      : channels.isEmpty
-                          ? _buildNoResultsState()
-                          : _isGridView
-                              ? _buildGridView(channels, isDark)
-                              : _buildListView(channels, isDark),
-                ),
-              ],
-            ),
+            // 主内容 - 直接使用带滚动边距的视图，无需固定顶栏
+            !hasLiveSources
+                ? _buildEmptyState(context)
+                : channels.isEmpty
+                    ? _buildNoResultsState()
+                    : _isGridView
+                        ? _buildGlassGridView(channels, isDark, safeTop + 60)
+                        : _buildGlassListView(channels, isDark, safeTop + 60),
             // 悬浮按钮 - 左侧返回按钮
             Positioned(
               top: safeTop + 8,
@@ -273,6 +265,45 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
         ),
         itemCount: channels.length,
         itemBuilder: (context, index) => _ChannelGridItem(
+          channel: channels[index],
+          isDark: isDark,
+          onTap: () => _playChannel(channels[index]),
+        ),
+      );
+
+  /// 玻璃模式网格视图 - 带顶部滚动边距
+  Widget _buildGlassGridView(
+    List<LiveChannel> channels,
+    bool isDark,
+    double topPadding,
+  ) =>
+      GridView.builder(
+        padding: EdgeInsets.fromLTRB(16, topPadding + 16, 16, 16),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 150,
+          childAspectRatio: 0.8,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+        ),
+        itemCount: channels.length,
+        itemBuilder: (context, index) => _ChannelGridItem(
+          channel: channels[index],
+          isDark: isDark,
+          onTap: () => _playChannel(channels[index]),
+        ),
+      );
+
+  /// 玻璃模式列表视图 - 带顶部滚动边距
+  Widget _buildGlassListView(
+    List<LiveChannel> channels,
+    bool isDark,
+    double topPadding,
+  ) =>
+      ListView.separated(
+        padding: EdgeInsets.fromLTRB(16, topPadding + 16, 16, 16),
+        itemCount: channels.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, index) => _ChannelListItem(
           channel: channels[index],
           isDark: isDark,
           onTap: () => _playChannel(channels[index]),
