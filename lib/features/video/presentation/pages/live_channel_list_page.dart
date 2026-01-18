@@ -55,12 +55,6 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
             Column(
               children: [
                 SizedBox(height: safeTop + 60), // 留出头部空间
-                // 搜索栏
-                if (_showSearch)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: _buildSearchField(isDark),
-                  ),
                 // 频道列表
                 Expanded(
                   child: !hasLiveSources
@@ -73,58 +67,37 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
                 ),
               ],
             ),
-            // 悬浮头部
+            // 悬浮按钮 - 左侧返回按钮
             Positioned(
               top: safeTop + 8,
               left: 16,
+              child: const GlassFloatingBackButton(),
+            ),
+            // 悬浮按钮组或搜索栏（右上角）
+            Positioned(
+              top: safeTop + 8,
               right: 16,
-              child: Row(
-                children: [
-                  const GlassFloatingBackButton(),
-                  const Spacer(),
-                  GlassButtonGroup(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          '直播频道',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
+              child: _showSearch
+                  ? _buildGlassSearchBar(context, isDark)
+                  : GlassButtonGroup(
+                      children: [
+                        GlassGroupIconButton(
+                          icon: Icons.search_rounded,
+                          tooltip: '搜索频道',
+                          onPressed: () => setState(() => _showSearch = true),
                         ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  GlassButtonGroup(
-                    children: [
-                      GlassGroupIconButton(
-                        icon: _showSearch ? Icons.close_rounded : Icons.search_rounded,
-                        tooltip: '搜索频道',
-                        onPressed: () => setState(() {
-                          _showSearch = !_showSearch;
-                          if (!_showSearch) {
-                            _searchController.clear();
-                            ref.read(liveChannelSearchQueryProvider.notifier).state = '';
-                          }
-                        }),
-                      ),
-                      GlassGroupIconButton(
-                        icon: _isGridView ? Icons.list_rounded : Icons.grid_view_rounded,
-                        tooltip: _isGridView ? '列表视图' : '网格视图',
-                        onPressed: () => setState(() => _isGridView = !_isGridView),
-                      ),
-                      GlassGroupIconButton(
-                        icon: Icons.settings_rounded,
-                        tooltip: '直播源管理',
-                        onPressed: () => _openSettings(context),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                        GlassGroupIconButton(
+                          icon: _isGridView ? Icons.list_rounded : Icons.grid_view_rounded,
+                          tooltip: _isGridView ? '列表视图' : '网格视图',
+                          onPressed: () => setState(() => _isGridView = !_isGridView),
+                        ),
+                        GlassGroupIconButton(
+                          icon: Icons.settings_rounded,
+                          tooltip: '直播源管理',
+                          onPressed: () => _openSettings(context),
+                        ),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -208,6 +181,27 @@ class _LiveChannelListPageState extends ConsumerState<LiveChannelListPage>
       ),
       onChanged: (value) {
         ref.read(liveChannelSearchQueryProvider.notifier).state = value;
+      },
+    );
+  }
+
+  /// iOS 26 玻璃风格搜索栏
+  Widget _buildGlassSearchBar(BuildContext context, bool isDark) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // 搜索栏宽度：屏幕宽度减去左侧返回按钮和间距
+    final searchWidth = (screenWidth - 100).clamp(200.0, 400.0);
+
+    return GlassFloatingSearchBar(
+      controller: _searchController,
+      hintText: '搜索频道...',
+      width: searchWidth,
+      onChanged: (query) {
+        ref.read(liveChannelSearchQueryProvider.notifier).state = query;
+      },
+      onClose: () {
+        _searchController.clear();
+        ref.read(liveChannelSearchQueryProvider.notifier).state = '';
+        setState(() => _showSearch = false);
       },
     );
   }

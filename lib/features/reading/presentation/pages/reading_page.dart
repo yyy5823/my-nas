@@ -748,12 +748,13 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
   Widget _buildFloatingButtons(BuildContext context, bool isDark, int currentTab) =>
     GlassButtonGroup(
       children: [
-        // 搜索按钮
-        GlassGroupIconButton(
-          icon: Icons.search_rounded,
-          tooltip: '搜索',
-          onPressed: () => _triggerSearch(currentTab),
-        ),
+        // 搜索按钮（仅在图书页显示）
+        if (currentTab == 0)
+          GlassGroupIconButton(
+            icon: Icons.search_rounded,
+            tooltip: '搜索',
+            onPressed: () => _triggerSearch(currentTab),
+          ),
         // 本地/在线切换按钮（仅在图书页显示）
         if (currentTab == 0)
           GlassGroupIconButton(
@@ -851,7 +852,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
       ],
     );
 
-  /// 构建带大标题的可滚动内容
+  /// 构建带大标题的可滚动内容 - 标题和内容一起滚动
   Widget _buildScrollableContent(
     BuildContext context,
     bool isDark,
@@ -859,15 +860,22 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     double safeTop, {
     required Widget child,
   }) {
-    return Column(
-      children: [
-        // 顶部安全区留白 + 大标题
-        Padding(
+    return CustomScrollView(
+      slivers: [
+        // 顶部安全区留白
+        SliverPadding(
           padding: EdgeInsets.only(top: safeTop + 8),
+          sliver: const SliverToBoxAdapter(child: SizedBox.shrink()),
+        ),
+        // 大标题 - 作为 Sliver 可以滚动
+        SliverToBoxAdapter(
           child: _buildLargeTitle(context, isDark, currentTab, hasFloatingButtons: true),
         ),
-        // 内容 - 使用 Expanded 填充剩余空间
-        Expanded(child: child),
+        // 内容填充剩余空间
+        SliverFillRemaining(
+          hasScrollBody: true,
+          child: child,
+        ),
       ],
     );
   }

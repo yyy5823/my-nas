@@ -887,14 +887,22 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
       Icons.add_rounded.codePoint: 'plus',
       Icons.close_rounded.codePoint: 'xmark',
       Icons.check_rounded.codePoint: 'checkmark',
+      Icons.arrow_back_rounded.codePoint: 'chevron.left',
+      Icons.arrow_back_ios_new_rounded.codePoint: 'chevron.left',
+
+      // 排序和筛选
+      Icons.swap_vert_rounded.codePoint: 'arrow.up.arrow.down',
+      Icons.sort_rounded.codePoint: 'arrow.up.arrow.down',
+      Icons.filter_alt_rounded.codePoint: 'line.3.horizontal.decrease.circle',
+      Icons.filter_list_rounded.codePoint: 'line.3.horizontal.decrease',
 
       // 列表和视图
+      Icons.list_rounded.codePoint: 'list.bullet',
       Icons.queue_music_rounded.codePoint: 'list.bullet',
       Icons.check_circle_outline_rounded.codePoint: 'checkmark.circle',
       Icons.view_timeline_rounded.codePoint: 'list.bullet.rectangle',
       Icons.grid_view_rounded.codePoint: 'square.grid.2x2',
-      Icons.filter_alt_rounded.codePoint: 'line.3.horizontal.decrease.circle',
-      Icons.sort_rounded.codePoint: 'arrow.up.arrow.down',
+      Icons.view_module_rounded.codePoint: 'square.grid.2x2',
 
       // 下拉箭头
       Icons.arrow_drop_down_rounded.codePoint: 'chevron.down',
@@ -908,17 +916,23 @@ class _GlassButtonGroupState extends ConsumerState<GlassButtonGroup> {
       Icons.note_alt_rounded.codePoint: 'note.text',
       Icons.bookmark_rounded.codePoint: 'bookmark.fill',
       Icons.bookmark_border_rounded.codePoint: 'bookmark',
+      Icons.auto_stories_rounded.codePoint: 'book.pages',
 
       // 媒体相关
       Icons.photo_library_rounded.codePoint: 'photo.on.rectangle',
       Icons.video_library_rounded.codePoint: 'video.fill',
       Icons.music_note_rounded.codePoint: 'music.note',
       Icons.album_rounded.codePoint: 'opticaldisc.fill',
+      Icons.live_tv_rounded.codePoint: 'play.tv',
+      Icons.movie_rounded.codePoint: 'film',
+      Icons.tv_rounded.codePoint: 'tv',
 
       // 云和存储
       Icons.cloud_rounded.codePoint: 'cloud.fill',
+      Icons.cloud_outlined.codePoint: 'cloud',
       Icons.folder_rounded.codePoint: 'folder.fill',
       Icons.storage_rounded.codePoint: 'externaldrive.fill',
+      Icons.phone_iphone_rounded.codePoint: 'iphone',
 
       // 复制和重复
       Icons.content_copy_rounded.codePoint: 'doc.on.doc',

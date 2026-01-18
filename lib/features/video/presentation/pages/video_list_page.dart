@@ -7284,51 +7284,31 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
           children: [
             // 主内容区域
             _buildContent(context, isDark, safeTop + 60), // 留出头部空间
-            // 悬浮头部
+            // 悬浮按钮 - 左侧返回按钮
             Positioned(
               top: safeTop + 8,
               left: 16,
+              child: const GlassFloatingBackButton(),
+            ),
+            // 悬浮按钮 - 右侧操作按钮
+            Positioned(
+              top: safeTop + 8,
               right: 16,
-              child: Row(
+              child: GlassButtonGroup(
                 children: [
-                  // 返回按钮
-                  const GlassFloatingBackButton(),
-                  const Spacer(),
-                  // 标题和计数
-                  GlassButtonGroup(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          '${widget.title} ($_filteredCount)',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                      ),
-                    ],
+                  GlassGroupIconButton(
+                    icon: Icons.swap_vert_rounded,
+                    tooltip: '排序',
+                    onPressed: () => _showSortMenu(context, isDark),
                   ),
-                  const Spacer(),
-                  // 操作按钮组
-                  GlassButtonGroup(
-                    children: [
-                      GlassGroupIconButton(
-                        icon: Icons.swap_vert_rounded,
-                        tooltip: '排序',
-                        onPressed: () => _showSortMenu(context, isDark),
-                      ),
-                      GlassGroupIconButton(
-                        icon: Icons.filter_alt_rounded,
-                        tooltip: '筛选',
-                        onPressed: _isLoadingFilters
-                            ? null
-                            : () => _showFilterSheet(context, isDark),
-                        // 显示筛选指示器
-                        badge: _hasFilters,
-                      ),
-                    ],
+                  GlassGroupIconButton(
+                    icon: Icons.filter_alt_rounded,
+                    tooltip: '筛选',
+                    onPressed: _isLoadingFilters
+                        ? null
+                        : () => _showFilterSheet(context, isDark),
+                    // 显示筛选指示器
+                    badge: _hasFilters,
                   ),
                 ],
               ),
@@ -8163,47 +8143,30 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
           children: [
             // 主内容区域
             _buildContent(context, isDark, safeTop + 60),
-            // 悬浮头部
+            // 悬浮按钮 - 左侧返回按钮
             Positioned(
               top: safeTop + 8,
               left: 16,
+              child: const GlassFloatingBackButton(),
+            ),
+            // 悬浮按钮 - 右侧操作按钮
+            Positioned(
+              top: safeTop + 8,
               right: 16,
-              child: Row(
+              child: GlassButtonGroup(
                 children: [
-                  const GlassFloatingBackButton(),
-                  const Spacer(),
-                  GlassButtonGroup(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          '${widget.title} ($_filteredCount)',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                      ),
-                    ],
+                  GlassGroupIconButton(
+                    icon: Icons.swap_vert_rounded,
+                    tooltip: '排序',
+                    onPressed: () => _showSortMenu(context, isDark),
                   ),
-                  const Spacer(),
-                  GlassButtonGroup(
-                    children: [
-                      GlassGroupIconButton(
-                        icon: Icons.swap_vert_rounded,
-                        tooltip: '排序',
-                        onPressed: () => _showSortMenu(context, isDark),
-                      ),
-                      GlassGroupIconButton(
-                        icon: Icons.filter_alt_rounded,
-                        tooltip: '筛选',
-                        onPressed: _isLoadingFilters
-                            ? null
-                            : () => _showFilterSheet(context, isDark),
-                        badge: _hasFilters,
-                      ),
-                    ],
+                  GlassGroupIconButton(
+                    icon: Icons.filter_alt_rounded,
+                    tooltip: '筛选',
+                    onPressed: _isLoadingFilters
+                        ? null
+                        : () => _showFilterSheet(context, isDark),
+                    badge: _hasFilters,
                   ),
                 ],
               ),
@@ -8570,6 +8533,8 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
     final crossAxisCount = screenWidth > 1200
@@ -8580,9 +8545,94 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
         ? 4
         : 3;
     final spacing = isMobile ? 10.0 : 16.0;
-    // 移动端使用更小的宽高比，确保有足够空间显示标题
     final aspectRatio = isMobile ? 0.48 : 0.52;
 
+    // iOS 26 玻璃模式
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容
+            Column(
+              children: [
+                SizedBox(height: safeTop + 60),
+                Expanded(
+                  child: _videos.isEmpty && _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _videos.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.video_file_rounded,
+                                size: 64,
+                                color: isDark ? Colors.grey[600] : Colors.grey[400],
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                '没有其他视频',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : GridView.builder(
+                          controller: _scrollController,
+                          padding: EdgeInsets.all(spacing),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
+                            childAspectRatio: aspectRatio,
+                            crossAxisSpacing: spacing,
+                            mainAxisSpacing: spacing,
+                          ),
+                          itemCount: _videos.length + (_hasMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index >= _videos.length) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            final video = _videos[index];
+                            return _VerticalPosterCard(
+                              metadata: video,
+                              onTap: () => _openVideoDetail(context, video),
+                              isDark: isDark,
+                              showMargin: false,
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+            // 悬浮按钮 - 左侧返回按钮
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              child: const GlassFloatingBackButton(),
+            ),
+            // 悬浮按钮 - 右侧操作按钮
+            Positioned(
+              top: safeTop + 8,
+              right: 16,
+              child: GlassButtonGroup(
+                children: [
+                  GlassGroupIconButton(
+                    icon: Icons.swap_vert_rounded,
+                    tooltip: '排序',
+                    onPressed: () => _showSortSheet(context, isDark),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
       appBar: AppBar(
@@ -8595,7 +8645,6 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
           ),
         ),
         actions: [
-          // 排序按钮
           IconButton(
             onPressed: () => _showSortSheet(context, isDark),
             icon: Icon(
@@ -8634,7 +8683,6 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
               padding: EdgeInsets.all(spacing),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: crossAxisCount,
-                // 海报比例 2:3 + 标题区域，需要足够高度避免溢出
                 childAspectRatio: aspectRatio,
                 crossAxisSpacing: spacing,
                 mainAxisSpacing: spacing,
@@ -8967,7 +9015,7 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
 }
 
 /// 电影系列全部页面
-class _MovieCollectionsFullPage extends StatelessWidget {
+class _MovieCollectionsFullPage extends ConsumerWidget {
   const _MovieCollectionsFullPage({
     required this.collections,
     required this.onCollectionTap,
@@ -8977,9 +9025,48 @@ class _MovieCollectionsFullPage extends StatelessWidget {
   final void Function(MovieCollection) onCollectionTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final safeTop = MediaQuery.of(context).padding.top;
 
+    // iOS 26 玻璃模式
+    if (uiStyle.isGlass) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        body: Stack(
+          children: [
+            // 主内容
+            GridView.builder(
+              padding: EdgeInsets.fromLTRB(16, safeTop + 68, 16, 16),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 180,
+                childAspectRatio: 0.65,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 16,
+              ),
+              itemCount: collections.length,
+              itemBuilder: (context, index) {
+                final collection = collections[index];
+                return _MovieCollectionGridCard(
+                  collection: collection,
+                  onTap: () => onCollectionTap(collection),
+                  isDark: isDark,
+                );
+              },
+            ),
+            // 悬浮按钮 - 只有左侧返回按钮
+            Positioned(
+              top: safeTop + 8,
+              left: 16,
+              child: const GlassFloatingBackButton(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 经典模式
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
       appBar: AppBar(
