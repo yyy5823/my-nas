@@ -6366,7 +6366,60 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
   );
 
   /// 显示排序选项
-  void _showSortOptions(BuildContext context, bool isDark) {
+  void _showSortOptions(BuildContext context, bool isDark) async {
+    // 检查是否为玻璃模式
+    final container = ProviderScope.containerOf(context);
+    final uiStyle = container.read(uiStyleProvider);
+
+    if (uiStyle.isGlass) {
+      // 玻璃模式使用原生 iOS sheet
+      final items = [
+        ListSheetItem<_SortType>(
+          title: '按评分',
+          icon: Icons.star_rounded,
+          value: _SortType.rating,
+          isSelected: _sortType == _SortType.rating,
+        ),
+        ListSheetItem<_SortType>(
+          title: '按年份',
+          icon: Icons.calendar_today_rounded,
+          value: _SortType.year,
+          isSelected: _sortType == _SortType.year,
+        ),
+        ListSheetItem<_SortType>(
+          title: '按名称',
+          icon: Icons.sort_by_alpha_rounded,
+          value: _SortType.name,
+          isSelected: _sortType == _SortType.name,
+        ),
+        ListSheetItem<_SortType>(
+          title: '按添加时间',
+          icon: Icons.schedule_rounded,
+          value: _SortType.recent,
+          isSelected: _sortType == _SortType.recent,
+        ),
+      ];
+
+      final result = await showNativeListSheet<_SortType>(
+        context: context,
+        items: items,
+        title: '排序方式',
+      );
+
+      if (result != null) {
+        setState(() {
+          if (_sortType == result) {
+            _sortDescending = !_sortDescending;
+          } else {
+            _sortType = result;
+            _sortDescending = true;
+          }
+        });
+      }
+      return;
+    }
+
+    // 经典模式使用 Flutter 底部弹框
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: isDark ? const Color(0xFF1A1A2E) : Colors.white,
@@ -6496,7 +6549,53 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
   }
 
   /// 显示筛选选项
-  void _showFilterOptions(BuildContext context, bool isDark) {
+  void _showFilterOptions(BuildContext context, bool isDark) async {
+    // 检查是否为玻璃模式
+    final container = ProviderScope.containerOf(context);
+    final uiStyle = container.read(uiStyleProvider);
+
+    if (uiStyle.isGlass) {
+      // 玻璃模式使用原生 iOS sheet
+      final items = _availableGenres.map((genre) {
+        final count = widget.items
+            .where((item) => item.genres?.contains(genre) ?? false)
+            .length;
+        return ListSheetItem<String>(
+          title: '$genre ($count)',
+          icon: Icons.local_movies_rounded,
+          value: genre,
+          isSelected: _selectedGenre == genre,
+        );
+      }).toList();
+
+      // 添加"清除筛选"选项
+      if (_selectedGenre != null) {
+        items.insert(
+          0,
+          ListSheetItem<String>(
+            title: '清除筛选',
+            icon: Icons.clear_all_rounded,
+            value: '',
+            isSelected: false,
+          ),
+        );
+      }
+
+      final result = await showNativeListSheet<String>(
+        context: context,
+        items: items,
+        title: '按类型筛选',
+      );
+
+      if (result != null) {
+        setState(() {
+          _selectedGenre = result.isEmpty ? null : result;
+        });
+      }
+      return;
+    }
+
+    // 经典模式使用 Flutter 底部弹框
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: isDark ? const Color(0xFF1A1A2E) : Colors.white,
@@ -7146,10 +7245,8 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   @override
   void initState() {
     super.initState();
-    // 玻璃模式：隐藏底部导航栏（经典模式导航栏由 Flutter 自动管理）
-    if (ref.read(uiStyleProvider).isGlass) {
-      ref.read(bottomNavVisibleProvider.notifier).hide();
-    }
+    // 隐藏底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).hide();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -7158,10 +7255,8 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    // 玻璃模式：显示底部导航栏
-    if (ref.read(uiStyleProvider).isGlass) {
-      ref.read(bottomNavVisibleProvider.notifier).show();
-    }
+    // 显示底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).show();
     super.dispose();
   }
 
@@ -7253,7 +7348,57 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
     await _loadMore();
   }
 
-  void _showFilterSheet(BuildContext context, bool isDark) {
+  void _showFilterSheet(BuildContext context, bool isDark) async {
+    final uiStyle = ref.read(uiStyleProvider);
+
+    // 玻璃模式使用原生筛选弹框
+    if (uiStyle.isGlass) {
+      // 构建筛选分区
+      final sections = <FilterSection>[
+        FilterSection(
+          id: 'genre',
+          title: '类型',
+          items: _availableGenres
+              .map((g) => FilterItem(value: g, title: g))
+              .toList(),
+        ),
+        FilterSection(
+          id: 'year',
+          title: '年份',
+          items: _availableYears
+              .map((y) => FilterItem(value: y.toString(), title: y.toString()))
+              .toList(),
+        ),
+      ];
+
+      final initialValues = <String, String>{};
+      if (_selectedGenre != null) initialValues['genre'] = _selectedGenre!;
+      if (_selectedYear != null) initialValues['year'] = _selectedYear.toString();
+
+      final result = await showNativeFilterSheet(
+        context: context,
+        sections: sections,
+        title: '筛选',
+        initialSelectedValues: initialValues,
+      );
+
+      if (result != null) {
+        final genre = result.getSelected('genre');
+        final yearStr = result.getSelected('year');
+        final year = yearStr != null ? int.tryParse(yearStr) : null;
+
+        if (genre != _selectedGenre || year != _selectedYear) {
+          setState(() {
+            _selectedGenre = genre;
+            _selectedYear = year;
+          });
+          _resetAndReload();
+        }
+      }
+      return;
+    }
+
+    // 经典模式使用 Flutter 底部弹框
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -7992,10 +8137,8 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   @override
   void initState() {
     super.initState();
-    // 玻璃模式：隐藏底部导航栏（经典模式导航栏由 Flutter 自动管理）
-    if (ref.read(uiStyleProvider).isGlass) {
-      ref.read(bottomNavVisibleProvider.notifier).hide();
-    }
+    // 隐藏底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).hide();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -8004,10 +8147,8 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    // 玻璃模式：显示底部导航栏
-    if (ref.read(uiStyleProvider).isGlass) {
-      ref.read(bottomNavVisibleProvider.notifier).show();
-    }
+    // 显示底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).show();
     super.dispose();
   }
 
@@ -8099,7 +8240,57 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
     await _loadMore();
   }
 
-  void _showFilterSheet(BuildContext context, bool isDark) {
+  void _showFilterSheet(BuildContext context, bool isDark) async {
+    final uiStyle = ref.read(uiStyleProvider);
+
+    // 玻璃模式使用原生筛选弹框
+    if (uiStyle.isGlass) {
+      // 构建筛选分区
+      final sections = <FilterSection>[
+        FilterSection(
+          id: 'genre',
+          title: '类型',
+          items: _availableGenres
+              .map((g) => FilterItem(value: g, title: g))
+              .toList(),
+        ),
+        FilterSection(
+          id: 'year',
+          title: '年份',
+          items: _availableYears
+              .map((y) => FilterItem(value: y.toString(), title: y.toString()))
+              .toList(),
+        ),
+      ];
+
+      final initialValues = <String, String>{};
+      if (_selectedGenre != null) initialValues['genre'] = _selectedGenre!;
+      if (_selectedYear != null) initialValues['year'] = _selectedYear.toString();
+
+      final result = await showNativeFilterSheet(
+        context: context,
+        sections: sections,
+        title: '筛选',
+        initialSelectedValues: initialValues,
+      );
+
+      if (result != null) {
+        final genre = result.getSelected('genre');
+        final yearStr = result.getSelected('year');
+        final year = yearStr != null ? int.tryParse(yearStr) : null;
+
+        if (genre != _selectedGenre || year != _selectedYear) {
+          setState(() {
+            _selectedGenre = genre;
+            _selectedYear = year;
+          });
+          _resetAndReload();
+        }
+      }
+      return;
+    }
+
+    // 经典模式使用 Flutter 底部弹框
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -8511,10 +8702,8 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   @override
   void initState() {
     super.initState();
-    // 玻璃模式：隐藏底部导航栏（经典模式导航栏由 Flutter 自动管理）
-    if (ref.read(uiStyleProvider).isGlass) {
-      ref.read(bottomNavVisibleProvider.notifier).hide();
-    }
+    // 隐藏底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).hide();
     _loadCount();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -8523,10 +8712,8 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    // 玻璃模式：显示底部导航栏
-    if (ref.read(uiStyleProvider).isGlass) {
-      ref.read(bottomNavVisibleProvider.notifier).show();
-    }
+    // 显示底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).show();
     super.dispose();
   }
 
@@ -8588,7 +8775,34 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
     await _loadMore();
   }
 
-  void _showSortSheet(BuildContext context, bool isDark) {
+  void _showSortSheet(BuildContext context, bool isDark) async {
+    final uiStyle = ref.read(uiStyleProvider);
+
+    // 玻璃模式使用原生 iOS sheet
+    if (uiStyle.isGlass) {
+      final items = VideoSortOption.values.map((option) {
+        return ListSheetItem<VideoSortOption>(
+          title: option.displayName,
+          icon: option.icon,
+          value: option,
+          isSelected: option == _sortOption,
+        );
+      }).toList();
+
+      final result = await showNativeListSheet<VideoSortOption>(
+        context: context,
+        items: items,
+        title: '排序方式',
+      );
+
+      if (result != null && result != _sortOption) {
+        setState(() => _sortOption = result);
+        _resetAndReload();
+      }
+      return;
+    }
+
+    // 经典模式使用 Flutter 底部弹框
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -9988,10 +10202,8 @@ class _FilteredVideosPaginatedPageState
   @override
   void initState() {
     super.initState();
-    // 玻璃模式：隐藏底部导航栏（经典模式导航栏由 Flutter 自动管理）
-    if (ref.read(uiStyleProvider).isGlass) {
-      ref.read(bottomNavVisibleProvider.notifier).hide();
-    }
+    // 隐藏底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).hide();
     _loadMore();
     _scrollController.addListener(_onScroll);
   }
@@ -9999,10 +10211,8 @@ class _FilteredVideosPaginatedPageState
   @override
   void dispose() {
     _scrollController.dispose();
-    // 玻璃模式：显示底部导航栏
-    if (ref.read(uiStyleProvider).isGlass) {
-      ref.read(bottomNavVisibleProvider.notifier).show();
-    }
+    // 显示底部导航栏
+    ref.read(bottomNavVisibleProvider.notifier).show();
     super.dispose();
   }
 

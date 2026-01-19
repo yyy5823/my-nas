@@ -71,7 +71,32 @@ class _BottomSheetCallbackManager {
         if (actionId != null) {
           _actionCallbacks[sheetId]?.call(actionId);
         }
+      case 'onFilterResult':
+        final filterCompleter = _filterCompleters[sheetId];
+        if (filterCompleter != null && !filterCompleter.isCompleted) {
+          final result = args['result'] as Map<dynamic, dynamic>?;
+          if (result != null) {
+            final typedResult = result.map(
+              (key, value) => MapEntry(key.toString(), value?.toString()),
+            ).cast<String, String?>();
+            filterCompleter.complete(typedResult);
+          } else {
+            filterCompleter.complete(null);
+          }
+          _filterCompleters.remove(sheetId);
+        }
     }
+  }
+
+  // 筛选弹框回调
+  final Map<int, Completer<Map<String, String?>?>> _filterCompleters = {};
+
+  void registerFilterCompleter(int sheetId, Completer<Map<String, String?>?> completer) {
+    _filterCompleters[sheetId] = completer;
+  }
+
+  void removeFilterCompleter(int sheetId) {
+    _filterCompleters.remove(sheetId);
   }
 }
 
@@ -565,6 +590,357 @@ Future<T?> _showNativeListSheet<T>({
       builder: (context) => _FlutterListSheet<T>(
         items: items,
         title: title,
+      ),
+    );
+  }
+}
+
+// MARK: - 筛选弹框 API
+
+/// 筛选分区配置
+class FilterSection {
+  const FilterSection({
+    required this.id,
+    required this.title,
+    required this.items,
+  });
+
+  final String id;
+  final String title;
+  final List<FilterItem> items;
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'title': title,
+    'items': items.map((e) => e.toMap()).toList(),
+  };
+}
+
+/// 筛选选项
+class FilterItem {
+  const FilterItem({
+    required this.value,
+    required this.title,
+  });
+
+  final String value;
+  final String title;
+
+  Map<String, dynamic> toMap() => {
+    'value': value,
+    'title': title,
+  };
+}
+
+/// 筛选结果
+class FilterResult {
+  const FilterResult(this.selectedValues);
+
+  /// 分区ID -> 选中值
+  final Map<String, String?> selectedValues;
+
+  String? getSelected(String sectionId) => selectedValues[sectionId];
+
+  bool get isEmpty => selectedValues.values.every((v) => v == null);
+}
+
+/// 显示原生筛选弹框
+///
+/// iOS 使用原生 UICollectionView 实现 chip 选择
+/// 其他平台使用 Flutter 实现
+Future<FilterResult?> showNativeFilterSheet({
+  required BuildContext context,
+  required List<FilterSection> sections,
+  String title = '筛选',
+  Map<String, String>? initialSelectedValues,
+  bool showResetButton = true,
+  String applyButtonText = '应用',
+  String resetButtonText = '重置',
+}) async {
+  // iOS 平台使用原生实现
+  if (!kIsWeb && Platform.isIOS) {
+    return _showNativeFilterSheetImpl(
+      context: context,
+      sections: sections,
+      title: title,
+      initialSelectedValues: initialSelectedValues,
+      showResetButton: showResetButton,
+      applyButtonText: applyButtonText,
+      resetButtonText: resetButtonText,
+    );
+  }
+
+  // 其他平台使用 Flutter 实现
+  return showModalBottomSheet<FilterResult>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => _FlutterFilterSheet(
+      sections: sections,
+      title: title,
+      initialSelectedValues: initialSelectedValues ?? {},
+      showResetButton: showResetButton,
+      applyButtonText: applyButtonText,
+      resetButtonText: resetButtonText,
+    ),
+  );
+}
+
+/// iOS 原生筛选弹框实现
+Future<FilterResult?> _showNativeFilterSheetImpl({
+  required BuildContext context,
+  required List<FilterSection> sections,
+  required String title,
+  Map<String, String>? initialSelectedValues,
+  required bool showResetButton,
+  required String applyButtonText,
+  required String resetButtonText,
+}) async {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  try {
+    final sheetId = await _nativeBottomSheetChannel.invokeMethod<int>(
+      'showFilterSheet',
+      {
+        'isDark': isDark,
+        'title': title,
+        'sections': sections.map((s) => s.toMap()).toList(),
+        'selectedValues': initialSelectedValues ?? {},
+        'showResetButton': showResetButton,
+        'applyButtonText': applyButtonText,
+        'resetButtonText': resetButtonText,
+      },
+    );
+
+    if (sheetId == null) return null;
+
+    // 等待用户选择结果
+    final completer = Completer<Map<String, String?>?>();
+    _callbackManager.registerFilterCompleter(sheetId, completer);
+
+    final result = await completer.future.timeout(
+      const Duration(minutes: 5),
+      onTimeout: () {
+        _callbackManager.removeFilterCompleter(sheetId);
+        return null;
+      },
+    );
+
+    if (result != null) {
+      return FilterResult(result);
+    }
+    return null;
+  } catch (e) {
+    debugPrint('Native filter sheet failed: $e, falling back to Flutter');
+    // 回退到 Flutter 实现
+    return showModalBottomSheet<FilterResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _FlutterFilterSheet(
+        sections: sections,
+        title: title,
+        initialSelectedValues: initialSelectedValues ?? {},
+        showResetButton: showResetButton,
+        applyButtonText: applyButtonText,
+        resetButtonText: resetButtonText,
+      ),
+    );
+  }
+}
+
+/// Flutter 风格筛选弹框
+class _FlutterFilterSheet extends StatefulWidget {
+  const _FlutterFilterSheet({
+    required this.sections,
+    required this.title,
+    required this.initialSelectedValues,
+    required this.showResetButton,
+    required this.applyButtonText,
+    required this.resetButtonText,
+  });
+
+  final List<FilterSection> sections;
+  final String title;
+  final Map<String, String> initialSelectedValues;
+  final bool showResetButton;
+  final String applyButtonText;
+  final String resetButtonText;
+
+  @override
+  State<_FlutterFilterSheet> createState() => _FlutterFilterSheetState();
+}
+
+class _FlutterFilterSheetState extends State<_FlutterFilterSheet> {
+  late Map<String, String?> _selectedValues;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedValues = Map.from(widget.initialSelectedValues);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 拖动条
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white24 : Colors.black12,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // 标题栏
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  widget.title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                if (widget.showResetButton)
+                  TextButton(
+                    onPressed: () {
+                      setState(() => _selectedValues.clear());
+                    },
+                    child: Text(widget.resetButtonText),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // 筛选内容
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: widget.sections.map((section) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        section.title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: section.items.map((item) {
+                          final isSelected = _selectedValues[section.id] == item.value;
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                if (isSelected) {
+                                  _selectedValues.remove(section.id);
+                                } else {
+                                  _selectedValues[section.id] = item.value;
+                                }
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Colors.blue
+                                    : isDark
+                                        ? Colors.white.withValues(alpha: 0.1)
+                                        : Colors.black.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? Colors.blue
+                                      : isDark
+                                          ? Colors.white24
+                                          : Colors.black12,
+                                ),
+                              ),
+                              child: Text(
+                                item.title,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          // 应用按钮
+          Container(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              16 + MediaQuery.of(context).padding.bottom,
+            ),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+              border: Border(
+                top: BorderSide(
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
+              ),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(FilterResult(_selectedValues)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  widget.applyButtonText,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

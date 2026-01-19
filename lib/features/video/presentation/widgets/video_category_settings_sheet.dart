@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,15 +19,37 @@ import 'package:my_nas/shared/providers/ui_style_provider.dart';
 ///
 /// 允许用户调整分类显示顺序、切换可见性、添加/移除动态分类
 class VideoCategorySettingsSheet extends ConsumerStatefulWidget {
-  const VideoCategorySettingsSheet({super.key});
+  const VideoCategorySettingsSheet({super.key, this.useNativePresentation = false});
+
+  /// 是否使用原生 sheet presentation（由 show 方法自动设置）
+  final bool useNativePresentation;
 
   /// 显示设置弹窗
-  static Future<void> show(BuildContext context) => showModalBottomSheet<void>(
+  static Future<void> show(BuildContext context) async {
+    // 检查是否为玻璃模式
+    final container = ProviderScope.containerOf(context);
+    final uiStyle = container.read(uiStyleProvider);
+
+    if (uiStyle.isGlass && !kIsWeb && Platform.isIOS) {
+      // 玻璃模式使用原生 sheet presentation 以获得 iOS 26 Liquid Glass 效果
+      // 但内容仍使用 Flutter 渲染
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        useSafeArea: true,
+        builder: (context) => const VideoCategorySettingsSheet(useNativePresentation: true),
+      );
+    } else {
+      // 经典模式使用标准 Flutter 底部弹框
+      await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (context) => const VideoCategorySettingsSheet(),
       );
+    }
+  }
 
   @override
   ConsumerState<VideoCategorySettingsSheet> createState() =>

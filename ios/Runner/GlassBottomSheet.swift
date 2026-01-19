@@ -1087,3 +1087,438 @@ class SectionedItemCell: UITableViewCell {
         }
     }
 }
+
+// MARK: - Filter Sheet
+
+extension GlassBottomSheetPlugin {
+    private var presentedFilterSheets: [Int: FilterSheetViewController] {
+        get { _presentedFilterSheets }
+        set { _presentedFilterSheets = newValue }
+    }
+    private static var _presentedFilterSheetsStorage: [Int: FilterSheetViewController] = [:]
+    private var _presentedFilterSheets: [Int: FilterSheetViewController] {
+        get { GlassBottomSheetPlugin._presentedFilterSheetsStorage }
+        set { GlassBottomSheetPlugin._presentedFilterSheetsStorage = newValue }
+    }
+
+    func showFilterSheet(args: [String: Any], result: @escaping FlutterResult) {
+        let isDark = args["isDark"] as? Bool ?? false
+        let title = args["title"] as? String ?? "筛选"
+        let sections = args["sections"] as? [[String: Any]] ?? []
+        let selectedValues = args["selectedValues"] as? [String: String] ?? [:]
+        let showResetButton = args["showResetButton"] as? Bool ?? true
+        let applyButtonText = args["applyButtonText"] as? String ?? "应用"
+        let resetButtonText = args["resetButtonText"] as? String ?? "重置"
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+                result(FlutterError(code: "NO_ROOT_VC", message: "No root view controller", details: nil))
+                return
+            }
+
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController {
+                topVC = presented
+            }
+
+            let sheetId = self.nextSheetId
+            self.nextSheetId += 1
+
+            let sheetVC = FilterSheetViewController(
+                sheetId: sheetId,
+                title: title,
+                sections: sections,
+                selectedValues: selectedValues,
+                isDark: isDark,
+                showResetButton: showResetButton,
+                applyButtonText: applyButtonText,
+                resetButtonText: resetButtonText,
+                onDismiss: { [weak self] resultValues in
+                    self?.presentedFilterSheets.removeValue(forKey: sheetId)
+                    // 通过 method channel 发送结果
+                    guard let registrar = self?.registrar else { return }
+                    let callbackChannel = FlutterMethodChannel(name: "glass_bottom_sheet_callback", binaryMessenger: registrar.messenger())
+                    callbackChannel.invokeMethod("onFilterResult", arguments: [
+                        "sheetId": sheetId,
+                        "result": resultValues as Any
+                    ])
+                }
+            )
+
+            if #available(iOS 15.0, *) {
+                sheetVC.modalPresentationStyle = .pageSheet
+                if let sheet = sheetVC.sheetPresentationController {
+                    sheet.detents = [.medium(), .large()]
+                    sheet.prefersGrabberVisible = true
+                    sheet.prefersScrollingExpandsWhenScrolledToEdge = true
+                    sheet.preferredCornerRadius = 24
+                    sheet.selectedDetentIdentifier = .medium
+                }
+            } else {
+                sheetVC.modalPresentationStyle = .formSheet
+            }
+
+            sheetVC.overrideUserInterfaceStyle = isDark ? .dark : .light
+
+            self.presentedFilterSheets[sheetId] = sheetVC
+
+            topVC.present(sheetVC, animated: true) {
+                result(sheetId)
+            }
+        }
+    }
+}
+
+// MARK: - FilterSheetViewController
+
+class FilterSheetViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
+    private let sheetId: Int
+    private let sheetTitle: String
+    private var sections: [[String: Any]]
+    private var selectedValues: [String: String] // sectionId -> selectedValue
+    private let isDark: Bool
+    private let showResetButton: Bool
+    private let applyButtonText: String
+    private let resetButtonText: String
+    private let onDismiss: ([String: String]?) -> Void
+
+    private var collectionView: UICollectionView!
+    private var headerView: UIView!
+    private var footerView: UIView!
+    private var titleLabel: UILabel!
+    private var closeButton: UIButton!
+    private var resetButton: UIButton?
+    private var applyButton: UIButton!
+
+    init(
+        sheetId: Int,
+        title: String,
+        sections: [[String: Any]],
+        selectedValues: [String: String],
+        isDark: Bool,
+        showResetButton: Bool,
+        applyButtonText: String,
+        resetButtonText: String,
+        onDismiss: @escaping ([String: String]?) -> Void
+    ) {
+        self.sheetId = sheetId
+        self.sheetTitle = title
+        self.sections = sections
+        self.selectedValues = selectedValues
+        self.isDark = isDark
+        self.showResetButton = showResetButton
+        self.applyButtonText = applyButtonText
+        self.resetButtonText = resetButtonText
+        self.onDismiss = onDismiss
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        if #available(iOS 26.0, *) {
+            view.backgroundColor = .clear
+        } else {
+            view.backgroundColor = isDark ? .systemBackground : .systemBackground
+        }
+
+        setupHeaderView()
+        setupCollectionView()
+        setupFooterView()
+        setupConstraints()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed || isMovingFromParent {
+            onDismiss(nil)
+        }
+    }
+
+    private func setupHeaderView() {
+        headerView = UIView()
+        headerView.backgroundColor = .clear
+        view.addSubview(headerView)
+
+        // 关闭按钮（圆形 X 在左侧）
+        closeButton = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+        let xImage = UIImage(systemName: "xmark.circle.fill", withConfiguration: config)
+        closeButton.setImage(xImage, for: .normal)
+        closeButton.tintColor = isDark ? UIColor(white: 1.0, alpha: 0.5) : UIColor(white: 0.0, alpha: 0.3)
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        headerView.addSubview(closeButton)
+
+        // 标题
+        titleLabel = UILabel()
+        titleLabel.text = sheetTitle
+        titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+        titleLabel.textColor = isDark ? .white : .label
+        titleLabel.textAlignment = .center
+        headerView.addSubview(titleLabel)
+
+        // 重置按钮
+        if showResetButton {
+            let reset = UIButton(type: .system)
+            reset.setTitle(resetButtonText, for: .normal)
+            reset.titleLabel?.font = .systemFont(ofSize: 16)
+            reset.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
+            headerView.addSubview(reset)
+            resetButton = reset
+        }
+    }
+
+    private func setupCollectionView() {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.minimumInteritemSpacing = 8
+        layout.minimumLineSpacing = 8
+        layout.sectionInset = UIEdgeInsets(top: 8, left: 16, bottom: 16, right: 16)
+
+        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.dataSource = self
+        collectionView.delegate = self
+        collectionView.register(FilterChipCell.self, forCellWithReuseIdentifier: "FilterChipCell")
+        collectionView.register(FilterSectionHeader.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "FilterSectionHeader")
+        collectionView.backgroundColor = .clear
+        collectionView.alwaysBounceVertical = true
+        view.addSubview(collectionView)
+    }
+
+    private func setupFooterView() {
+        footerView = UIView()
+        footerView.backgroundColor = .clear
+        view.addSubview(footerView)
+
+        applyButton = UIButton(type: .system)
+        applyButton.setTitle(applyButtonText, for: .normal)
+        applyButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        applyButton.backgroundColor = .systemBlue
+        applyButton.setTitleColor(.white, for: .normal)
+        applyButton.layer.cornerRadius = 12
+        applyButton.addTarget(self, action: #selector(applyTapped), for: .touchUpInside)
+        footerView.addSubview(applyButton)
+    }
+
+    private func setupConstraints() {
+        headerView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        footerView.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        applyButton.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            headerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerView.heightAnchor.constraint(equalToConstant: 56),
+
+            closeButton.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 16),
+            closeButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            closeButton.widthAnchor.constraint(equalToConstant: 30),
+            closeButton.heightAnchor.constraint(equalToConstant: 30),
+
+            titleLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            footerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            footerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            footerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            footerView.heightAnchor.constraint(equalToConstant: 70),
+
+            applyButton.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: 16),
+            applyButton.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -16),
+            applyButton.topAnchor.constraint(equalTo: footerView.topAnchor, constant: 8),
+            applyButton.heightAnchor.constraint(equalToConstant: 50),
+
+            collectionView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
+        ])
+
+        if let reset = resetButton {
+            reset.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                reset.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -16),
+                reset.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            ])
+        }
+    }
+
+    @objc private func closeTapped() {
+        dismiss(animated: true) { [weak self] in
+            self?.onDismiss(nil)
+        }
+    }
+
+    @objc private func resetTapped() {
+        selectedValues.removeAll()
+        collectionView.reloadData()
+    }
+
+    @objc private func applyTapped() {
+        dismiss(animated: true) { [weak self] in
+            self?.onDismiss(self?.selectedValues)
+        }
+    }
+
+    // MARK: - UICollectionViewDataSource
+
+    func numberOfSections(in collectionView: UICollectionView) -> Int {
+        return sections.count
+    }
+
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        let sectionData = sections[section]
+        let items = sectionData["items"] as? [[String: Any]] ?? []
+        return items.count
+    }
+
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "FilterChipCell", for: indexPath) as! FilterChipCell
+        let sectionData = sections[indexPath.section]
+        let sectionId = sectionData["id"] as? String ?? "section_\(indexPath.section)"
+        let items = sectionData["items"] as? [[String: Any]] ?? []
+        let item = items[indexPath.item]
+        let value = item["value"] as? String ?? ""
+        let title = item["title"] as? String ?? value
+        let isSelected = selectedValues[sectionId] == value
+
+        cell.configure(title: title, isSelected: isSelected, isDark: isDark)
+        return cell
+    }
+
+    func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
+        let header = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "FilterSectionHeader", for: indexPath) as! FilterSectionHeader
+        let sectionData = sections[indexPath.section]
+        let title = sectionData["title"] as? String ?? ""
+        header.configure(title: title, isDark: isDark)
+        return header
+    }
+
+    // MARK: - UICollectionViewDelegate
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let sectionData = sections[indexPath.section]
+        let sectionId = sectionData["id"] as? String ?? "section_\(indexPath.section)"
+        let items = sectionData["items"] as? [[String: Any]] ?? []
+        let item = items[indexPath.item]
+        let value = item["value"] as? String ?? ""
+
+        // Toggle selection
+        if selectedValues[sectionId] == value {
+            selectedValues.removeValue(forKey: sectionId)
+        } else {
+            selectedValues[sectionId] = value
+        }
+
+        collectionView.reloadSections(IndexSet(integer: indexPath.section))
+    }
+
+    // MARK: - UICollectionViewDelegateFlowLayout
+
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let sectionData = sections[indexPath.section]
+        let items = sectionData["items"] as? [[String: Any]] ?? []
+        let item = items[indexPath.item]
+        let value = item["value"] as? String ?? ""
+        let title = item["title"] as? String ?? value
+
+        let font = UIFont.systemFont(ofSize: 14)
+        let width = title.size(withAttributes: [.font: font]).width + 32
+        return CGSize(width: min(width, collectionView.bounds.width - 32), height: 36)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
+        return CGSize(width: collectionView.bounds.width, height: 40)
+    }
+}
+
+// MARK: - FilterChipCell
+
+class FilterChipCell: UICollectionViewCell {
+    private let titleLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupUI() {
+        contentView.layer.cornerRadius = 18
+        contentView.layer.borderWidth = 1
+
+        titleLabel.font = .systemFont(ofSize: 14)
+        titleLabel.textAlignment = .center
+        contentView.addSubview(titleLabel)
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+        ])
+    }
+
+    func configure(title: String, isSelected: Bool, isDark: Bool) {
+        titleLabel.text = title
+
+        if isSelected {
+            contentView.backgroundColor = .systemBlue
+            contentView.layer.borderColor = UIColor.systemBlue.cgColor
+            titleLabel.textColor = .white
+        } else {
+            if #available(iOS 26.0, *) {
+                contentView.backgroundColor = isDark ? UIColor(white: 1.0, alpha: 0.1) : UIColor(white: 0.0, alpha: 0.05)
+            } else {
+                contentView.backgroundColor = isDark ? UIColor(white: 1.0, alpha: 0.1) : UIColor(white: 0.0, alpha: 0.05)
+            }
+            contentView.layer.borderColor = isDark ? UIColor(white: 1.0, alpha: 0.2).cgColor : UIColor(white: 0.0, alpha: 0.1).cgColor
+            titleLabel.textColor = isDark ? .white : .label
+        }
+    }
+}
+
+// MARK: - FilterSectionHeader
+
+class FilterSectionHeader: UICollectionReusableView {
+    private let titleLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupUI() {
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        addSubview(titleLabel)
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            titleLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+        ])
+    }
+
+    func configure(title: String, isDark: Bool) {
+        titleLabel.text = title
+        titleLabel.textColor = isDark ? UIColor(white: 1.0, alpha: 0.7) : UIColor(white: 0.0, alpha: 0.6)
+    }
+}
