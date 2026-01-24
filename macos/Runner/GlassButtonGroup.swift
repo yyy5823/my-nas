@@ -34,8 +34,7 @@ final class GlassButtonGroupFactory: NSObject, FlutterPlatformViewFactory {
     }
 }
 
-final class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
-    private let containerView: NSView
+final class GlassButtonGroupPlatformView: NSView {
     private let glassView: NSView
     private let stackView: NSStackView
     private var buttons: [NSButton] = []
@@ -66,11 +65,6 @@ final class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
             }
         }
 
-        containerView = NSView()
-        containerView.wantsLayer = true
-        containerView.layer?.masksToBounds = false
-        containerView.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
-
         // 玻璃背景
         if #available(macOS 26.0, *) {
             let glassEffect = NSGlassEffectView()
@@ -99,7 +93,11 @@ final class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         stackView.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
-        super.init()
+        super.init(frame: .zero)
+
+        self.wantsLayer = true
+        self.layer?.masksToBounds = false
+        self.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
 
         // 创建按钮
         for (index, item) in items.enumerated() {
@@ -109,13 +107,17 @@ final class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         }
 
         glassView.addSubview(stackView)
-        containerView.addSubview(glassView)
+        self.addSubview(glassView)
 
         setupConstraints(cornerRadius: cornerRadius)
 
         if let messenger {
             setupMethodChannel(messenger: messenger)
         }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 
     private func createButton(item: MacGlassButtonItem, size: Double, index: Int) -> NSButton {
@@ -156,10 +158,10 @@ final class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
         glassView.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
-            glassView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            glassView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            glassView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            glassView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            glassView.topAnchor.constraint(equalTo: self.topAnchor),
+            glassView.bottomAnchor.constraint(equalTo: self.bottomAnchor),
+            glassView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
+            glassView.trailingAnchor.constraint(equalTo: self.trailingAnchor),
 
             stackView.topAnchor.constraint(equalTo: glassView.topAnchor),
             stackView.bottomAnchor.constraint(equalTo: glassView.bottomAnchor),
@@ -167,7 +169,7 @@ final class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
             stackView.trailingAnchor.constraint(equalTo: glassView.trailingAnchor),
         ])
 
-        containerView.layer?.cornerRadius = CGFloat(cornerRadius)
+        self.layer?.cornerRadius = CGFloat(cornerRadius)
     }
 
     private func setupMethodChannel(messenger: FlutterBinaryMessenger) {
@@ -189,7 +191,7 @@ final class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
 
     private func updateTheme(isDark: Bool) {
         self.isDark = isDark
-        containerView.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
+        self.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
 
         if #available(macOS 26.0, *), let glassEffect = glassView as? NSGlassEffectView {
             glassEffect.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
@@ -203,15 +205,11 @@ final class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
     @objc private func buttonTapped(_ sender: NSButton) {
         methodChannel?.invokeMethod("onButtonTap", arguments: sender.tag)
     }
-
-    func view() -> NSView {
-        containerView
-    }
 }
 
 final class GlassButtonGroupPlugin: NSObject, FlutterPlugin {
     static func register(with registrar: FlutterPluginRegistrar) {
-        let factory = GlassButtonGroupFactory(messenger: registrar.messenger())
+        let factory = GlassButtonGroupFactory(messenger: registrar.messenger)
         registrar.register(factory, withId: "com.kkape.mynas/glass_button_group")
 
         NSLog("🔮 GlassButtonGroupPlugin(macOS): Registered")

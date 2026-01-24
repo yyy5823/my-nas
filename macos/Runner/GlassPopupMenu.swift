@@ -11,7 +11,7 @@ final class GlassPopupMenuPlugin: NSObject, FlutterPlugin, NSPopoverDelegate {
     static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
             name: "com.kkape.mynas/glass_popup_menu",
-            binaryMessenger: registrar.messenger()
+            binaryMessenger: registrar.messenger
         )
         let instance = GlassPopupMenuPlugin(registrar: registrar)
         registrar.addMethodCallDelegate(instance, channel: channel)
