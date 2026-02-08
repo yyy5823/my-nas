@@ -122,12 +122,11 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       // 忽略 ref 不可用的情况，回调会在 notifier dispose 时自动清理
     }
     _rotationController.dispose();
-    // 恢复原生 Tab Bar（iOS 玻璃风格）
-    NativeTabBarService.instance.setTabBarVisible(true);
-    // 恢复 Flutter 导航栏（经典风格）
+    // 恢复导航栏可见性
     // 使用 setVisible(true) 而不是 show()，因为 show() 只是减少引用计数
     // setVisible(true) 会直接将计数重置为 0 并强制显示导航栏
     // 这确保无论用户通过什么方式离开（返回按钮、滑动手势、系统导航），导航栏都能正确恢复
+    // 注意：不再直接调用 NativeTabBarService，由 MainScaffold 根据 Provider 状态同步
     BottomNavVisibilityNotifier.instance?.setVisible(true);
     super.dispose();
   }
@@ -143,7 +142,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     // 在导航前先恢复导航栏可见性
     // 使用 setVisible(true) 而不是 show()，因为 show() 只是减少引用计数
     // setVisible(true) 会直接将计数重置为 0 并强制显示导航栏
-    NativeTabBarService.instance.setTabBarVisible(true);
+    // 注意：不再直接调用 NativeTabBarService，由 MainScaffold 根据 Provider 状态同步
     BottomNavVisibilityNotifier.instance?.setVisible(true);
 
     // 检查是否可以 pop（栈中是否有其他页面）

@@ -72,6 +72,10 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
 
     _isHandlingTabChange = true;
 
+    // 切换到主 Tab 页面时，重置底部导航栏可见性
+    // 这确保从详情页直接切换 Tab 时导航栏能正确显示
+    ref.read(bottomNavVisibleProvider.notifier).reset();
+
     // 使用原生传来的路由进行导航
     context.go(event.route);
 
@@ -167,6 +171,11 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     if (_isHandlingTabChange) return;
 
     _isHandlingTabChange = true;
+    
+    // 切换到主 Tab 页面时，重置底部导航栏可见性
+    // 这确保从详情页直接切换 Tab 时导航栏能正确显示
+    ref.read(bottomNavVisibleProvider.notifier).reset();
+    
     context.go(_destinations[index].route);
 
     // 延迟重置标志

@@ -40,7 +40,8 @@ mixin TabBarVisibilityMixin<T extends StatefulWidget> on State<T> {
   @override
   void dispose() {
     if (_didHideTabBar) {
-      NativeTabBarService.instance.setTabBarVisible(true);
+      // 只通过 Provider 减少引用计数，由 MainScaffold 根据 Provider 状态决定原生 Tab Bar 的可见性
+      // 不直接设置 NativeTabBarService，避免多级导航时状态错乱
       BottomNavVisibilityNotifier.instance?.show();
     }
     super.dispose();
@@ -93,7 +94,8 @@ mixin ConsumerTabBarVisibilityMixin<T extends ConsumerStatefulWidget>
   @override
   void dispose() {
     if (_didHideTabBar) {
-      NativeTabBarService.instance.setTabBarVisible(true);
+      // 只通过 Provider 减少引用计数，由 MainScaffold 根据 Provider 状态决定原生 Tab Bar 的可见性
+      // 不直接设置 NativeTabBarService，避免多级导航时状态错乱
       BottomNavVisibilityNotifier.instance?.show();
     }
     super.dispose();
@@ -142,8 +144,8 @@ class _HideBottomNavWrapperState extends ConsumerState<HideBottomNavWrapper> {
 
   @override
   void dispose() {
-    // 恢复导航栏可见性
-    NativeTabBarService.instance.setTabBarVisible(true);
+    // 只通过 Provider 减少引用计数，由 MainScaffold 根据 Provider 状态决定原生 Tab Bar 的可见性
+    // 不直接设置 NativeTabBarService，避免多级导航时状态错乱
     BottomNavVisibilityNotifier.instance?.show();
     super.dispose();
   }

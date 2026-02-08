@@ -1434,8 +1434,14 @@ class FilterSheetViewController: UIViewController, UICollectionViewDataSource, U
         let title = item["title"] as? String ?? value
 
         let font = UIFont.systemFont(ofSize: 14)
-        let width = title.size(withAttributes: [.font: font]).width + 32
-        return CGSize(width: min(width, collectionView.bounds.width - 32), height: 36)
+        // 计算文字宽度并添加 padding (12 左 + 12 右 = 24)
+        let textWidth = title.size(withAttributes: [.font: font]).width + 24
+        // 设置最小宽度以确保可读性
+        let minWidth: CGFloat = 50
+        // 最大宽度为屏幕宽度减去边距
+        let maxWidth = collectionView.bounds.width - 32
+        let width = max(minWidth, min(textWidth, maxWidth))
+        return CGSize(width: width, height: 36)
     }
 
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
@@ -1463,12 +1469,16 @@ class FilterChipCell: UICollectionViewCell {
 
         titleLabel.font = .systemFont(ofSize: 14)
         titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 1
+        titleLabel.adjustsFontSizeToFitWidth = true
+        titleLabel.minimumScaleFactor = 0.7
+        titleLabel.lineBreakMode = .byTruncatingTail
         contentView.addSubview(titleLabel)
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
             titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
         ])
     }

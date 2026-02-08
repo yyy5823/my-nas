@@ -9,7 +9,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
-import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
+import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_app_bar.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
@@ -7160,10 +7160,12 @@ class _TvShowsFullPage extends ConsumerStatefulWidget {
   ConsumerState<_TvShowsFullPage> createState() => _TvShowsFullPageState();
 }
 
-class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
+class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage>
+    with ConsumerTabBarVisibilityMixin {
   @override
   void initState() {
     super.initState();
+    hideTabBar();
   }
 
   @override
@@ -7223,7 +7225,8 @@ class _MoviesPaginatedPage extends ConsumerStatefulWidget {
       _MoviesPaginatedPageState();
 }
 
-class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
+class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage>
+    with ConsumerTabBarVisibilityMixin {
   final List<VideoMetadata> _movies = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -7246,7 +7249,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   void initState() {
     super.initState();
     // 隐藏底部导航栏
-    ref.read(bottomNavVisibleProvider.notifier).hide();
+    hideTabBar();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -7256,7 +7259,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   void dispose() {
     _scrollController.dispose();
     // 显示底部导航栏
-    ref.read(bottomNavVisibleProvider.notifier).show();
+    // Mixin 自动处理恢复
     super.dispose();
   }
 
@@ -8115,7 +8118,8 @@ class _TvShowsPaginatedPage extends ConsumerStatefulWidget {
       _TvShowsPaginatedPageState();
 }
 
-class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
+class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage>
+    with ConsumerTabBarVisibilityMixin {
   final List<VideoMetadata> _tvShows = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -8138,7 +8142,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   void initState() {
     super.initState();
     // 隐藏底部导航栏
-    ref.read(bottomNavVisibleProvider.notifier).hide();
+    hideTabBar();
     _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -8148,7 +8152,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   void dispose() {
     _scrollController.dispose();
     // 显示底部导航栏
-    ref.read(bottomNavVisibleProvider.notifier).show();
+    // Mixin 自动处理恢复
     super.dispose();
   }
 
@@ -8687,7 +8691,8 @@ class _OthersPaginatedPage extends ConsumerStatefulWidget {
       _OthersPaginatedPageState();
 }
 
-class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
+class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage>
+    with ConsumerTabBarVisibilityMixin {
   final List<VideoMetadata> _videos = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -8703,7 +8708,7 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   void initState() {
     super.initState();
     // 隐藏底部导航栏
-    ref.read(bottomNavVisibleProvider.notifier).hide();
+    hideTabBar();
     _loadCount();
     _loadMore();
     _scrollController.addListener(_onScroll);
@@ -8713,7 +8718,7 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   void dispose() {
     _scrollController.dispose();
     // 显示底部导航栏
-    ref.read(bottomNavVisibleProvider.notifier).show();
+    // Mixin 自动处理恢复
     super.dispose();
   }
 
@@ -10188,7 +10193,8 @@ class _FilteredVideosPaginatedPage extends ConsumerStatefulWidget {
 }
 
 class _FilteredVideosPaginatedPageState
-    extends ConsumerState<_FilteredVideosPaginatedPage> {
+    extends ConsumerState<_FilteredVideosPaginatedPage>
+    with ConsumerTabBarVisibilityMixin {
   final List<VideoMetadata> _videos = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -10203,7 +10209,7 @@ class _FilteredVideosPaginatedPageState
   void initState() {
     super.initState();
     // 隐藏底部导航栏
-    ref.read(bottomNavVisibleProvider.notifier).hide();
+    hideTabBar();
     _loadMore();
     _scrollController.addListener(_onScroll);
   }
@@ -10212,7 +10218,7 @@ class _FilteredVideosPaginatedPageState
   void dispose() {
     _scrollController.dispose();
     // 显示底部导航栏
-    ref.read(bottomNavVisibleProvider.notifier).show();
+    // Mixin 自动处理恢复
     super.dispose();
   }
 

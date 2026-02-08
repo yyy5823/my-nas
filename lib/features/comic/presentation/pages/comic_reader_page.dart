@@ -317,9 +317,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     WakelockPlus.disable();
     // 退出全屏模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    // 恢复原生 Tab Bar（iOS 玻璃风格）
-    NativeTabBarService.instance.setTabBarVisible(true);
-    // 恢复 Flutter 导航栏（经典风格）
+    // 恢复导航栏可见性（通过 Provider 引用计数，由 MainScaffold 决定实际状态）
     BottomNavVisibilityNotifier.instance?.show();
     super.dispose();
   }
