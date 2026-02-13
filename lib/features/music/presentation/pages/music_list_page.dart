@@ -1969,7 +1969,8 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
 
     return Row(
       children: [
-        Flexible(
+        Expanded(
+          // 使用 Expanded 确保左侧内容填满可用空间，按钮自动靠右
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
