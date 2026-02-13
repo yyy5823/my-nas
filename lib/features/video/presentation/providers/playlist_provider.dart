@@ -6,13 +6,13 @@ class PlaylistState {
   const PlaylistState({
     this.items = const [],
     this.currentIndex = -1,
-    this.repeatMode = RepeatMode.none,
+    this.repeatMode = VideoRepeatMode.none,
     this.shuffleEnabled = false,
   });
 
   final List<VideoItem> items;
   final int currentIndex;
-  final RepeatMode repeatMode;
+  final VideoRepeatMode repeatMode;
   final bool shuffleEnabled;
 
   VideoItem? get currentItem => currentIndex >= 0 && currentIndex < items.length
@@ -30,7 +30,7 @@ class PlaylistState {
   PlaylistState copyWith({
     List<VideoItem>? items,
     int? currentIndex,
-    RepeatMode? repeatMode,
+    VideoRepeatMode? repeatMode,
     bool? shuffleEnabled,
   }) => PlaylistState(
     items: items ?? this.items,
@@ -41,7 +41,7 @@ class PlaylistState {
 }
 
 /// 重复模式
-enum RepeatMode {
+enum VideoRepeatMode {
   none, // 不重复
   all, // 列表循环
   one, // 单曲循环
@@ -119,7 +119,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
         nextIndex = _shuffleOrder![currentShuffleIndex + 1];
       } else {
         // 随机列表结束
-        if (state.repeatMode == RepeatMode.all) {
+        if (state.repeatMode == VideoRepeatMode.all) {
           _generateShuffleOrder();
           nextIndex = _shuffleOrder![0];
         } else {
@@ -129,7 +129,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
     } else {
       if (state.currentIndex < state.items.length - 1) {
         nextIndex = state.currentIndex + 1;
-      } else if (state.repeatMode == RepeatMode.all) {
+      } else if (state.repeatMode == VideoRepeatMode.all) {
         nextIndex = 0;
       } else {
         return null;
@@ -156,7 +156,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
     } else {
       if (state.currentIndex > 0) {
         prevIndex = state.currentIndex - 1;
-      } else if (state.repeatMode == RepeatMode.all) {
+      } else if (state.repeatMode == VideoRepeatMode.all) {
         prevIndex = state.items.length - 1;
       } else {
         return null;
@@ -173,7 +173,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
 
     int nextIndex;
 
-    if (state.repeatMode == RepeatMode.one) {
+    if (state.repeatMode == VideoRepeatMode.one) {
       return state.currentItem;
     }
 
@@ -181,7 +181,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
       final currentShuffleIndex = _shuffleOrder!.indexOf(state.currentIndex);
       if (currentShuffleIndex < _shuffleOrder!.length - 1) {
         nextIndex = _shuffleOrder![currentShuffleIndex + 1];
-      } else if (state.repeatMode == RepeatMode.all) {
+      } else if (state.repeatMode == VideoRepeatMode.all) {
         nextIndex = _shuffleOrder![0];
       } else {
         return null;
@@ -189,7 +189,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
     } else {
       if (state.currentIndex < state.items.length - 1) {
         nextIndex = state.currentIndex + 1;
-      } else if (state.repeatMode == RepeatMode.all) {
+      } else if (state.repeatMode == VideoRepeatMode.all) {
         nextIndex = 0;
       } else {
         return null;
@@ -202,15 +202,15 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
   /// 切换重复模式
   void toggleRepeatMode() {
     final nextMode = switch (state.repeatMode) {
-      RepeatMode.none => RepeatMode.all,
-      RepeatMode.all => RepeatMode.one,
-      RepeatMode.one => RepeatMode.none,
+      VideoRepeatMode.none => VideoRepeatMode.all,
+      VideoRepeatMode.all => VideoRepeatMode.one,
+      VideoRepeatMode.one => VideoRepeatMode.none,
     };
     state = state.copyWith(repeatMode: nextMode);
   }
 
   /// 设置重复模式
-  void setRepeatMode(RepeatMode mode) {
+  void setRepeatMode(VideoRepeatMode mode) {
     state = state.copyWith(repeatMode: mode);
   }
 

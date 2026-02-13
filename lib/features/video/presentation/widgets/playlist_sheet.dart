@@ -135,7 +135,7 @@ class _PlaylistPanelState extends ConsumerState<_PlaylistPanel>
                                   onPressed: playlistNotifier.toggleRepeatMode,
                                   icon: Icon(
                                     _getRepeatIcon(playlist.repeatMode),
-                                    color: playlist.repeatMode != RepeatMode.none
+                                    color: playlist.repeatMode != VideoRepeatMode.none
                                         ? Colors.white
                                         : Colors.white54,
                                   ),
@@ -237,16 +237,16 @@ class _PlaylistPanelState extends ConsumerState<_PlaylistPanel>
         ),
       );
 
-  IconData _getRepeatIcon(RepeatMode mode) => switch (mode) {
-        RepeatMode.none => Icons.repeat_rounded,
-        RepeatMode.all => Icons.repeat_rounded,
-        RepeatMode.one => Icons.repeat_one_rounded,
+  IconData _getRepeatIcon(VideoRepeatMode mode) => switch (mode) {
+        VideoRepeatMode.none => Icons.repeat_rounded,
+        VideoRepeatMode.all => Icons.repeat_rounded,
+        VideoRepeatMode.one => Icons.repeat_one_rounded,
       };
 
-  String _getRepeatTooltip(RepeatMode mode) => switch (mode) {
-        RepeatMode.none => '列表循环',
-        RepeatMode.all => '单曲循环',
-        RepeatMode.one => '关闭循环',
+  String _getRepeatTooltip(VideoRepeatMode mode) => switch (mode) {
+        VideoRepeatMode.none => '列表循环',
+        VideoRepeatMode.all => '单曲循环',
+        VideoRepeatMode.one => '关闭循环',
       };
 }
 

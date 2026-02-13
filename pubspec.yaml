@@ -26,7 +26,7 @@ dependencies:
 
   # Network
   dio: ^5.8.0+1
-  retrofit: ^4.4.2
+  retrofit: ">=4.4.2 <4.9.0"
   connectivity_plus: ^6.1.1
 
   # Local Storage
@@ -187,7 +187,7 @@ dev_dependencies:
   freezed: ^2.5.8
   json_serializable: ^6.9.4
   riverpod_generator: ^2.6.4
-  retrofit_generator: ^9.1.10
+  retrofit_generator: ^9.2.0
   injectable_generator: ^2.6.3
   hive_ce_generator: ^1.7.0
 

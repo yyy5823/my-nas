@@ -508,7 +508,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     final playlist = _ref.read(playlistProvider);
 
     // 检查单曲循环
-    if (playlist.repeatMode == RepeatMode.one && _currentVideo != null) {
+    if (playlist.repeatMode == VideoRepeatMode.one && _currentVideo != null) {
       await play(_currentVideo!, startPosition: Duration.zero);
       return;
     }
