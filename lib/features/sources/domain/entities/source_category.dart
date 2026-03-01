@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/core/config/store_config.dart';
 
 /// 源分组类型
 ///
@@ -32,6 +33,15 @@ enum SourceCategory {
   /// 是否为存储类源分组（包括媒体服务器）
   bool get isStorageCategory => !isServiceCategory;
 
+  /// 在当前构建版本中是否可见（Store 版本隐藏敏感分类）
+  bool get isVisibleInCurrentBuild => switch (this) {
+        downloadTools => StoreConfig.showDownloaders,
+        ptSites => StoreConfig.showPTSites,
+        mediaManagement => StoreConfig.showMediaManagement,
+        mediaTracking => StoreConfig.showMediaTracking,
+        _ => true,
+      };
+
   /// 获取分组的描述文本
   String get description => switch (this) {
         nasDevices => '连接到 NAS 设备，访问存储的媒体文件',
@@ -56,12 +66,12 @@ extension SourceCategoryExtension on SourceCategory {
         SourceCategory.mediaServers,
       ];
 
-  /// 获取分组下的所有服务类分组
+  /// 获取分组下的所有服务类分组（自动根据 Store 版本过滤）
   static List<SourceCategory> get serviceCategories => [
         SourceCategory.downloadTools,
         SourceCategory.mediaTracking,
         SourceCategory.mediaManagement,
         SourceCategory.ptSites,
         SourceCategory.subtitleSites,
-      ];
+      ].where((c) => c.isVisibleInCurrentBuild).toList();
 }

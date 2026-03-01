@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:my_nas/core/config/store_config.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:uuid/uuid.dart';
 
@@ -84,39 +85,44 @@ enum SourceType {
         SourceType.opensubtitles => 443,
       };
 
-  /// 该源类型是否已实现
-  bool get isSupported => switch (this) {
-        // NAS 设备
-        SourceType.synology => true,
-        SourceType.ugreen => false, // 绿联 API 系逆向工程获得，暂不开放
-        SourceType.fnos => false, // 飞牛OS暂未提供API
-        SourceType.qnap => true,
-        // 通用协议
-        SourceType.webdav => true,
-        SourceType.smb => true,
-        SourceType.ftp => true,
-        SourceType.sftp => true,
-        SourceType.nfs => true,
-        SourceType.upnp => true,
-        // 本地存储
-        SourceType.local => true,
-        // 下载工具
-        SourceType.qbittorrent => true,
-        SourceType.transmission => true,
-        SourceType.aria2 => true,
-        // 媒体追踪
-        SourceType.trakt => true,
-        // 媒体管理
-        SourceType.nastool => true,
-        SourceType.moviepilot => true,
-        SourceType.jellyfin => true,
-        SourceType.emby => true,
-        SourceType.plex => true,
-        // PT 站点
-        SourceType.ptSite => true,
-        // 字幕站点
-        SourceType.opensubtitles => true,
-      };
+  /// 该源类型是否已实现（在 Store 版本中自动隐藏敏感类型）
+  bool get isSupported {
+    // Store 版本：隐藏敏感源类型
+    if (!category.isVisibleInCurrentBuild) return false;
+
+    return switch (this) {
+      // NAS 设备
+      SourceType.synology => true,
+      SourceType.ugreen => false, // 绿联 API 系逆向工程获得，暂不开放
+      SourceType.fnos => false, // 飞牛OS暂未提供API
+      SourceType.qnap => true,
+      // 通用协议
+      SourceType.webdav => true,
+      SourceType.smb => true,
+      SourceType.ftp => true,
+      SourceType.sftp => true,
+      SourceType.nfs => true,
+      SourceType.upnp => true,
+      // 本地存储
+      SourceType.local => true,
+      // 下载工具
+      SourceType.qbittorrent => true,
+      SourceType.transmission => true,
+      SourceType.aria2 => true,
+      // 媒体追踪
+      SourceType.trakt => true,
+      // 媒体管理
+      SourceType.nastool => true,
+      SourceType.moviepilot => true,
+      SourceType.jellyfin => true,
+      SourceType.emby => true,
+      SourceType.plex => true,
+      // PT 站点
+      SourceType.ptSite => true,
+      // 字幕站点
+      SourceType.opensubtitles => true,
+    };
+  }
 
   /// 获取源类型所属的分组
   SourceCategory get category => switch (this) {

@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:my_nas/core/config/store_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
@@ -117,12 +118,12 @@ class MinePage extends ConsumerWidget {
                     _SubtitleSourcesTile(isDark: isDark),
                     _buildDivider(isDark),
                     _LanguagePreferenceTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _MediaTrackingTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _MediaManagementTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _DownloaderTile(isDark: isDark),
+                    if (StoreConfig.showMediaTracking) ...[_buildDivider(isDark),
+                    _MediaTrackingTile(isDark: isDark)],
+                    if (StoreConfig.showMediaManagement) ...[_buildDivider(isDark),
+                    _MediaManagementTile(isDark: isDark)],
+                    if (StoreConfig.showDownloaders) ...[_buildDivider(isDark),
+                    _DownloaderTile(isDark: isDark)],
                     _buildDivider(isDark),
                     _LiveStreamingTile(isDark: isDark),
                   ],
@@ -165,12 +166,13 @@ class MinePage extends ConsumerWidget {
                   isDark,
                   uiStyle,
                   children: [
-                    _BookSourcesTile(isDark: isDark),
-                    _buildDivider(isDark),
+                    if (StoreConfig.showBookSources) ...[_BookSourcesTile(isDark: isDark),
+                    _buildDivider(isDark)],
                     _BookSettingsTile(isDark: isDark),
                   ],
                 ),
 
+                if (StoreConfig.showPTSites) ...[
                 const SizedBox(height: AppSpacing.lg),
 
                 // 站点
@@ -184,6 +186,7 @@ class MinePage extends ConsumerWidget {
                     _PTSitesTile(isDark: isDark),
                   ],
                 ),
+                ],
 
                 const SizedBox(height: AppSpacing.lg),
 
