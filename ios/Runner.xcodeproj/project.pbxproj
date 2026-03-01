@@ -785,7 +785,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
@@ -811,7 +810,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 55B3B65F3487E3B48D3D4B08 /* Pods-RunnerTests.debug.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -832,7 +830,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 1A1554027CCBB842A33D14E5 /* Pods-RunnerTests.release.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -851,7 +848,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 527E7BDF4DAA156988EA3AC8 /* Pods-RunnerTests.profile.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -869,7 +865,6 @@
 		653E4F142EE3AF790080E2C6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
@@ -915,7 +910,6 @@
 		653E4F152EE3AF790080E2C6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
@@ -958,7 +952,6 @@
 		653E4F162EE3AF790080E2C6 /* Profile */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
@@ -1002,7 +995,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
@@ -1049,7 +1041,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
@@ -1093,7 +1084,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
@@ -1252,7 +1242,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
@@ -1279,7 +1268,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
-				"\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\"" = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;

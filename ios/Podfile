@@ -49,9 +49,6 @@ post_install do |installer|
       config.build_settings['CODE_SIGNING_REQUIRED'] = 'YES'
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'YES'
       config.build_settings['DEVELOPMENT_TEAM'] = '2U97K3U27A'
-
-      # 排除模拟器 arm64 架构，修复 MLImage 等预编译框架的链接错误
-      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
     end
   end
 

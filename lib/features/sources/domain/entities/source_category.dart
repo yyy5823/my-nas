@@ -12,10 +12,10 @@ enum SourceCategory {
   mediaServers('媒体服务器', 'media_servers', Icons.live_tv),
 
   // === 服务类源 ===
-  downloadTools('下载工具', 'download_tools', Icons.download),
+  downloadTools('远程任务', 'download_tools', Icons.download),
   mediaTracking('媒体追踪', 'media_tracking', Icons.track_changes),
   mediaManagement('媒体管理', 'media_management', Icons.construction),
-  ptSites('PT站点', 'pt_sites', Icons.rss_feed),
+  ptSites('资源站点', 'pt_sites', Icons.rss_feed),
   subtitleSites('字幕站点', 'subtitle_sites', Icons.subtitles);
 
   const SourceCategory(this.displayName, this.id, this.icon);
@@ -51,7 +51,7 @@ enum SourceCategory {
         downloadTools => '管理下载任务和种子',
         mediaTracking => '追踪观看记录和媒体状态',
         mediaManagement => '自动化管理媒体库和订阅',
-        ptSites => '连接 PT 站点获取资源',
+        ptSites => '连接资源站点获取内容',
         subtitleSites => '配置字幕下载站点',
       };
 }

@@ -14,6 +14,6 @@ class PTSitesListPage extends StatelessWidget {
     category: SourceCategory.ptSites,
     emptyIcon: Icons.rss_feed_rounded,
     emptyTitle: '尚未添加站点',
-    emptySubtitle: '添加 PT 站点来订阅和下载资源\n目前支持馒头 M-Team',
+    emptySubtitle: '添加资源站点来订阅和下载内容',
   );
 }

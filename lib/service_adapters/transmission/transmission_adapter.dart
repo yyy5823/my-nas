@@ -19,7 +19,7 @@ class TransmissionAdapter implements ServiceAdapter {
         version: _api?.version != null && _api?.rpcVersion != null
             ? '${_api!.version} (RPC: ${_api!.rpcVersion})'
             : _api?.version,
-        description: '轻量级 BT 下载客户端',
+        description: '轻量级远程下载客户端',
       );
 
   @override

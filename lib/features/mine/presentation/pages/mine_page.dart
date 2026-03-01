@@ -5,10 +5,10 @@ import 'package:my_nas/core/config/store_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
-import 'package:my_nas/app/theme/color_scheme_preset.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/shared/widgets/adaptive_glass_container.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/mine/presentation/pages/appearance_settings_page.dart';
 import 'package:my_nas/features/downloader/presentation/pages/downloader_list_page.dart';
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
 import 'package:my_nas/features/media_tracking/presentation/pages/media_tracking_list_page.dart';
@@ -35,7 +35,6 @@ import 'package:my_nas/features/video/presentation/pages/video_player_settings_p
 import 'package:my_nas/features/video/presentation/providers/live_stream_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
-import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -45,8 +44,6 @@ class MinePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
-    final colorPreset = ref.watch(colorSchemePresetProvider);
     final uiStyle = ref.watch(uiStyleProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final connections = ref.watch(activeConnectionsProvider);
@@ -208,31 +205,16 @@ class MinePage extends ConsumerWidget {
                     _buildSettingsTile(
                       context,
                       isDark,
-                      icon: Icons.brightness_6_rounded,
+                      icon: Icons.palette_rounded,
                       iconColor: Theme.of(context).colorScheme.primary,
-                      title: '主题模式',
-                      subtitle: _getThemeModeText(themeMode),
-                      onTap: () => _showThemeModeDialog(context, ref, themeMode, isDark),
-                    ),
-                    _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.color_lens_rounded,
-                      iconColor: Theme.of(context).colorScheme.primary,
-                      title: '配色方案',
-                      subtitle: colorPreset.name,
-                      onTap: () => _showColorSchemeDialog(context, ref, colorPreset, isDark),
-                    ),
-                    _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: uiStyle.icon,
-                      iconColor: AppColors.accent,
-                      title: 'UI 风格',
-                      subtitle: uiStyle.label,
-                      onTap: () => _showUIStyleDialog(context, ref, uiStyle, isDark),
+                      title: '外观设置',
+                      subtitle: '主题、配色、UI 风格',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AppearanceSettingsPage(),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -626,476 +608,8 @@ class MinePage extends ConsumerWidget {
           '完整的开源许可证信息请查看下方列表。',
     );
   }
-
-  String _getThemeModeText(ThemeMode mode) => switch (mode) {
-        ThemeMode.system => '跟随系统',
-        ThemeMode.light => '浅色模式',
-        ThemeMode.dark => '深色模式',
-      };
-
-  void _showThemeModeDialog(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeMode currentMode,
-    bool isDark,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.darkSurface.withValues(alpha: 0.95)
-                  : AppColors.lightSurface.withValues(alpha: 0.98),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 12),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                          : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Text(
-                      '选择主题',
-                      style: context.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                      ),
-                    ),
-                  ),
-                  for (final mode in ThemeMode.values)
-                    _buildThemeOption(context, ref, mode, currentMode, isDark),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showUIStyleDialog(
-    BuildContext context,
-    WidgetRef ref,
-    UIStyle currentStyle,
-    bool isDark,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.darkSurface.withValues(alpha: 0.95)
-                  : AppColors.lightSurface.withValues(alpha: 0.98),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 12),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                          : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Text(
-                      '选择 UI 风格',
-                      style: context.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                      ),
-                    ),
-                  ),
-                  for (final style in UIStyle.values)
-                    _buildUIStyleOption(context, ref, style, currentStyle, isDark),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUIStyleOption(
-    BuildContext context,
-    WidgetRef ref,
-    UIStyle style,
-    UIStyle currentStyle,
-    bool isDark,
-  ) {
-    final isSelected = style == currentStyle;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          ref.read(uiStyleProvider.notifier).setStyle(style);
-          Navigator.pop(context);
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.primary.withValues(alpha: 0.15)
-                      : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant)
-                          .withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  style.icon,
-                  color: isSelected
-                      ? AppColors.primary
-                      : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Text(
-                  style.label,
-                  style: context.textTheme.bodyLarge?.copyWith(
-                    color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ),
-              if (isSelected)
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: AppColors.primaryGradient,
-                  ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildThemeOption(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeMode mode,
-    ThemeMode currentMode,
-    bool isDark,
-  ) {
-    final isSelected = mode == currentMode;
-    final icon = switch (mode) {
-      ThemeMode.system => Icons.brightness_auto_rounded,
-      ThemeMode.light => Icons.light_mode_rounded,
-      ThemeMode.dark => Icons.dark_mode_rounded,
-    };
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          ref.read(themeModeProvider.notifier).setThemeMode(mode);
-          Navigator.pop(context);
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.primary.withValues(alpha: 0.15)
-                      : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant)
-                          .withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  color: isSelected
-                      ? AppColors.primary
-                      : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Text(
-                  _getThemeModeText(mode),
-                  style: context.textTheme.bodyLarge?.copyWith(
-                    color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ),
-              if (isSelected)
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: AppColors.primaryGradient,
-                  ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showColorSchemeDialog(
-    BuildContext context,
-    WidgetRef ref,
-    ColorSchemePreset currentPreset,
-    bool isDark,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.9,
-        expand: false, // 关键：设为 false 使点击外部可关闭
-        builder: (context, scrollController) => ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: isDark
-                    ? AppColors.darkSurface.withValues(alpha: 0.95)
-                    : AppColors.lightSurface.withValues(alpha: 0.98),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 12),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                          : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Text(
-                      '选择配色方案',
-                      style: context.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GridView.builder(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: 1.3,
-                        crossAxisSpacing: AppSpacing.md,
-                        mainAxisSpacing: AppSpacing.md,
-                      ),
-                      itemCount: ColorSchemePresets.all.length,
-                      itemBuilder: (context, index) {
-                        final preset = ColorSchemePresets.all[index];
-                        final isSelected = currentPreset.id == preset.id;
-                        return _buildColorSchemeCard(
-                          context,
-                          ref,
-                          preset,
-                          isSelected,
-                          isDark,
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildColorSchemeCard(
-    BuildContext context,
-    WidgetRef ref,
-    ColorSchemePreset preset,
-    bool isSelected,
-    bool isDark,
-  ) => Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          ref.read(colorSchemePresetProvider.notifier).setPreset(preset);
-          Navigator.pop(context);
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-                : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? preset.primary : Colors.transparent,
-              width: 2,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // 颜色预览圆点
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildColorDot(preset.primary, 20),
-                  const SizedBox(width: 6),
-                  _buildColorDot(preset.secondary, 16),
-                  const SizedBox(width: 6),
-                  _buildColorDot(preset.accent, 14),
-                  const SizedBox(width: 6),
-                  _buildColorDot(preset.darkBackground, 12),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                preset.name,
-                style: context.textTheme.titleSmall?.copyWith(
-                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                child: Text(
-                  preset.description,
-                  style: context.textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : AppColors.lightOnSurfaceVariant,
-                    fontSize: 10,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (isSelected) ...[
-                const SizedBox(height: AppSpacing.xs),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: preset.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_rounded, size: 12, color: preset.primary),
-                      const SizedBox(width: 2),
-                      Text(
-                        '当前',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: preset.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-
-  Widget _buildColorDot(Color color, double size) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-      );
 }
+
 
 /// 版本号组件
 class _VersionTile extends StatefulWidget {
@@ -2005,7 +1519,7 @@ class _DownloaderTile extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '下载器',
+                      '远程任务',
                       style: context.textTheme.bodyLarge?.copyWith(
                         color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
                         fontWeight: FontWeight.w500,
@@ -2013,7 +1527,7 @@ class _DownloaderTile extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '管理 qBittorrent、Transmission 等下载工具',
+                      '管理远程下载任务和服务',
                       style: context.textTheme.bodySmall?.copyWith(
                         color: isDark
                             ? AppColors.darkOnSurfaceVariant
@@ -2197,7 +1711,7 @@ class _PTSitesTile extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'PT 站点',
+                      '资源站点',
                       style: context.textTheme.bodyLarge?.copyWith(
                         color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
                         fontWeight: FontWeight.w500,
@@ -2205,7 +1719,7 @@ class _PTSitesTile extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '管理馒头等 PT 站点连接',
+                      '管理资源站点连接',
                       style: context.textTheme.bodySmall?.copyWith(
                         color: isDark
                             ? AppColors.darkOnSurfaceVariant

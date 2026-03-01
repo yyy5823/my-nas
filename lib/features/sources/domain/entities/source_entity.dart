@@ -43,7 +43,7 @@ enum SourceType {
   emby('Emby', 'emby'),
   plex('Plex', 'plex'),
   // PT 站点（通用类型，用户自行配置）
-  ptSite('PT 站点', 'pt_site'),
+  ptSite('资源站点', 'pt_site'),
   // 字幕站点
   opensubtitles('OpenSubtitles', 'opensubtitles');
 
@@ -284,9 +284,9 @@ enum SourceType {
         // 本地存储
         SourceType.local => '本机存储，手机端自动获取系统媒体库',
         // 下载工具
-        SourceType.qbittorrent => '开源 BT 下载客户端',
-        SourceType.transmission => '轻量级 BT 下载客户端',
-        SourceType.aria2 => '多协议下载工具',
+        SourceType.qbittorrent => '开源远程下载客户端',
+        SourceType.transmission => '轻量级远程下载客户端',
+        SourceType.aria2 => '多协议下载客户端',
         // 媒体追踪
         SourceType.trakt => '追踪观看记录和媒体状态',
         // 媒体管理
@@ -296,7 +296,7 @@ enum SourceType {
         SourceType.emby => '媒体服务器',
         SourceType.plex => '媒体服务器',
         // PT 站点
-        SourceType.ptSite => '自定义 PT 站点',
+        SourceType.ptSite => '自定义资源站点',
         // 字幕站点
         SourceType.opensubtitles => '全球最大的字幕数据库',
       };

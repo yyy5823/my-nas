@@ -17,7 +17,7 @@ class Aria2Adapter implements ServiceAdapter {
         name: 'Aria2',
         type: SourceType.aria2,
         version: _api?.version,
-        description: '多协议下载工具',
+        description: '多协议下载客户端',
       );
 
   @override
