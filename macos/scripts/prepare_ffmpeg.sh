@@ -85,13 +85,32 @@ if [ -f "$FFMPEG_SRC" ]; then
     chmod +x "$FFMPEG_DST"
 
     # Sign with ad-hoc signature for local development
-    # For release builds, use proper code signing
+    # For release builds, use proper code signing with sandbox entitlements
+    FFMPEG_ENTITLEMENTS="${MACOS_DIR}/Runner/Resources/ffmpeg/ffmpeg.entitlements"
     if [ "$CONFIGURATION" = "Debug" ]; then
         codesign --force --sign - "$FFMPEG_DST" 2>/dev/null || true
         log_info "FFmpeg copied and signed (ad-hoc)"
     else
-        # For Release/Profile, let Xcode handle signing
-        log_info "FFmpeg copied (signing handled by Xcode)"
+        # For Release/Profile, sign with the same identity as the app
+        # and include sandbox entitlements
+        if [ -f "$FFMPEG_ENTITLEMENTS" ]; then
+            SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY}"
+            if [ -z "$SIGN_IDENTITY" ]; then
+                SIGN_IDENTITY="${CODE_SIGN_IDENTITY}"
+            fi
+            if [ -z "$SIGN_IDENTITY" ] || [ "$SIGN_IDENTITY" = "-" ]; then
+                SIGN_IDENTITY="-"
+            fi
+            log_info "Signing FFmpeg with identity: $SIGN_IDENTITY"
+            codesign --force --sign "$SIGN_IDENTITY" \
+                --entitlements "$FFMPEG_ENTITLEMENTS" \
+                --options runtime \
+                "$FFMPEG_DST"
+            log_info "FFmpeg copied and signed with sandbox entitlements"
+        else
+            log_warn "FFmpeg entitlements not found, using ad-hoc signing"
+            codesign --force --sign - "$FFMPEG_DST" 2>/dev/null || true
+        fi
     fi
 else
     log_error "FFmpeg still not available after download attempt"
