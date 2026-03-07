@@ -133,16 +133,7 @@ class AppError {
     // 显示用户友好的提示
     if (showSnackBar && context.mounted) {
       final userMessage = message ?? getUserFriendlyMessage(error);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(userMessage),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: '关闭',
-            onPressed: () {},
-          ),
-        ),
-      );
+      context.showErrorSnackBar(userMessage);
     }
   }
 

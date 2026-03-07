@@ -2034,18 +2034,7 @@ class _SpeedLimitSheetState extends ConsumerState<_SpeedLimitSheet> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Text('速度限制已保存'),
-              ],
-            ),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        context.showSuccessSnackBar('速度限制已保存');
       }
     } finally {
       if (mounted) {
@@ -2430,20 +2419,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Text('任务已添加'),
-              ],
-            ),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        context.showSuccessSnackBar('任务已添加');
       }
     } on Exception catch (e) {
       if (mounted) {

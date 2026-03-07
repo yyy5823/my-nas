@@ -1389,20 +1389,11 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(result.isDuplicate ? Icons.info : Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text(result.isDuplicate ? '任务已存在' : '任务已添加'),
-              ],
-            ),
-            backgroundColor: result.isDuplicate ? AppColors.warning : AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        if (result.isDuplicate) {
+          context.showWarningSnackBar('任务已存在');
+        } else {
+          context.showSuccessSnackBar('任务已添加');
+        }
       }
     } on Exception catch (e) {
       if (mounted) {

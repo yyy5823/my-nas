@@ -529,11 +529,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage>
       await _loadDuplicates();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已删除 $deleted 张照片${failed > 0 ? '，$failed 张失败' : ''}'),
-          ),
-        );
+        context.showSnackBar('已删除 $deleted 张照片${failed > 0 ? '，$failed 张失败' : ''}');
       }
     } on Exception catch (e) {
       setState(() {

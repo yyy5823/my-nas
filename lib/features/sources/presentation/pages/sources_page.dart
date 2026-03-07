@@ -766,12 +766,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
         }
       } on Exception catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('删除失败: $e'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          context.showErrorSnackBar('删除失败: $e');
         }
       }
     }

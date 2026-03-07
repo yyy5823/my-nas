@@ -1161,14 +1161,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
     );
 
     if (task != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('已添加到缓存队列'),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: '查看',
-            onPressed: () => showTransferCache(context),
-          ),
+      context.showSnackBar(
+        '已添加到缓存队列',
+        action: SnackBarAction(
+          label: '查看',
+          onPressed: () => showTransferCache(context),
         ),
       );
     }

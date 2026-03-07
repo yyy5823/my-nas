@@ -938,9 +938,7 @@ class _MediaTypeTab extends ConsumerWidget {
               .addPath(mediaType, newPath);
           if (context.mounted) {
             Navigator.pop(context);
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('已添加目录: $path，正在扫描...')));
+            context.showSnackBar('已添加目录: $path，正在扫描...');
 
             // 添加后自动扫描该路径
             _autoScanPath(ref, mediaType, newPath, connections);
