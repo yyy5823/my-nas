@@ -42,6 +42,34 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // 设置全局错误 Widget（只需设置一次）
+    ErrorWidget.builder = (details) {
+      logger.e('Flutter Error: ${details.exception}', details.exception, details.stack);
+      return Material(
+        child: Container(
+          color: Colors.red.shade100,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 16),
+              const Text(
+                '发生错误',
+                style: TextStyle(fontSize: 20, color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                details.exception.toString(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    };
   }
 
   @override
@@ -223,34 +251,6 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
       routerConfig: appRouter,
       // 添加 builder 来处理全局错误边界
       builder: (context, child) {
-        // 使用 ErrorWidget.builder 自定义错误显示
-        ErrorWidget.builder = (details) {
-          logger.e('Flutter Error: ${details.exception}', details.exception, details.stack);
-          return Material(
-            child: Container(
-              color: Colors.red.shade100,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text(
-                    '发生错误',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.red),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    details.exception.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          );
-        };
-
         // 包装 ToastServiceProvider 和 ToastOverlay
         return ToastServiceProvider(
           service: _toastService,

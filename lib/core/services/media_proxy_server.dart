@@ -20,6 +20,9 @@ class MediaProxyServer {
   HttpServer? _server;
   int _port = 0;
 
+  /// 递增 ID 计数器（避免并发注册时的碰撞）
+  int _nextId = 0;
+
   /// 当前代理的文件信息
   final Map<String, _ProxyFileInfo> _proxyFiles = {};
 
@@ -81,7 +84,7 @@ class MediaProxyServer {
     }
 
     // 生成唯一标识
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    final id = (_nextId++).toString();
 
     _proxyFiles[id] = _ProxyFileInfo(
       sourceId: sourceId,

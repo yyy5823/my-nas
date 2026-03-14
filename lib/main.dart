@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
@@ -287,15 +288,7 @@ Future<void> _loadTmdbApiKey() async {
 /// 解析语言偏好 JSON 字符串
 LanguagePreference? _parseLanguagePreference(String jsonStr) {
   try {
-    final result = <String, dynamic>{};
-    final content = jsonStr.replaceAll('{', '').replaceAll('}', '');
-    for (final pair in content.split(',')) {
-      final colonIndex = pair.indexOf(':');
-      if (colonIndex == -1) continue;
-      final key = pair.substring(0, colonIndex).trim().replaceAll('"', '');
-      final value = pair.substring(colonIndex + 1).trim().replaceAll('"', '');
-      result[key] = value;
-    }
+    final result = jsonDecode(jsonStr) as Map<String, dynamic>;
     return result.isNotEmpty ? LanguagePreference.fromJson(result) : null;
   } on Exception catch (_) {
     return null;

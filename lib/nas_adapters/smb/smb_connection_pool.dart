@@ -29,14 +29,14 @@ class DedicatedConnection {
   DedicatedConnection._({
     required this.client,
     required this.heartbeatConfig,
-    required void Function() onRelease,
+    required Future<void> Function() onRelease,
     void Function()? onDisconnect,
   })  : _onRelease = onRelease,
         _onDisconnect = onDisconnect;
 
   final SmbConnect client;
   final HeartbeatConfig heartbeatConfig;
-  final void Function() _onRelease;
+  final Future<void> Function() _onRelease;
   final void Function()? _onDisconnect;
 
   Timer? _heartbeatTimer;
@@ -101,7 +101,7 @@ class DedicatedConnection {
       logger.w('SMB DedicatedConnection: 关闭连接失败', e, st);
     }
 
-    _onRelease();
+    await _onRelease();
   }
 }
 
@@ -265,13 +265,16 @@ class SmbConnectionPool {
 
   /// 释放连接
   void release(SmbConnect client) {
-    _connections
-        .firstWhere(
-          (c) => c.client == client,
-          orElse: () => throw StateError('连接不在池中'),
-        )
-        .release();
-    // logger.d('SMB Pool: 释放连接 (活跃: $activeConnectionCount/$connectionCount)');
+    final conn = _connections.cast<_PooledConnection?>().firstWhere(
+          (c) => c?.client == client,
+          orElse: () => null,
+        );
+    if (conn != null) {
+      conn.release();
+    } else {
+      // 连接可能已被心跳检查移除，静默处理
+      logger.d('SMB Pool: 释放连接时未找到匹配项（可能已被心跳清理）');
+    }
   }
 
   /// 使用连接执行操作
@@ -453,7 +456,7 @@ class SmbConnectionPool {
   ///
   /// 返回值包含连接和释放回调，调用者必须在完成后调用 releaseCallback
   @Deprecated('使用 createDedicatedConnectionWithHeartbeat 代替，支持心跳保活')
-  Future<({SmbConnect client, void Function() releaseCallback})>
+  Future<({SmbConnect client, Future<void> Function() releaseCallback})>
       createDedicatedConnection() async {
     // 等待连接槽位
     await _waitForDedicatedSlot();
@@ -473,7 +476,7 @@ class SmbConnectionPool {
     // ignore: avoid_catches_without_on_clauses
     } catch (e, st) {
       // 创建失败，释放槽位并上报错误
-      _releaseDedicatedSlot();
+      await _releaseDedicatedSlot();
       AppError.handle(e, st, 'SmbPool.createDedicatedConnection', {
         'host': host,
         'currentCount': _dedicatedConnectionCount,
@@ -536,7 +539,7 @@ class SmbConnectionPool {
     // ignore: avoid_catches_without_on_clauses
     } catch (e, st) {
       // 创建失败，释放槽位并上报错误
-      _releaseDedicatedSlot();
+      await _releaseDedicatedSlot();
       AppError.handle(e, st, 'SmbPool.createDedicatedConnectionWithHeartbeat', {
         'host': host,
         'currentCount': _dedicatedConnectionCount,
@@ -569,10 +572,8 @@ class SmbConnectionPool {
   }
 
   /// 释放专用连接槽位
-  void _releaseDedicatedSlot() {
-    // 使用同步方式更新计数，避免竞态条件
-    // ignore: discarded_futures
-    _dedicatedLock.synchronized(() async {
+  Future<void> _releaseDedicatedSlot() {
+    return _dedicatedLock.synchronized(() async {
       _dedicatedConnectionCount--;
       logger.d('SMB Pool: 释放专用连接槽位 ($_dedicatedConnectionCount/$maxDedicatedConnections)');
     });
@@ -592,7 +593,7 @@ class SmbConnectionPool {
           await conn.client.close();
         // ignore: avoid_catches_without_on_clauses
         } catch (e, st) {
-          AppError.ignore(e, StackTrace.current, 'SMB Pool: 关闭连接失败, $e $st');
+          AppError.ignore(e, st, 'SMB Pool: 关闭连接失败');
         }
       }
       _connections.clear();
@@ -602,22 +603,17 @@ class SmbConnectionPool {
   }
 }
 
-/// 简单的异步锁
+/// 异步互斥锁
+///
+/// 使用链式排队保证互斥性：每个 synchronized 调用都等待前一个完成后再执行。
+/// 解决了原实现中多个协程可能同时通过 while 检查进入临界区的竞态条件。
 class _AsyncLock {
-  Completer<void>? _completer;
+  Future<void> _chain = Future.value();
 
-  Future<T> synchronized<T>(Future<T> Function() action) async {
-    while (_completer != null) {
-      await _completer!.future;
-    }
-
-    _completer = Completer<void>();
-    try {
-      return await action();
-    } finally {
-      final completer = _completer;
-      _completer = null;
-      completer?.complete();
-    }
+  Future<T> synchronized<T>(Future<T> Function() action) {
+    final prev = _chain;
+    final completer = Completer<void>();
+    _chain = completer.future;
+    return prev.then((_) => action()).whenComplete(completer.complete);
   }
 }
