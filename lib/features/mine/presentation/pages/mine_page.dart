@@ -230,9 +230,8 @@ class MinePage extends ConsumerWidget {
                   uiStyle,
                   children: [
                     _VersionTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    CheckUpdateTile(isDark: isDark),
-                    _buildDivider(isDark),
+                    if (StoreConfig.showUpdateCheck) ...[_buildDivider(isDark),
+                    CheckUpdateTile(isDark: isDark)],
                     _buildSettingsTile(
                       context,
                       isDark,

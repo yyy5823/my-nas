@@ -31,4 +31,7 @@ class StoreConfig {
 
   /// 媒体追踪 (Trakt) — 低风险，保留
   static bool get showMediaTracking => true;
+
+  /// 应用内更新检查（Mac App Store 禁止自带更新机制）
+  static bool get showUpdateCheck => !isStoreBuild;
 }

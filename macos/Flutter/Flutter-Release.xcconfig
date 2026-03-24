@@ -1,2 +1,7 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 #include "ephemeral/Flutter-Generated.xcconfig"
+
+// App Store 版本：隐藏敏感功能（BT下载器、PT站点等）
+// STORE_BUILD=true 的 base64 编码
+DART_DEFINES=U1RPUkVfQlVJTEQ9dHJ1ZQ==
+
