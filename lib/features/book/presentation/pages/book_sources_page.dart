@@ -547,6 +547,45 @@ class _BookSourceImportSheetState extends State<_BookSourceImportSheet> {
                     ),
                   ),
                 ),
+                // 免责声明
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                  child: Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.warning.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 18,
+                          color: AppColors.warning,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            '本应用仅提供书源解析与浏览能力，不内置、不分发任何书源。'
+                            '导入的书源由用户自行选择，您应确保来源合法、'
+                            '内容不侵犯第三方著作权。本应用不对所导入书源的内容负责。',
+                            style: context.textTheme.bodySmall?.copyWith(
+                              color: isDark
+                                  ? AppColors.darkOnSurfaceVariant
+                                  : AppColors.lightOnSurfaceVariant,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
                 // 切换选项
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -584,7 +623,9 @@ class _BookSourceImportSheetState extends State<_BookSourceImportSheet> {
                     controller: _controller,
                     maxLines: _isUrl ? 1 : 5,
                     decoration: InputDecoration(
-                      hintText: _isUrl ? '输入书源网址' : '粘贴书源 JSON 内容',
+                      hintText: _isUrl
+                          ? '输入第三方书源订阅地址（用户对内容来源负责）'
+                          : '粘贴书源 JSON 内容（用户对内容来源负责）',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

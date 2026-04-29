@@ -6,7 +6,8 @@ import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
-import 'package:my_nas/features/pt_sites/presentation/providers/pt_site_provider.dart';
+import 'package:my_nas/features/pt_sites/presentation/utils/pt_search_launcher.dart';
+import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/opensubtitles_service.dart';
@@ -112,7 +113,52 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage>
 
           // 返回按钮
           _buildBackButton(context, isDark),
+          // PT 搜索按钮（右上角浮动）
+          _buildPtSearchFab(context, isDark),
         ],
+      ),
+    );
+  }
+
+  /// 右上角悬浮的 "在 PT 站搜索本片" 按钮
+  ///
+  /// 用户在浏览自己已有的视频时，可以一键去 PT 站搜素更高画质/补全缺失剧集等。
+  /// 仅在用户已添加任何 PT 站时显示，避免对未配置的用户产生干扰。
+  Widget _buildPtSearchFab(BuildContext context, bool isDark) {
+    final allSources = ref.watch(sourcesProvider).valueOrNull ?? const <SourceEntity>[];
+    final hasPtSite = allSources
+        .any((s) => s.type.category == SourceCategory.ptSites && s.type.isSupported);
+    if (!hasPtSite) return const SizedBox.shrink();
+
+    final safeTop = MediaQuery.of(context).padding.top;
+    final titleGetter = ref.watch(videoTitleGetterProvider);
+    final localized = titleGetter(_selectedMetadata).trim();
+    final rawTitle = (_selectedMetadata.title ?? '').trim();
+    final rawOriginal = (_selectedMetadata.originalTitle ?? '').trim();
+    final searchTitle = localized.isNotEmpty
+        ? localized
+        : (rawTitle.isNotEmpty ? rawTitle : rawOriginal);
+
+    if (searchTitle.isEmpty) return const SizedBox.shrink();
+
+    final yearStr = _selectedMetadata.year?.toString();
+    final query = (yearStr != null && yearStr.isNotEmpty)
+        ? '$searchTitle $yearStr'
+        : searchTitle;
+
+    return Positioned(
+      top: safeTop + 8,
+      right: 12,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.3),
+          shape: BoxShape.circle,
+        ),
+        child: IconButton(
+          icon: const Icon(Icons.cloud_download_outlined, color: Colors.white),
+          tooltip: '在 PT 站搜索本片',
+          onPressed: () => launchPtSearchForMedia(context, ref, query: query),
+        ),
       ),
     );
   }
@@ -2359,10 +2405,14 @@ class _MissingMovieActionSheet extends ConsumerWidget {
   }
 
   void _navigateToPtSite(BuildContext context, WidgetRef ref, SourceEntity source) {
-    ref.read(ptTorrentListProvider(source.id).notifier).setKeyword(title);
+    // 拼接年份能显著提高 PT 站搜索命中率（同名作品多年份重制版常见）
+    final query = (year != null && year!.isNotEmpty) ? '$title $year' : title;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => PTSiteDetailPage(source: source),
+        builder: (context) => PTSiteDetailPage(
+          source: source,
+          initialQuery: query,
+        ),
       ),
     );
   }

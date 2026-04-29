@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/pt_sites/presentation/utils/pt_search_launcher.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
@@ -200,6 +201,7 @@ class _RecommendationCardState extends ConsumerState<_RecommendationCard> {
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
+        onLongPress: () => _showQuickActions(context),
         child: AnimatedScale(
           scale: _isHovered ? 1.05 : 1.0,
           duration: const Duration(milliseconds: 150),
@@ -399,6 +401,46 @@ class _RecommendationCardState extends ConsumerState<_RecommendationCard> {
   }
 
   Color _getRatingColor(double rating) => AppColors.ratingColor(rating);
+
+  /// 长按弹出快捷操作（去 PT 站搜索资源）
+  Future<void> _showQuickActions(BuildContext context) async {
+    final item = widget.item;
+    final title = item.title.trim().isNotEmpty
+        ? item.title.trim()
+        : item.originalTitle.trim();
+    if (title.isEmpty) return;
+
+    final year = item.year;
+    final queryWithYear = year != null ? '$title $year' : title;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.cloud_download_outlined),
+              title: Text('在 PT 站搜索 "$title"'),
+              subtitle: year != null ? Text('包含年份 $year') : null,
+              onTap: () => Navigator.pop(sheetContext, 'searchWithYear'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.search_rounded),
+              title: Text('在 PT 站搜索 "$title"（不含年份）'),
+              onTap: () => Navigator.pop(sheetContext, 'searchTitleOnly'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (!context.mounted || action == null) return;
+
+    final query = action == 'searchWithYear' ? queryWithYear : title;
+    await launchPtSearchForMedia(context, ref, query: query);
+  }
 }
 
 /// 综合推荐区域 (推荐 + 相似)

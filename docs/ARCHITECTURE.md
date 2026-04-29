@@ -1,444 +1,403 @@
 # MyNAS 架构设计文档
 
-## 1. 技术栈选型
+> 最后更新：2026-04-29
+> 反映项目当前实际架构。
+
+## 1. 技术栈
 
 ### 1.1 核心框架
+
 ```
-Flutter 3.x + Dart 3.x
+Flutter 3.x + Dart 3.x（启用 sealed classes / records / pattern matching）
 ```
 
-### 1.2 技术栈全景
+### 1.2 关键依赖
 
-| 层级 | 技术选型 | 说明 |
-|------|----------|------|
-| **UI 框架** | Flutter | 跨平台 UI |
-| **状态管理** | Riverpod 2.x | 响应式、类型安全 |
-| **路由** | go_router | 声明式路由 |
-| **网络请求** | Dio + Retrofit | HTTP 客户端 |
-| **本地存储** | Hive + SQLite | 轻量 KV + 关系型 |
-| **依赖注入** | get_it + injectable | 服务定位器 |
-| **视频播放** | media_kit (libmpv) | 高性能播放器 |
-| **音频播放** | just_audio | 跨平台音频 |
-| **PDF 阅读** | pdfrx | 高性能 PDF |
-| **EPUB 阅读** | epubx + flutter_html | 电子书解析 |
-| **Markdown** | flutter_markdown | 笔记渲染 |
-| **代码生成** | freezed + json_serializable | 数据模型 |
-| **国际化** | flutter_localizations + intl | 多语言 |
+| 层级 | 选型 | 备注 |
+|---|---|---|
+| **UI 框架** | Flutter | iOS/Android/macOS/Windows/Linux |
+| **状态管理** | flutter_riverpod 2.x | 响应式、类型安全 |
+| **路由** | go_router 15.x | 含 deep link / scheme 处理 |
+| **网络请求** | dio 5.x | 自定义 DioClient（含自签证书选择性信任） |
+| **本地存储** | hive_ce + sqflite | KV + 关系型 + AES 加密 box |
+| **凭证存储** | flutter_secure_storage + Hive AES 降级 | 多端密钥管理 |
+| **视频播放** | media_kit 1.2.x (libmpv) | 通过 NativePlayer 调 mpv 属性 |
+| **音频播放** | just_audio + audio_service + media_kit | 多平台 + 后台 + 锁屏 |
+| **下载** | dio + 自研 transfer_service | 断点续传、流式下载 |
+| **PDF 阅读** | pdfrx | |
+| **EPUB 阅读** | epubx + flutter_html / WebView 双模式 | |
+| **MOBI/AZW3** | 自研 parser | |
+| **加密** | crypto + pointycastle | sha256 + RSA + AES |
+| **国际化** | flutter_localizations + intl | |
 
 ---
 
 ## 2. 整体架构
 
-### 2.1 分层架构图
+### 2.1 分层
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Presentation Layer                        │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────┐ │
-│  │  Video  │  │  Music  │  │  Comic  │  │  Book   │  │  Note  │ │
-│  │   UI    │  │   UI    │  │   UI    │  │   UI    │  │   UI   │ │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └───┬────┘ │
-│       │            │            │            │            │      │
-│  ┌────┴────────────┴────────────┴────────────┴────────────┴────┐ │
-│  │                    State Management (Riverpod)               │ │
-│  └──────────────────────────────────────────────────────────────┘ │
+│                       Presentation Layer                         │
+│  Pages / Widgets （按 features 切分）                              │
+│  Riverpod Providers / Notifiers / StateNotifiers                 │
 └─────────────────────────────────────────────────────────────────┘
                                   │
 ┌─────────────────────────────────┴───────────────────────────────┐
-│                         Domain Layer                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
-│  │   Entities   │  │  Use Cases   │  │ Repositories │           │
-│  │              │  │              │  │  (Interface) │           │
-│  └──────────────┘  └──────────────┘  └──────────────┘           │
+│                          Domain Layer                            │
+│  Entities / Value Objects（VideoMetadata / BookSource / ...）     │
+│  抽象接口（NasFileSystem / MediaServerAdapter / ServiceAdapter）    │
 └─────────────────────────────────────────────────────────────────┘
                                   │
 ┌─────────────────────────────────┴───────────────────────────────┐
-│                          Data Layer                              │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    Repository Impl                        │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│       │                    │                    │                │
-│  ┌────┴────┐         ┌─────┴─────┐        ┌────┴─────┐         │
-│  │  Remote │         │   Local   │        │  Cache   │         │
-│  │DataSource│        │DataSource │        │ Manager  │         │
-│  └────┬────┘         └─────┬─────┘        └──────────┘         │
-└───────┼────────────────────┼────────────────────────────────────┘
-        │                    │
-┌───────┴────────────────────┴────────────────────────────────────┐
-│                      NAS Adapter Layer                           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-│  │ Synology │  │  UGREEN  │  │  WebDAV  │  │   SMB    │        │
-│  │ Adapter  │  │ Adapter  │  │ Adapter  │  │ Adapter  │        │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
+│                           Data Layer                             │
+│  Services（feature-level 服务）                                    │
+│  Repositories / Local DataSource / Remote DataSource             │
+│  HiveBox / Sqflite / SecureStorage / Cache                       │
+└─────────────────────────────────────────────────────────────────┘
+                                  │
+┌─────────────────────────────────┴───────────────────────────────┐
+│                        Adapter Layer                             │
+│  ┌───────────────┐ ┌────────────────┐ ┌──────────────────┐      │
+│  │ nas_adapters  │ │ media_server   │ │ service_adapters │      │
+│  │ SMB/WebDAV/   │ │ Jellyfin/Emby/ │ │ qBittorrent/     │      │
+│  │ Synology/fnos/│ │ Plex (只读 +   │ │ Transmission/    │      │
+│  │ ugreen/local  │ │ 元数据驱动)    │ │ Aria2/MoviePilot │      │
+│  └───────────────┘ └────────────────┘ └──────────────────┘      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 模块划分
+### 2.2 实际目录
 
 ```
 lib/
-├── app/                          # 应用入口与配置
+├── app/                         # 应用入口、路由、主题
 │   ├── app.dart
 │   ├── router/
 │   └── theme/
 │
-├── core/                         # 核心基础设施
+├── core/                        # 核心基础设施
 │   ├── constants/
-│   ├── errors/
-│   ├── extensions/
-│   ├── network/
-│   ├── storage/
-│   └── utils/
+│   ├── errors/                  # AppError 工具类（统一错误处理）
+│   ├── extensions/              # context_extensions / list_extensions ...
+│   ├── network/                 # DioClient（含自签证书可选）
+│   ├── storage/                 # AuthStorageService（含 Keychain 降级）
+│   ├── utils/                   # logger / hive_utils / platform_capabilities ...
+│   └── widgets/                 # 跨 feature 复用的基础组件
 │
-├── features/                     # 功能模块 (按功能垂直划分)
+├── features/                    # 功能模块（垂直划分）
 │   ├── connection/              # NAS 连接管理
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   │
-│   ├── video/                   # 视频模块
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   │
-│   ├── music/                   # 音乐模块
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   │
-│   ├── comic/                   # 漫画模块
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   │
-│   ├── book/                    # 书籍模块
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   │
-│   ├── note/                    # 笔记模块
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   │
-│   └── tools/                   # 下载工具管理
-│       ├── data/
-│       ├── domain/
-│       └── presentation/
+│   ├── sources/                 # 源管理（NAS / 媒体服务器 / 下载器 / 字幕站统一抽象）
+│   ├── file_browser/            # 文件浏览器
+│   ├── transfer/                # 上传/下载/共享缓存
+│   ├── video/                   # 视频列表/详情/播放/转码/字幕/刮削
+│   ├── music/                   # 音乐列表/播放器/元数据/灵动岛
+│   ├── photo/                   # 相册/人脸识别
+│   ├── comic/                   # 漫画阅读
+│   ├── book/                    # 电子书 + 在线书源（Legado 兼容）
+│   ├── note/                    # 笔记浏览
+│   ├── reading/                 # 阅读进度 + 书签统一服务
+│   ├── pt_sites/                # PT 站爬取/搜索/发送下载器
+│   ├── nastool/                 # NASTool 集成
+│   ├── media_tracking/          # Trakt 等
+│   └── mine/                    # 个人页/设置
 │
-├── shared/                       # 共享组件
+├── shared/                      # 跨 feature 共享
 │   ├── widgets/
 │   ├── providers/
 │   └── services/
 │
-└── nas_adapters/                # NAS 适配器 (解耦层)
+├── nas_adapters/                # NAS 适配器层
+│   ├── base/
+│   │   ├── nas_adapter.dart
+│   │   ├── nas_connection.dart
+│   │   └── nas_file_system.dart
+│   ├── smb/                     # SMB（含连接池 + 心跳 + 客户端 fallback）
+│   ├── webdav/
+│   ├── synology/
+│   ├── fnos/                    # 飞牛 NAS（私有 API）
+│   ├── ugreen/                  # 绿联 NAS（RSA 加密登录）
+│   ├── local/                   # 本地文件系统
+│   └── mobile/                  # 移动端虚拟文件系统（手机本地音乐/相册/文件）
+│
+├── media_server_adapters/       # 媒体服务器适配器
+│   ├── base/
+│   │   ├── media_server_adapter.dart
+│   │   └── media_server_entities.dart
+│   ├── jellyfin/                # Jellyfin (10.8+)
+│   ├── emby/                    # Emby (4.6+)
+│   └── plex/                    # Plex
+│
+└── service_adapters/            # 服务适配器（下载器、刮削器等）
     ├── base/
-    │   ├── nas_adapter.dart     # 抽象接口
-    │   ├── nas_connection.dart
-    │   └── nas_file_system.dart
-    │
-    ├── synology/                # 群晖适配器
-    │   ├── synology_adapter.dart
-    │   ├── api/
-    │   └── models/
-    │
-    ├── ugreen/                  # 绿联适配器
-    │   ├── ugreen_adapter.dart
-    │   ├── api/
-    │   └── models/
-    │
-    └── generic/                 # 通用协议适配器
-        ├── webdav_adapter.dart
-        ├── smb_adapter.dart
-        └── sftp_adapter.dart
+    ├── qbittorrent/
+    ├── transmission/
+    ├── aria2/
+    ├── moviepilot/
+    └── ...
 ```
 
 ---
 
-## 3. 核心设计
+## 3. 核心抽象
 
-### 3.1 NAS 适配器接口设计
+### 3.1 NasFileSystem 接口（实际签名）
 
 ```dart
-/// NAS 适配器抽象接口
-abstract class NasAdapter {
-  /// 适配器信息
-  NasAdapterInfo get info;
-
-  /// 连接管理
-  Future<ConnectionResult> connect(ConnectionConfig config);
-  Future<void> disconnect();
-  bool get isConnected;
-
-  /// 文件系统操作
+abstract class NasFileSystem {
   Future<List<FileItem>> listDirectory(String path);
   Future<FileItem> getFileInfo(String path);
-  Future<Stream<List<int>>> getFileStream(String path, {Range? range});
+
+  /// 流式读，可指定 Range
+  Future<Stream<List<int>>> getFileStream(String path, {FileRange? range});
+
+  /// URL 流（部分协议如 SMB 通过 smb:// 占位反解）
+  Future<Stream<List<int>>> getUrlStream(String url);
+
+  /// 直链（HTTP 协议返回真链，SMB 返回 smb://placeholder）
   Future<String> getFileUrl(String path, {Duration? expiry});
 
-  /// 媒体服务 (可选实现)
-  MediaService? get mediaService;
+  Future<void> createDirectory(String path);
+  Future<void> delete(String path);
+  Future<void> rename(String oldPath, String newPath);
+  Future<void> copy(String sourcePath, String destPath);
+  Future<void> move(String sourcePath, String destPath);
 
-  /// 下载工具服务 (可选实现)
-  ToolsService? get toolsService;
-}
+  /// 上传本地文件
+  Future<void> upload(
+    String localPath,
+    String remotePath, {
+    String? fileName,
+    void Function(int sent, int total)? onProgress,
+  });
 
-/// 媒体服务接口
-abstract class MediaService {
-  /// 获取视频库
-  Future<List<VideoLibrary>> getVideoLibraries();
+  /// 写入字节（用于 NFO/海报等）
+  Future<void> writeFile(String remotePath, List<int> data);
 
-  /// 获取音乐库
-  Future<List<MusicLibrary>> getMusicLibraries();
+  /// 搜索（部分协议无服务端搜索时回退到客户端 BFS，限深度+数量）
+  Future<List<FileItem>> search(String query, {String? path});
 
-  /// 获取转码流 (如果支持)
-  Future<String?> getTranscodedStream(String fileId, TranscodeOptions options);
-}
-
-/// 下载工具服务接口
-abstract class ToolsService {
-  /// 获取支持的工具列表
-  List<ToolInfo> get supportedTools;
-
-  /// 获取工具客户端
-  ToolClient? getToolClient(ToolType type);
+  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size});
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size});
 }
 ```
 
-### 3.2 播放器抽象设计
+**约定**：服务端能力（copy/search/upload）失败时通过 `AppError.ignore` 回退到客户端实现，不抛出未实现错误（除非真的不可能）。
+
+### 3.2 MediaServerAdapter 接口
 
 ```dart
-/// 统一播放器接口
-abstract class MediaPlayer<T extends MediaItem> {
-  /// 播放状态
-  Stream<PlaybackState> get stateStream;
-  Stream<Duration> get positionStream;
-  Stream<Duration> get durationStream;
+abstract class MediaServerAdapter implements ServiceAdapter {
+  /// 库 / 媒体浏览
+  Future<List<MediaLibrary>> getLibraries();
+  Future<MediaItemsResult> getItems({...});
+  Future<MediaItem?> getItemDetail(String itemId);
 
-  /// 播放控制
-  Future<void> play();
-  Future<void> pause();
-  Future<void> stop();
-  Future<void> seek(Duration position);
+  /// 推荐 / 继续看 / 下一集
+  Future<MediaItemsResult> getLatestMedia({...});
+  Future<MediaItemsResult> getResumeItems({int limit = 20});
+  Future<MediaItem?> getNextUp({String? seriesId});
 
-  /// 媒体操作
-  Future<void> setMedia(T media);
-  Future<void> setPlaylist(List<T> items, {int startIndex = 0});
+  /// 搜索
+  Future<MediaItemsResult> search(String query, {...});
 
-  /// 资源释放
+  /// 播放
+  Future<PlaybackInfo> getPlaybackInfo(String itemId, {...});
+  Future<void> reportPlaybackStart(String itemId, {...});
+  Future<void> reportPlaybackProgress(String itemId, Duration position, {...});
+  Future<void> reportPlaybackStopped(String itemId, Duration position);
+
+  /// 状态同步
+  Future<void> markWatched(String itemId);
+  Future<bool> toggleFavorite(String itemId);
+
+  /// 虚拟文件系统（只读）
+  NasFileSystem? get virtualFileSystem;
+}
+```
+
+### 3.3 ServiceAdapter（下载器/服务器统一基础）
+
+```dart
+abstract class ServiceAdapter {
+  ServiceAdapterInfo get info;
+  bool get isConnected;
+  ServiceConnectionConfig? get connection;
+
+  Future<ServiceConnectionResult> connect(ServiceConnectionConfig config);
+  Future<void> disconnect();
   Future<void> dispose();
 }
-
-/// 视频播放器扩展
-abstract class VideoPlayer extends MediaPlayer<VideoItem> {
-  /// 视频特有功能
-  Future<void> setSubtitle(SubtitleTrack? track);
-  Future<void> setAudioTrack(AudioTrack track);
-  Future<void> setPlaybackSpeed(double speed);
-  Stream<VideoSize> get videoSizeStream;
-}
-
-/// 音频播放器扩展
-abstract class AudioPlayer extends MediaPlayer<AudioItem> {
-  /// 音频特有功能
-  Future<void> setEqualizerPreset(EqualizerPreset preset);
-  Future<void> setVolume(double volume);
-}
 ```
 
-### 3.3 状态管理设计 (Riverpod)
+### 3.4 错误处理（AppError）
 
 ```dart
-/// NAS 连接状态
-@riverpod
-class NasConnection extends _$NasConnection {
-  @override
-  AsyncValue<NasAdapter?> build() => const AsyncValue.data(null);
-
-  Future<void> connect(ConnectionConfig config) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
-      final adapter = ref.read(nasAdapterFactoryProvider).create(config.type);
-      await adapter.connect(config);
-      return adapter;
-    });
-  }
-}
-
-/// 视频列表状态
-@riverpod
-class VideoList extends _$VideoList {
-  @override
-  Future<List<VideoItem>> build(String path) async {
-    final adapter = ref.watch(nasConnectionProvider).valueOrNull;
-    if (adapter == null) throw NotConnectedException();
-
-    final files = await adapter.listDirectory(path);
-    return files.whereType<VideoItem>().toList();
-  }
-}
-
-/// 播放器状态
-@riverpod
-class VideoPlayerController extends _$VideoPlayerController {
-  @override
-  VideoPlayerState build() => VideoPlayerState.initial();
-
-  Future<void> play(VideoItem video) async {
-    // 实现播放逻辑
-  }
+class AppError {
+  static void handle(Object e, [StackTrace? st, String? action, Map? extra]);
+  static void handleWithUI(BuildContext ctx, Object e, [...]);
+  static Future<T?> guard<T>(Future<T> Function() op, {String? action, T? fallback});
+  static T? guardSync<T>(T Function() op, {...});
+  static void ignore(Object e, [StackTrace? st, String? reason]);
+  static void fireAndForget(Future<void> f, {String? action, Map? extra});
 }
 ```
+
+**核心约定**：
+- 所有 catch 块必须用 AppError，禁止空 catch / 仅 print / 仅 SnackBar
+- 远程上报已移除（避免客户端凭证泄露），仅本地日志
+- ErrorCategory 决定日志级别（fatal / error / warn）
+- `ignore` 必须填第三个参数（reason）以便代码审查
 
 ---
 
-## 4. UI 设计规范
+## 4. 关键设计决策
 
-### 4.1 设计系统
+### 4.1 凭证存储降级
 
-```dart
-/// 主题配置
-class AppTheme {
-  // 颜色系统 (Material 3)
-  static const primaryColor = Color(0xFF6366F1);  // Indigo
-  static const secondaryColor = Color(0xFF8B5CF6); // Violet
-  static const tertiaryColor = Color(0xFF06B6D4);  // Cyan
-
-  // 暗色主题强调色
-  static const darkSurface = Color(0xFF1E1E2E);
-  static const darkBackground = Color(0xFF11111B);
-
-  // 圆角系统
-  static const radiusSmall = 8.0;
-  static const radiusMedium = 12.0;
-  static const radiusLarge = 16.0;
-  static const radiusXLarge = 24.0;
-
-  // 间距系统 (4px 基准)
-  static const space1 = 4.0;
-  static const space2 = 8.0;
-  static const space3 = 12.0;
-  static const space4 = 16.0;
-  static const space5 = 20.0;
-  static const space6 = 24.0;
-  static const space8 = 32.0;
-}
+```
+FlutterSecureStorage (Keychain/EncryptedSharedPreferences)
+  ↓ 失败（如 macOS 缺 Keychain entitlement）
+Hive AES Cipher Box (key 由 deviceName + salt 派生 sha256)
+  ↓ 失败
+内存临时 ID（不持久化，重启丢失）
 ```
 
-### 4.2 响应式布局
+实现：`lib/core/storage/auth_storage_service.dart`。降级时不阻断使用，但记录 warn 级日志。
 
-```dart
-/// 响应式断点
-enum ScreenSize {
-  compact(0, 600),     // 手机
-  medium(600, 840),    // 折叠屏/小平板
-  expanded(840, 1200), // 平板
-  large(1200, 1600),   // 桌面
-  extraLarge(1600, double.infinity); // 大屏
+### 4.2 媒体服务器虚拟文件系统
 
-  final double minWidth;
-  final double maxWidth;
-  const ScreenSize(this.minWidth, this.maxWidth);
-}
+媒体服务器是**元数据驱动**而非文件系统驱动，所以 Jellyfin/Emby/Plex 的 `virtual_fs.dart`：
+- 浏览：库 → 电影 → 项目，路径映射到 `MediaItem`
+- 不支持创建/删除/上传/写入（抛 `UnsupportedError`），UI 层据此隐藏按钮
+- 仅暴露 `getFileUrl` 供播放器使用
 
-/// 自适应布局
-class AdaptiveLayout extends StatelessWidget {
-  final Widget compactLayout;
-  final Widget? mediumLayout;
-  final Widget? expandedLayout;
+### 4.3 SMB 客户端 fallback
 
-  // ... 根据屏幕尺寸选择布局
-}
+SMB 协议本身不支持（或库未暴露）部分操作：
+- `copy` → 客户端 download + upload 流式管道
+- `search` → 客户端 BFS（限深度 4、限 200 个结果）
+- `getUrlStream` → 解析 `smb://placeholder<path>` 占位符回调 `getFileStream`
+
+这套模式同样应用于绿联/飞牛 NAS，先尝试服务端 API，失败 `AppError.ignore` 后走客户端兜底。
+
+### 4.4 PT 搜索串联
+
+```
+视频详情页 / TMDB 推荐卡片 / 缺失剧集 sheet
+    ↓ launchPtSearchForMedia(context, ref, query: '片名 年份')
+    ↓ 0 站点 → 提示；1 站点 → 直跳；多站点 → 弹 sheet 选
+PTSiteDetailPage(initialQuery: '...')
+    ↓ initState 自动填入并触发搜索
+PT 搜索结果列表
+    ↓ 种子卡片下载按钮 → SendToDownloaderSheet
+qBittorrent / Transmission / Aria2
 ```
 
-### 4.3 组件规范
+实现：`lib/features/pt_sites/presentation/utils/pt_search_launcher.dart`
 
-- **卡片**: 使用毛玻璃效果 + 微妙阴影
-- **列表**: 支持网格/列表视图切换
-- **导航**: 底部导航(移动) / 侧边栏(桌面)
-- **动画**: 使用 Spring 动画曲线，时长 200-400ms
-- **图标**: 使用 Lucide Icons 或 Phosphor Icons
+### 4.5 字幕投屏（DLNA）
+
+`dlna_dart` 内置 metadata 不携带字幕。MyNAS 自构 DIDL-Lite XML，**同时携带三种字幕扩展**以最大化设备兼容：
+
+- 三星：`<sec:CaptionInfoEx sec:type="srt">URL</sec:CaptionInfoEx>`
+- 通用：`<res protocolInfo="http-get:*:text/srt:*">URL</res>` 作为独立 res
+- Sony：`<res ... pv:subtitleFileUri="URL" pv:subtitleFileType="srt">videoUrl</res>`
+
+不支持字幕的设备会自然忽略，正常播视频。
+
+### 4.6 跨平台播放器属性
+
+`media_kit` 没暴露公共 `setProperty`。MyNAS 通过 `_player.platform is NativePlayer` 检查后调用 `NativePlayer.setProperty('sub-delay', value)` 直接写入 mpv 属性。Web 平台返回 false 不调用。
 
 ---
 
-## 5. 数据流设计
+## 5. UI / UX
 
-### 5.1 离线优先架构
+### 5.1 主题系统
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│     UI      │────▶│   Cache     │────▶│   Remote    │
-│             │◀────│  (SQLite)   │◀────│   (NAS)     │
-└─────────────┘     └─────────────┘     └─────────────┘
-       │                   │
-       │    ┌──────────────┴──────────────┐
-       │    │                             │
-       ▼    ▼                             ▼
-  ┌─────────────┐                  ┌─────────────┐
-  │  显示缓存   │                  │  后台同步   │
-  │  (立即)     │                  │  (增量)     │
-  └─────────────┘                  └─────────────┘
-```
+- Material 3 (`AppColors` / `AppSpacing`)
+- iOS 26 Liquid Glass 模式（玻璃效果导航栏 + 弹层 + 浮动按钮）
+- 暗色 / 亮色 / 跟随系统
 
-### 5.2 播放进度同步
+### 5.2 响应式
 
-```dart
-/// 进度同步策略
-class PlaybackProgressSync {
-  // 本地存储 (立即)
-  Future<void> saveLocal(String mediaId, Duration position);
+- compact (< 600)：手机
+- medium (600–840)：折叠屏 / 小平板
+- expanded (840–1200)：平板
+- large (≥ 1200)：桌面 / 大屏
 
-  // 远程同步 (防抖 5秒)
-  Future<void> syncRemote(String mediaId, Duration position);
+`AdaptiveLayout`、`ScreenSize` 工具支持自适应。
 
-  // 冲突解决 (取最新)
-  Duration resolveConflict(Duration local, Duration remote, DateTime localTime, DateTime remoteTime);
-}
-```
+### 5.3 平台原生集成
+
+- **macOS**：原生菜单栏 / 触控板手势 / 通知 / Spotlight 索引
+- **Windows**：媒体键 / 任务栏 / 系统主题跟随 / 桌面歌词原生窗口
+- **iOS**：AirPlay / Now Playing / 灵动岛 / 媒体小组件 / 麦克风权限
+- **Android**：媒体通知 / 灵动岛风格通知 / 应用快捷方式
 
 ---
 
 ## 6. 安全设计
 
 ### 6.1 凭证存储
-- iOS/macOS: Keychain
-- Android: EncryptedSharedPreferences
-- Windows: Windows Credential Manager
-- 使用 `flutter_secure_storage`
+见 §4.1 三级降级。
 
-### 6.2 网络安全
-- 强制 HTTPS (可选跳过证书验证 for 自签名)
-- Certificate Pinning (可选)
-- 请求签名
+### 6.2 网络
+- 默认 HTTPS，自签证书可选信任（用户配置）
+- DioClient 拦截器统一注入 token / device-id / user-agent
 
-### 6.3 本地数据保护
-- SQLite 加密 (sqlcipher)
-- 敏感数据加密存储
-- 应用锁 (PIN/生物识别)
+### 6.3 本地数据
+- Hive 加密 box（auth_fallback_v1 / book_sources / settings 等）
+- 临时文件分享后 5 分钟清理
+- SQLite 缓存（视频元数据、人脸库等）
+
+### 6.4 合规
+- **不内嵌任何书源**（用户自行导入）
+- 公共 API key（OpenSubtitles 等）用户可覆盖
+- 错误处理已移除远程上报（避免凭证泄露）
 
 ---
 
-## 7. 平台特定适配
+## 7. 数据流
 
-### 7.1 macOS
-- 菜单栏集成
-- 触控板手势
-- 画中画
-- 通知中心
+### 7.1 离线优先
 
-### 7.2 Windows
-- 任务栏预览
-- 媒体键支持
-- 系统主题跟随
+```
+UI ──watch── Riverpod Provider ──读── Cache (Hive/SQLite)
+                                    │
+                                    └── 同时后台 fetch Remote ─→ 写入 Cache
+                                                                ↓
+                                                            UI 自动刷新
+```
 
-### 7.3 iOS
-- AirPlay 支持
-- CarPlay 集成 (音乐)
-- 小组件
-- Handoff
+### 7.2 进度同步
 
-### 7.4 Android
-- 媒体通知
-- Android Auto
-- 分屏支持
-- 快捷方式
+```
+本地立即写入 ReadingProgressService (Hive box)
+    ↓ 防抖 5s
+媒体服务器 reportPlaybackProgress / Trakt 同步 / NASTool 同步
+    ↓ 冲突解决
+取最新 lastReadAt / playedAt
+```
+
+---
+
+## 8. 测试策略
+
+- ✅ Widget 测试：核心组件（cast_service、video_player、book_reader）
+- ✅ 单元测试：解析器（mobi/epub/nfo/legado_rule）
+- 🚧 集成测试：端到端流程（NAS 连接 → 浏览 → 播放）
+- 📝 性能测试基线
+
+---
+
+## 9. 已知技术债
+
+| 项 | 说明 | 优先级 |
+|---|---|---|
+| Plex WebSocket | Plex 协议本身不提供，需轮询或 webhook，工程价值低 | 低 |
+| 国际化覆盖率 | 部分硬编码中文，需逐步迁移到 .arb | 中 |
+| 完整无障碍 | Semantics 标注覆盖率不足 | 中 |
+| 单元测试覆盖率 | 现状偏低 | 中 |
+| iOS 26 Liquid Glass | 部分页面未完全适配 | 低 |

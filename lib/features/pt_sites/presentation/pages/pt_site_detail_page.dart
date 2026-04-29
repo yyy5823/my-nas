@@ -8,17 +8,23 @@ import 'package:my_nas/features/pt_sites/presentation/providers/pt_site_provider
 import 'package:my_nas/features/pt_sites/presentation/widgets/pt_torrent_card.dart';
 import 'package:my_nas/features/pt_sites/presentation/widgets/send_to_downloader_sheet.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 
 /// PT 站点详情页
 class PTSiteDetailPage extends ConsumerStatefulWidget {
   const PTSiteDetailPage({
     required this.source,
+    this.initialQuery,
     super.key,
   });
 
   final SourceEntity source;
+
+  /// 进入页面时自动填充并触发搜索的关键词
+  ///
+  /// 用于从视频详情/相似推荐等位置带着电影/剧集名称跳转到此页面，
+  /// 避免用户再手动输入。
+  final String? initialQuery;
 
   @override
   ConsumerState<PTSiteDetailPage> createState() => _PTSiteDetailPageState();
@@ -36,6 +42,13 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage>
     super.initState();
     hideTabBar();
     _scrollController.addListener(_onScroll);
+
+    // 如果有预填关键词，立刻进入搜索模式并填入，避免用户再手动输入
+    if (widget.initialQuery != null && widget.initialQuery!.trim().isNotEmpty) {
+      _isSearching = true;
+      _searchController.text = widget.initialQuery!.trim();
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _connect();
     });
@@ -70,9 +83,16 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage>
 
     final connection = ref.read(ptSiteConnectionProvider(widget.source.id));
     if (connection.status == PTSiteConnectionStatus.connected) {
+      // 有预填关键词时直接按它搜索，否则走默认列表
+      final initial = widget.initialQuery?.trim();
+      if (initial != null && initial.isNotEmpty) {
+        ref
+            .read(ptTorrentListProvider(widget.source.id).notifier)
+            .setKeyword(initial);
+      }
       await ref
           .read(ptTorrentListProvider(widget.source.id).notifier)
-          .loadTorrents();
+          .loadTorrents(refresh: true);
     }
   }
 
