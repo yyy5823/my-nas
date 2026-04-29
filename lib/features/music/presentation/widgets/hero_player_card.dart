@@ -36,7 +36,7 @@ class HeroPlayerCard extends ConsumerWidget {
   final double scrollOffset;
 
   // 卡片参数
-  static const double _cardHeight = 200.0;
+  static const double _cardHeight = 220.0;
   static const double _coverSize = 100.0;
 
   @override
@@ -304,7 +304,7 @@ class HeroPlayerCard extends ConsumerWidget {
   Widget _buildMusicInfo(MusicItem currentMusic, MusicPlayerState playerState) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min, // 防止 Column 强制占用最大高度
+      mainAxisSize: MainAxisSize.min,
       children: [
         // 播放状态标签
         Container(
@@ -336,33 +336,33 @@ class HeroPlayerCard extends ConsumerWidget {
             ],
           ),
         ),
-        const Spacer(), // 使用 Spacer 替代固定 SizedBox，自适应空间
-        // 歌曲名（限制为1行防止溢出）
-        Flexible(
-          child: Text(
-            currentMusic.displayTitle,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              letterSpacing: -0.3,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        const SizedBox(height: 8),
+        // 歌曲名 — 不要包 Flexible，否则 Column 高度紧时行高会被裁，
+        // 中文字形下半部分（撇/捺/竖）会被切掉。Row 的 Expanded 已约束宽度，
+        // maxLines:1 + ellipsis 自然处理水平溢出。
+        Text(
+          currentMusic.displayTitle,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.3,
+            height: 1.3,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         // 艺术家
-        Flexible(
-          child: Text(
-            currentMusic.displayArtist,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
-              fontSize: 12,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        Text(
+          currentMusic.displayArtist,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 12,
+            height: 1.3,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );

@@ -569,10 +569,11 @@ class _Destination {
 
 /// 带动画的底部导航栏包装器
 ///
-/// 使用 AnimatedSlide 实现平滑的滑入滑出效果
-/// 当 [visible] 为 false 时，导航栏从底部滑出
-/// 当 [visible] 为 true 时，导航栏从底部滑入
-class _AnimatedBottomNav extends StatelessWidget {
+/// 同时驱动 size / slide / opacity，确保隐藏时高度真正归零。
+/// 仅做 transform/opacity 的方案会让 bottomNavigationBar 仍占据
+/// 56+SafeArea.bottom 的布局高度，从而把 body 的 MediaQuery
+/// bottom padding 顶大，导致页面底部出现一块空白。
+class _AnimatedBottomNav extends StatefulWidget {
   const _AnimatedBottomNav({
     required this.visible,
     required this.child,
@@ -582,16 +583,54 @@ class _AnimatedBottomNav extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedSlide(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      offset: visible ? Offset.zero : const Offset(0, 1),
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 200),
-        opacity: visible ? 1.0 : 0.0,
-        child: child,
-      ),
-    );
+  State<_AnimatedBottomNav> createState() => _AnimatedBottomNavState();
+}
+
+class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    duration: const Duration(milliseconds: 300),
+    vsync: this,
+    value: widget.visible ? 1.0 : 0.0,
+  );
+
+  late final CurvedAnimation _curve =
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: const Offset(0, 1),
+    end: Offset.zero,
+  ).animate(_curve);
+
+  @override
+  void didUpdateWidget(covariant _AnimatedBottomNav oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.visible != oldWidget.visible) {
+      if (widget.visible) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
   }
+
+  @override
+  void dispose() {
+    _curve.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizeTransition(
+        sizeFactor: _curve,
+        axisAlignment: -1,
+        child: SlideTransition(
+          position: _slide,
+          child: FadeTransition(
+            opacity: _curve,
+            child: widget.child,
+          ),
+        ),
+      );
 }
