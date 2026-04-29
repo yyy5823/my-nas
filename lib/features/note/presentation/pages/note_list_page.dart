@@ -221,10 +221,63 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
         rootNodes.add(rootNode.copyWith(children: children));
       }
 
+      _allRootNodes = rootNodes;
+      _searchQuery = '';
       state = NotePageLoaded(treeNodes: rootNodes);
     } on Exception catch (e) {
       state = NotePageError(e.toString());
     }
+  }
+
+  /// 树原始结构备份，用于本地搜索过滤后能还原
+  List<NoteTreeNode> _allRootNodes = [];
+
+  /// 当前搜索关键词
+  String _searchQuery = '';
+
+  /// 设置搜索关键词，过滤显示树节点
+  ///
+  /// 由于子节点是懒加载的，搜索结果仅覆盖已展开/已加载的节点。
+  /// 空字符串时恢复完整树。
+  void setSearchQuery(String query) {
+    final current = state;
+    if (current is! NotePageLoaded) return;
+
+    final trimmed = query.trim();
+    _searchQuery = trimmed;
+
+    if (trimmed.isEmpty) {
+      state = current.copyWith(treeNodes: _allRootNodes);
+      return;
+    }
+
+    final lower = trimmed.toLowerCase();
+    final filtered = _allRootNodes
+        .map((node) => _filterNode(node, lower))
+        .whereType<NoteTreeNode>()
+        .toList();
+    state = current.copyWith(treeNodes: filtered);
+  }
+
+  /// 递归过滤节点，保留：
+  /// - 名称匹配的节点本身
+  /// - 含有匹配后代的父级（自动展开）
+  NoteTreeNode? _filterNode(NoteTreeNode node, String lowerQuery) {
+    final selfMatch = node.name.toLowerCase().contains(lowerQuery) ||
+        node.displayName.toLowerCase().contains(lowerQuery);
+
+    final filteredChildren = node.children
+        .map((child) => _filterNode(child, lowerQuery))
+        .whereType<NoteTreeNode>()
+        .toList();
+
+    if (selfMatch || filteredChildren.isNotEmpty) {
+      return node.copyWith(
+        children: filteredChildren,
+        isExpanded: filteredChildren.isNotEmpty || node.isExpanded,
+      );
+    }
+    return null;
   }
 
   /// 加载文件夹子节点

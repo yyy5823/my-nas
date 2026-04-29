@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
@@ -243,7 +244,10 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
       final bytes = _mergeChunks(chunks, totalBytes);
 
       // 保存到缓存（后台执行，不阻塞）
-      unawaited(_cacheService.saveToCache(book.sourceId, book.path, bytes));
+      AppError.fireAndForget(
+        _cacheService.saveToCache(book.sourceId, book.path, bytes),
+        action: 'pdfReader.saveToCache',
+      );
 
       // 如果还没有成功加载，使用完整数据
       if (documentRef == null || state is PdfReaderLoading) {

@@ -354,9 +354,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _audioHandler.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
       // 更新 Android 灵动岛播放状态
-      unawaited(_updateDynamicIsland());
+      AppError.fireAndForget(_updateDynamicIsland(), action: 'musicPlayer.updateDynamicIsland');
       // 更新 iOS/macOS 媒体小组件
-      unawaited(_updateMediaWidget());
+      AppError.fireAndForget(_updateMediaWidget(), action: 'musicPlayer.updateMediaWidget');
     });
 
     // 监听缓冲状态（使用接口提供的流）
@@ -695,7 +695,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 重置状态
     _isFadingOut = false;
     _isFadingIn = false;
-    unawaited(_cleanupPreload());
+    AppError.fireAndForget(_cleanupPreload(), action: 'musicPlayer.cleanupPreload');
 
     switch (state.playMode) {
       case PlayMode.repeatOne:
@@ -1458,7 +1458,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       await _audioHandler.setCurrentMusic(music, artworkData: coverData);
 
       // 启动 Android 灵动岛
-      unawaited(_startDynamicIsland(music: music, coverData: coverData));
+      AppError.fireAndForget(
+        _startDynamicIsland(music: music, coverData: coverData),
+        action: 'musicPlayer.startDynamicIsland',
+      );
 
       // 更新时长信息到 AudioHandler
       if (effectiveDuration != null && effectiveDuration > Duration.zero) {
@@ -1829,7 +1832,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
               action: 'updateAudioHandlerArtwork',
             );
             // 更新 Android 灵动岛封面
-            unawaited(_updateDynamicIsland(coverData: coverBytes));
+            AppError.fireAndForget(
+              _updateDynamicIsland(coverData: coverBytes),
+              action: 'musicPlayer.updateDynamicIslandCover',
+            );
           }
         } else {
           logger.w('MusicPlayer: 当前播放的音乐已变更，跳过更新');
@@ -1917,9 +1923,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     state = state.copyWith(position: Duration.zero, duration: Duration.zero);
     _ref.read(currentMusicProvider.notifier).state = null;
     // 隐藏 Android 灵动岛
-    unawaited(_hideDynamicIsland());
+    AppError.fireAndForget(_hideDynamicIsland(), action: 'musicPlayer.hideDynamicIsland');
     // 清空 iOS/macOS 媒体小组件
-    unawaited(widgetDataService.clearMediaWidget());
+    AppError.fireAndForget(widgetDataService.clearMediaWidget(), action: 'musicPlayer.clearMediaWidget');
   }
 
   /// 下一曲

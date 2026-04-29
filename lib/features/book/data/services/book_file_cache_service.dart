@@ -102,7 +102,7 @@ class BookFileCacheService {
       logger.i('BookFileCacheService: 缓存文件成功 ${file.path}');
 
       // 异步清理过期缓存（不等待完成）
-      unawaited(_cleanupIfNeeded());
+      AppError.fireAndForget(_cleanupIfNeeded(), action: 'bookFileCache.cleanupIfNeeded');
 
       return file;
     } on Exception catch (e, st) {
@@ -135,7 +135,7 @@ class BookFileCacheService {
       }
 
       // 异步清理过期缓存（不等待完成）
-      unawaited(_cleanupIfNeeded());
+      AppError.fireAndForget(_cleanupIfNeeded(), action: 'bookFileCache.cleanupIfNeeded');
 
       return file;
     } on Exception catch (e, st) {

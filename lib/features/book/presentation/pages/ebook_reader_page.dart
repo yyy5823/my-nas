@@ -1167,7 +1167,7 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                         onTap: () async {
                           final success = await _controller.goToPreviousSection();
                           if (success) {
-                            unawaited(HapticFeedback.lightImpact());
+                            AppError.fireAndForget(HapticFeedback.lightImpact(), action: 'ebookReader.haptic');
                           }
                         },
                         borderRadius: BorderRadius.circular(8),
@@ -1228,7 +1228,7 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                         onTap: () async {
                           final success = await _controller.goToNextSection();
                           if (success) {
-                            unawaited(HapticFeedback.lightImpact());
+                            AppError.fireAndForget(HapticFeedback.lightImpact(), action: 'ebookReader.haptic');
                           }
                         },
                         borderRadius: BorderRadius.circular(8),

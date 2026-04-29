@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/fnos/api/fnos_api.dart';
+import 'package:path/path.dart' as p;
 
 /// 飞牛 NAS 文件系统实现
 class FnOSFileSystem implements NasFileSystem {
@@ -114,7 +116,20 @@ class FnOSFileSystem implements NasFileSystem {
 
   @override
   Future<void> copy(String sourcePath, String destPath) async {
-    throw UnimplementedError('飞牛 NAS 复制功能尚未实现');
+    try {
+      await api.copy(sourcePath, destPath);
+      return;
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '飞牛 NAS 服务端复制失败，回退到客户端流式复制');
+    }
+
+    // 客户端 fallback
+    final stream = await getFileStream(sourcePath);
+    final chunks = <int>[];
+    await for (final chunk in stream) {
+      chunks.addAll(chunk);
+    }
+    await writeFile(destPath, chunks);
   }
 
   @override
@@ -129,17 +144,82 @@ class FnOSFileSystem implements NasFileSystem {
     String? fileName,
     void Function(int sent, int total)? onProgress,
   }) async {
-    throw UnimplementedError('飞牛 NAS 上传功能尚未实现');
+    final name = fileName ?? p.basename(localPath);
+    await api.uploadFile(
+      localPath: localPath,
+      remoteDir: remotePath,
+      fileName: name,
+      onProgress: onProgress,
+    );
   }
 
   @override
   Future<void> writeFile(String remotePath, List<int> data) async {
-    throw UnimplementedError('飞牛 NAS 写入功能尚未实现');
+    final lastSlash = remotePath.lastIndexOf('/');
+    final remoteDir = lastSlash > 0 ? remotePath.substring(0, lastSlash) : '/';
+    final fileName = lastSlash >= 0 ? remotePath.substring(lastSlash + 1) : remotePath;
+
+    await api.uploadBytes(
+      remoteDir: remoteDir,
+      fileName: fileName,
+      data: data,
+    );
   }
 
   @override
   Future<List<FileItem>> search(String query, {String? path}) async {
-    throw UnimplementedError('飞牛 NAS 搜索功能尚未实现');
+    if (query.trim().isEmpty) return const [];
+
+    try {
+      final results = await api.search(query, path: path);
+      return results
+          .map((file) => FileItem(
+                name: file.name,
+                path: file.path,
+                isDirectory: file.isDir,
+                size: file.size ?? 0,
+                modifiedTime: file.modified,
+                createdTime: file.created,
+                mimeType: file.mimeType,
+                extension: _getExtension(file.name),
+              ))
+          .toList();
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '飞牛 NAS 服务端搜索失败，回退到客户端递归遍历');
+    }
+
+    return _clientSideSearch(query, root: path ?? '/');
+  }
+
+  /// 客户端递归搜索（深度优先，限深度和数量）
+  Future<List<FileItem>> _clientSideSearch(
+    String query, {
+    required String root,
+    int maxDepth = 4,
+    int maxResults = 200,
+  }) async {
+    final lower = query.toLowerCase();
+    final results = <FileItem>[];
+    final queue = <({String path, int depth})>[(path: root, depth: 0)];
+
+    while (queue.isNotEmpty && results.length < maxResults) {
+      final entry = queue.removeAt(0);
+      try {
+        final children = await listDirectory(entry.path);
+        for (final child in children) {
+          if (child.name.toLowerCase().contains(lower)) {
+            results.add(child);
+            if (results.length >= maxResults) break;
+          }
+          if (child.isDirectory && entry.depth < maxDepth) {
+            queue.add((path: child.path, depth: entry.depth + 1));
+          }
+        }
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '客户端搜索：跳过无法访问的目录 ${entry.path}');
+      }
+    }
+    return results;
   }
 
   @override

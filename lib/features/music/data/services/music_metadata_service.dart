@@ -8,6 +8,7 @@ import 'package:audio_metadata_reader/audio_metadata_reader.dart'
     show MetadataParserException, NoMetadataParserException, readMetadata;
 import 'package:enough_convert/enough_convert.dart';
 import 'package:flutter/foundation.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -458,7 +459,9 @@ class MusicMetadataService {
       // 确保关闭文件句柄
       try {
         await raf?.close();
-      } catch (_) {}
+      } catch (e, st) {
+        AppError.ignore(e, st, '关闭随机访问文件句柄失败');
+      }
       // 清理临时文件
       if (tempFile != null) {
         await _deleteTempFile(tempFile);

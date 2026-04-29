@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/online_book_shelf_service.dart';
@@ -181,7 +182,9 @@ class _OnlineBookDetailPageState extends ConsumerState<OnlineBookDetailPage>
     try {
       final decoded = Uri.decodeComponent(text);
       if (decoded != text) return decoded;
-    } catch (_) {}
+    } catch (e, st) {
+      AppError.ignore(e, st, 'URL 解码失败，回退原文本');
+    }
     return text;
   }
 

@@ -959,48 +959,64 @@ class _MediaTypeTab extends ConsumerWidget {
   ) {
     switch (type) {
       case MediaType.video:
-        unawaited(VideoScannerService().scanFilesOnly(
-          paths: [path],
-          connections: connections,
-        ).then((_) async {
-          await ref.read(videoListProvider.notifier).reloadFromCache();
-          // 扫描完成后自动触发后台刮削（使用最新连接状态）
-          final currentConnections = ref.read(activeConnectionsProvider);
-          final hasConnected = currentConnections.values
-              .any((c) => c.status == SourceStatus.connected);
-          logger.d(
-            'VideoScan: 扫描完成，准备刮削 - '
-            '连接数: ${currentConnections.length}, '
-            '有可用连接: $hasConnected',
-          );
-          if (hasConnected) {
-            unawaited(
-              VideoScannerService().scrapeMetadata(connections: currentConnections),
+        AppError.fireAndForget(
+          VideoScannerService().scanFilesOnly(
+            paths: [path],
+            connections: connections,
+          ).then((_) async {
+            await ref.read(videoListProvider.notifier).reloadFromCache();
+            // 扫描完成后自动触发后台刮削（使用最新连接状态）
+            final currentConnections = ref.read(activeConnectionsProvider);
+            final hasConnected = currentConnections.values
+                .any((c) => c.status == SourceStatus.connected);
+            logger.d(
+              'VideoScan: 扫描完成，准备刮削 - '
+              '连接数: ${currentConnections.length}, '
+              '有可用连接: $hasConnected',
             );
-          } else {
-            logger.w('VideoScan: 没有可用连接，跳过刮削');
-          }
-        }));
+            if (hasConnected) {
+              AppError.fireAndForget(
+                VideoScannerService().scrapeMetadata(connections: currentConnections),
+                action: 'mediaLibrary.video.scrapeAfterScan',
+              );
+            } else {
+              logger.w('VideoScan: 没有可用连接，跳过刮削');
+            }
+          }),
+          action: 'mediaLibrary.video.scanFilesOnly',
+        );
       case MediaType.music:
         // 使用 scanSinglePath 只扫描新添加的路径，不触发其他路径扫描
-        unawaited(ref
-            .read(musicListProvider.notifier)
-            .scanSinglePath(path: path, connections: connections));
+        AppError.fireAndForget(
+          ref
+              .read(musicListProvider.notifier)
+              .scanSinglePath(path: path, connections: connections),
+          action: 'mediaLibrary.music.scanSinglePath',
+        );
       case MediaType.photo:
         // 使用 scanSinglePath 只扫描新添加的路径
-        unawaited(ref
-            .read(photoListProvider.notifier)
-            .scanSinglePath(path: path, connections: connections));
+        AppError.fireAndForget(
+          ref
+              .read(photoListProvider.notifier)
+              .scanSinglePath(path: path, connections: connections),
+          action: 'mediaLibrary.photo.scanSinglePath',
+        );
       case MediaType.comic:
         // 使用 scanSinglePath 只扫描新添加的路径
-        unawaited(ref
-            .read(comicListProvider.notifier)
-            .scanSinglePath(path: path, connections: connections));
+        AppError.fireAndForget(
+          ref
+              .read(comicListProvider.notifier)
+              .scanSinglePath(path: path, connections: connections),
+          action: 'mediaLibrary.comic.scanSinglePath',
+        );
       case MediaType.book:
         // 使用 scanSinglePath 只扫描新添加的路径
-        unawaited(ref
-            .read(bookListProvider.notifier)
-            .scanSinglePath(path: path, connections: connections));
+        AppError.fireAndForget(
+          ref
+              .read(bookListProvider.notifier)
+              .scanSinglePath(path: path, connections: connections),
+          action: 'mediaLibrary.book.scanSinglePath',
+        );
       case MediaType.note:
         break;
     }
@@ -1973,7 +1989,10 @@ class _PathCardState extends ConsumerState<_PathCard> {
           if (!mounted) return;
           final currentConnections = ref.read(activeConnectionsProvider);
           if (currentConnections.values.any((c) => c.status == SourceStatus.connected)) {
-            unawaited(VideoScannerService().scrapeMetadata(connections: currentConnections));
+            AppError.fireAndForget(
+              VideoScannerService().scrapeMetadata(connections: currentConnections),
+              action: 'mediaLibrary.video.scrapeMetadata',
+            );
           }
         case MediaType.music:
           // 使用单目录扫描
@@ -2149,12 +2168,15 @@ class _PathCardState extends ConsumerState<_PathCard> {
     setState(() => _isMusicScraping = true);
     context.showSuccessToast('开始后台刮削，共 $_itemCount 首音乐');
 
-    // 使用 unawaited 让刮削在后台执行
-    unawaited(scrapeService.startScraping(
-      sourceId: widget.path.sourceId,
-      pathPrefix: widget.path.path,
-      connection: widget.connection!,
-    ));
+    // 在后台执行刮削
+    AppError.fireAndForget(
+      scrapeService.startScraping(
+        sourceId: widget.path.sourceId,
+        pathPrefix: widget.path.path,
+        connection: widget.connection!,
+      ),
+      action: 'mediaLibrary.music.startScraping',
+    );
   }
 
   /// 停止音乐刮削

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:my_nas/core/constants/app_constants.dart';
+import 'package:my_nas/core/errors/errors.dart' hide ConnectionFailure;
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
@@ -231,7 +232,9 @@ class SmbAdapter implements NasAdapter {
         // 清理失败的连接池
         try {
           await _connectionPool?.dispose();
-        } catch (_) {}
+        } catch (e, st) {
+          AppError.ignore(e, st, '连接池清理失败（连接已失败的清理路径）');
+        }
         _connectionPool = null;
 
         // 如果不是最后一次尝试，等待后重试

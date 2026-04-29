@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
@@ -48,37 +50,85 @@ class AuthStorageService {
 
   final FlutterSecureStorage _storage;
 
-  /// 安全存储是否可用
+  /// Keychain/Secure Storage 是否可用
   bool _storageAvailable = true;
+
+  /// 是否已切换到本地降级存储
+  bool _fallbackActive = false;
+
+  /// 本地降级存储 box（懒加载，仅在 Keychain 不可用时打开）
+  Box<String>? _fallbackBox;
+
+  /// 降级 box 初始化锁，防止并发重复初始化
+  Future<Box<String>>? _fallbackInit;
+
+  static const _fallbackBoxName = 'auth_fallback_v1';
 
   /// 检查并处理存储错误
   ///
-  /// 返回 true 表示是可恢复的存储错误（应静默处理）
+  /// 返回 true 表示是可恢复的存储错误（已切换到降级存储或可静默处理）
   /// 返回 false 表示其他错误（应重新抛出）
   bool _handleStorageError(Object error, String operation) {
     if (error is PlatformException) {
-      // Keychain entitlement 错误 (-34018)
+      // Keychain entitlement 错误 (-34018)：常见于 macOS 未配置 keychain entitlement
       if (error.code == 'Unexpected security result code' ||
-          (error.message?.contains('-34018') ?? false)) {
-        logger.w(
-          'AuthStorageService: 安全存储不可用 ($operation) - '
-          '可能缺少 Keychain entitlement 权限，自动登录功能已禁用',
-        );
+          (error.message?.contains('-34018') ?? false) ||
+          (error.message?.contains('entitlement') ?? false)) {
+        if (_storageAvailable) {
+          logger.w(
+            'AuthStorageService: 系统 Keychain 不可用 ($operation) - '
+            '可能缺少 Keychain entitlement，已切换到本地加密存储兜底。 '
+            '注意：本地加密强度低于系统 Keychain，仅作降级方案。',
+          );
+        }
         _storageAvailable = false;
+        _fallbackActive = true;
         return true;
       }
     }
     return false;
   }
 
+  /// 派生本地降级存储的 AES key
+  ///
+  /// 注意：仅作降级使用，安全级别低于系统 Keychain。
+  /// key 由设备主机名 + 固定 salt 派生，攻击者反编译应用并拿到设备
+  /// 后可还原。设计目的是避免明文持久化凭证，而非抵抗本地攻击者。
+  List<int> _deriveFallbackKey() {
+    final material = '${Platform.localHostname}|mynas-auth-fallback|v1';
+    return sha256.convert(utf8.encode(material)).bytes;
+  }
+
+  /// 获取或初始化降级 box
+  Future<Box<String>> _getFallbackBox() async {
+    if (_fallbackBox != null && _fallbackBox!.isOpen) return _fallbackBox!;
+    return _fallbackInit ??= _openFallbackBox();
+  }
+
+  Future<Box<String>> _openFallbackBox() async {
+    try {
+      final cipher = HiveAesCipher(_deriveFallbackKey());
+      final box = await Hive.openBox<String>(
+        _fallbackBoxName,
+        encryptionCipher: cipher,
+      );
+      _fallbackBox = box;
+      return box;
+    } finally {
+      _fallbackInit = null;
+    }
+  }
+
   /// 安全执行存储读取操作
   Future<String?> _safeRead(String key) async {
-    if (!_storageAvailable) return null;
+    if (_fallbackActive) {
+      return _fallbackRead(key);
+    }
     try {
       return await _storage.read(key: key);
     } on Exception catch (e) {
       if (_handleStorageError(e, 'read($key)')) {
-        return null;
+        return _fallbackRead(key);
       }
       rethrow;
     }
@@ -86,16 +136,15 @@ class AuthStorageService {
 
   /// 安全执行存储写入操作
   Future<bool> _safeWrite(String key, String value) async {
-    if (!_storageAvailable) {
-      logger.d('AuthStorageService: 存储不可用，跳过写入 $key');
-      return false;
+    if (_fallbackActive) {
+      return _fallbackWrite(key, value);
     }
     try {
       await _storage.write(key: key, value: value);
       return true;
     } on Exception catch (e) {
       if (_handleStorageError(e, 'write($key)')) {
-        return false;
+        return _fallbackWrite(key, value);
       }
       rethrow;
     }
@@ -103,15 +152,49 @@ class AuthStorageService {
 
   /// 安全执行存储删除操作
   Future<bool> _safeDelete(String key) async {
-    if (!_storageAvailable) return false;
+    if (_fallbackActive) {
+      return _fallbackDelete(key);
+    }
     try {
       await _storage.delete(key: key);
       return true;
     } on Exception catch (e) {
       if (_handleStorageError(e, 'delete($key)')) {
-        return false;
+        return _fallbackDelete(key);
       }
       rethrow;
+    }
+  }
+
+  Future<String?> _fallbackRead(String key) async {
+    try {
+      final box = await _getFallbackBox();
+      return box.get(key);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'authStorage.fallbackRead', {'key': key});
+      return null;
+    }
+  }
+
+  Future<bool> _fallbackWrite(String key, String value) async {
+    try {
+      final box = await _getFallbackBox();
+      await box.put(key, value);
+      return true;
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'authStorage.fallbackWrite', {'key': key});
+      return false;
+    }
+  }
+
+  Future<bool> _fallbackDelete(String key) async {
+    try {
+      final box = await _getFallbackBox();
+      await box.delete(key);
+      return true;
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'authStorage.fallbackDelete', {'key': key});
+      return false;
     }
   }
 
@@ -262,8 +345,14 @@ class AuthStorageService {
     await _safeDelete(_keyLastConnectionId);
   }
 
-  /// 检查安全存储是否可用
+  /// 检查系统级安全存储 (Keychain) 是否可用
   bool get isStorageAvailable => _storageAvailable;
+
+  /// 是否正在使用本地降级存储
+  ///
+  /// true 表示因 Keychain 不可用已切换至本地加密 box，
+  /// UI 层可据此向用户提示"自动登录处于降级模式，安全性低于系统 Keychain"。
+  bool get isUsingFallbackStorage => _fallbackActive;
 }
 
 /// 保存的凭证

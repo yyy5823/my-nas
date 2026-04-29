@@ -529,8 +529,11 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage>
   }
 
   Future<void> _showPersonPhotos(PersonEntity person) async {
-    // TODO: 导航到人物照片列表页面
-    context.showInfoToast('查看 ${person.displayName} 的 ${person.photoCount} 张照片');
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _PersonPhotosPage(person: person),
+      ),
+    );
   }
 
   void _showPersonOptions(PersonEntity person) {
@@ -640,5 +643,100 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage>
       await _faceDb.deletePerson(person.id);
       await _loadData();
     }
+  }
+}
+
+/// 人物相册页：显示该 [person] 的所有人脸所在照片
+///
+/// 通过 [FaceDatabaseService.getFacesByPersonId] 查出该人物的所有 face，
+/// 按 photoSourceId+photoPath 去重后用 [StreamImage] 渲染缩略网格。
+class _PersonPhotosPage extends ConsumerStatefulWidget {
+  const _PersonPhotosPage({required this.person});
+
+  final PersonEntity person;
+
+  @override
+  ConsumerState<_PersonPhotosPage> createState() => _PersonPhotosPageState();
+}
+
+class _PersonPhotosPageState extends ConsumerState<_PersonPhotosPage> {
+  final FaceDatabaseService _faceDb = FaceDatabaseService();
+  bool _loading = true;
+  List<({String sourceId, String path})> _photos = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final faces = await _faceDb.getFacesByPersonId(widget.person.id);
+    // 同一张照片可能有多个 face（多人脸），按 sourceId+path 去重
+    final seen = <String>{};
+    final photos = <({String sourceId, String path})>[];
+    for (final face in faces) {
+      final key = '${face.photoSourceId}|${face.photoPath}';
+      if (seen.add(key)) {
+        photos.add((sourceId: face.photoSourceId, path: face.photoPath));
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _photos = photos;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final connections = ref.watch(activeConnectionsProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.person.displayName),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _photos.isEmpty
+              ? const Center(child: Text('暂无照片'))
+              : GridView.builder(
+                  padding: const EdgeInsets.all(4),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 4,
+                    crossAxisSpacing: 4,
+                  ),
+                  itemCount: _photos.length,
+                  itemBuilder: (_, index) {
+                    final photo = _photos[index];
+                    final connection = connections[photo.sourceId];
+                    final fileSystem = connection?.adapter.fileSystem;
+
+                    return AspectRatio(
+                      aspectRatio: 1,
+                      child: StreamImage(
+                        path: photo.path,
+                        fileSystem: fileSystem,
+                        cacheKey: 'person_${widget.person.id}_$index',
+                        placeholder: Container(
+                          color: isDark
+                              ? AppColors.darkSurfaceVariant
+                              : AppColors.lightSurfaceVariant,
+                          child: const Icon(Icons.image),
+                        ),
+                        errorWidget: Container(
+                          color: isDark
+                              ? AppColors.darkSurfaceVariant
+                              : AppColors.lightSurfaceVariant,
+                          child: const Icon(Icons.broken_image),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
   }
 }

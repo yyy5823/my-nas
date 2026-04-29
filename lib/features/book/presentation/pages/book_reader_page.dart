@@ -10,6 +10,7 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
@@ -769,6 +770,179 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         builder: (context, ref, _) {
           final settings = ref.watch(bookReaderSettingsProvider);
           return _buildSettingsContent(settings);
+        },
+      ),
+    );
+  }
+
+  /// 当前阅读位置（百分比 0..1，无法获取时为 0）
+  double _currentReadPosition() {
+    if (_pageController != null && _pageController!.hasClients) {
+      final page = _pageController!.page ?? _currentPage.toDouble();
+      final total = _pages.isNotEmpty ? _pages.length : (_totalPages > 0 ? _totalPages : 1);
+      return total > 0 ? (page / total).clamp(0.0, 1.0) : 0.0;
+    }
+    if (_scrollController.hasClients) {
+      final max = _scrollController.position.maxScrollExtent;
+      if (max <= 0) return 0;
+      return (_scrollController.position.pixels / max).clamp(0.0, 1.0);
+    }
+    return 0;
+  }
+
+  /// 跳转到书签位置
+  Future<void> _jumpToBookmarkPosition(double position) async {
+    if (_pageController != null && _pageController!.hasClients && _pages.isNotEmpty) {
+      final target = (position * _pages.length).round().clamp(0, _pages.length - 1);
+      await _pageController!.animateToPage(
+        target,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    if (_scrollController.hasClients) {
+      final max = _scrollController.position.maxScrollExtent;
+      if (max <= 0) return;
+      _scrollController.animateTo(
+        (position * max).clamp(0.0, max),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  /// 显示书签管理 sheet
+  Future<void> _showBookmarksSheet() async {
+    final itemId = ReadingProgressService().generateItemId(
+      widget.book.sourceId ?? 'local',
+      widget.book.path,
+    );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final bookmarks = ReadingProgressService().getBookmarks(itemId)
+            ..sort((a, b) => (b.createdAt ?? DateTime(0))
+                .compareTo(a.createdAt ?? DateTime(0)));
+
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.6,
+            minChildSize: 0.3,
+            maxChildSize: 0.9,
+            builder: (_, scrollController) => Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.bookmark_rounded),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '书签',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      TextButton.icon(
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('添加当前位置'),
+                        onPressed: () async {
+                          final position = _currentReadPosition();
+                          final title = _currentChapterTitle.isNotEmpty
+                              ? _currentChapterTitle
+                              : '位置 ${(position * 100).toStringAsFixed(1)}%';
+                          final bookmark = Bookmark(
+                            id: DateTime.now().microsecondsSinceEpoch.toString(),
+                            itemId: itemId,
+                            title: title,
+                            position: position,
+                            createdAt: DateTime.now(),
+                          );
+                          try {
+                            await ReadingProgressService().addBookmark(bookmark);
+                            setSheetState(() {});
+                            if (sheetContext.mounted) {
+                              ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                const SnackBar(
+                                  content: Text('已添加书签'),
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                            }
+                          } catch (e, st) {
+                            AppError.handle(e, st, 'bookReader.addBookmark');
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: bookmarks.isEmpty
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                              '暂无书签\n点击右上角"添加当前位置"创建第一个书签',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: scrollController,
+                          itemCount: bookmarks.length,
+                          itemBuilder: (_, index) {
+                            final bm = bookmarks[index];
+                            return Dismissible(
+                              key: ValueKey(bm.id),
+                              direction: DismissDirection.endToStart,
+                              background: Container(
+                                color: Colors.redAccent,
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.symmetric(horizontal: 24),
+                                child: const Icon(Icons.delete, color: Colors.white),
+                              ),
+                              onDismissed: (_) async {
+                                try {
+                                  await ReadingProgressService()
+                                      .deleteBookmark(itemId, bm.id);
+                                  setSheetState(() {});
+                                } catch (e, st) {
+                                  AppError.handle(e, st, 'bookReader.deleteBookmark');
+                                }
+                              },
+                              child: ListTile(
+                                leading: const Icon(Icons.bookmark_rounded),
+                                title: Text(
+                                  bm.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  '${(bm.position * 100).toStringAsFixed(1)}%'
+                                  '${bm.createdAt != null ? ' · ${DateFormat('MM-dd HH:mm').format(bm.createdAt!)}' : ''}',
+                                ),
+                                onTap: () async {
+                                  Navigator.pop(sheetContext);
+                                  await _jumpToBookmarkPosition(bm.position);
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          );
         },
       ),
     );
@@ -2345,19 +2519,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                     label: '设置',
                     onPressed: _showSettingsSheet,
                   ),
-                  // 书签功能 (TODO: 后续实现)
+                  // 书签
                   _buildBottomActionButton(
                     icon: Icons.bookmark_outline_rounded,
                     label: '书签',
-                    onPressed: () {
-                      // TODO: 实现书签功能
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('书签功能开发中...'),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    },
+                    onPressed: _showBookmarksSheet,
                   ),
                   // 更多菜单
                   _buildBottomActionButton(

@@ -835,13 +835,12 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // Infuse 风格的两阶段加载：
     // 阶段1：快速加载所有视频（毫秒级）
     // 阶段2：后台加载分类数据（可以较慢）
-    _initAndLoadInBackground()
-        .then((_) {
-          logger.i('VideoListNotifier: 后台初始化完成');
-        })
-        .catchError((Object e, StackTrace st) {
-          logger.e('VideoListNotifier: 后台初始化异常', e, st);
-        });
+    AppError.fireAndForget(
+      _initAndLoadInBackground().then((_) {
+        logger.i('VideoListNotifier: 后台初始化完成');
+      }),
+      action: 'videoList.initAndLoadInBackground',
+    );
   }
 
   /// Infuse 风格的两阶段加载

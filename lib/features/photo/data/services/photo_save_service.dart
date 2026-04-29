@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gal/gal.dart';
 import 'package:image/image.dart' as img;
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart' hide FileType;
@@ -727,7 +728,9 @@ class PhotoSaveService {
       if (await file.exists()) {
         await file.delete();
       }
-    } on Exception catch (_) {}
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '清理临时照片文件失败');
+    }
   }
 
   /// 延迟清理临时文件

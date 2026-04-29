@@ -7,6 +7,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image/image.dart' as img;
 import 'package:media_kit/media_kit.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -712,7 +713,10 @@ class MusicMediaKitAudioHandler extends BaseAudioHandler
       case AppLifecycleState.resumed:
         // 返回前台，重新激活音频会话
         if (_player.state.playing && Platform.isIOS) {
-          unawaited(_reactivateAudioSession());
+          AppError.fireAndForget(
+            _reactivateAudioSession(),
+            action: 'mediaKitHandler.reactivateAudioSession',
+          );
         }
 
       case AppLifecycleState.detached:

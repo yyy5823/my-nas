@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/audiotags_metadata_writer.dart';
 import 'package:my_nas/features/music/data/services/ffmpeg_metadata_writer.dart';
@@ -238,7 +239,9 @@ class UnifiedMetadataWriter implements MusicMetadataWriter {
           if (await tempFile.exists()) {
             await tempFile.delete();
           }
-        } catch (_) {}
+        } catch (e, st) {
+          AppError.ignore(e, st, '清理 NAS 写入临时文件失败');
+        }
       }
     }
   }

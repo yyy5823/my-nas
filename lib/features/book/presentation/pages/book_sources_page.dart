@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -232,9 +233,86 @@ class _BookSourcesPageState extends ConsumerState<BookSourcesPage>
     ref.read(bookSourcesProvider.notifier).toggleSource(source.id, enabled: enabled);
   }
 
-  void _handleTap(BookSource source) {
-    // TODO: 打开编辑页面
-    context.showToast('编辑功能开发中');
+  Future<void> _handleTap(BookSource source) async {
+    final controller = TextEditingController(
+      text: const JsonEncoder.withIndent('  ').convert(source.toJson()),
+    );
+    String? errorText;
+
+    final updated = await showDialog<BookSource>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text('编辑书源 · ${source.displayName}'),
+          content: SizedBox(
+            width: 600,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  '直接编辑书源 JSON。修改后将以新内容覆盖原书源（保留原 ID）。',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 480),
+                  child: TextField(
+                    controller: controller,
+                    maxLines: null,
+                    minLines: 12,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                      errorText: errorText,
+                      hintText: '{"bookSourceName": "...", ...}',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                try {
+                  final raw = jsonDecode(controller.text) as Map<String, dynamic>;
+                  // 强制保留原 ID，避免改 ID 导致引用断裂
+                  raw['id'] = source.id;
+                  final parsed = BookSource.fromJson(raw);
+                  Navigator.pop(dialogContext, parsed);
+                } on Exception catch (e) {
+                  setDialogState(() => errorText = 'JSON 解析失败: $e');
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    controller.dispose();
+
+    if (updated == null) return;
+
+    try {
+      await ref.read(bookSourcesProvider.notifier).updateSource(updated);
+      if (mounted) {
+        context.showToast('书源已更新');
+      }
+    } on Exception catch (e, st) {
+      if (mounted) {
+        AppError.handleWithUI(context, e, st, '保存书源失败', 'updateBookSource');
+      } else {
+        AppError.handle(e, st, 'updateBookSource');
+      }
+    }
   }
 
   Future<void> _handleDelete(BookSource source) async {

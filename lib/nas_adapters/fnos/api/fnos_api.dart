@@ -485,6 +485,98 @@ class FnOSApi {
     );
   }
 
+  /// 服务端复制
+  ///
+  /// 飞牛 NAS API `/api/v1/file/copy`，传 srcs（源路径列表）+ dst（目标父目录）。
+  /// 调用方失败时应回退到客户端下载+上传。
+  Future<void> copy(String sourcePath, String destPath) async {
+    final lastSlash = destPath.lastIndexOf('/');
+    final destParent = lastSlash > 0 ? destPath.substring(0, lastSlash) : '/';
+    final destName = lastSlash >= 0 ? destPath.substring(lastSlash + 1) : destPath;
+    await _request(
+      '/api/v1/file/copy',
+      data: {
+        'srcs': [sourcePath],
+        'dst': destParent,
+        'new_name': destName,
+      },
+    );
+  }
+
+  /// 上传字节数据 (multipart)
+  Future<void> uploadBytes({
+    required String remoteDir,
+    required String fileName,
+    required List<int> data,
+    String? mimeType,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final form = FormData.fromMap({
+      'path': remoteDir,
+      'file': MultipartFile.fromBytes(
+        data,
+        filename: fileName,
+        contentType: mimeType != null ? DioMediaType.parse(mimeType) : null,
+      ),
+    });
+
+    await dio.post<dynamic>(
+      '/api/v1/file/upload',
+      data: form,
+      onSendProgress: onProgress,
+      options: Options(
+        contentType: 'multipart/form-data',
+        headers: _token != null ? {'Authorization': 'Bearer $_token'} : null,
+      ),
+    );
+  }
+
+  /// 上传本地文件
+  Future<void> uploadFile({
+    required String localPath,
+    required String remoteDir,
+    required String fileName,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final form = FormData.fromMap({
+      'path': remoteDir,
+      'file': await MultipartFile.fromFile(localPath, filename: fileName),
+    });
+
+    await dio.post<dynamic>(
+      '/api/v1/file/upload',
+      data: form,
+      onSendProgress: onProgress,
+      options: Options(
+        contentType: 'multipart/form-data',
+        headers: _token != null ? {'Authorization': 'Bearer $_token'} : null,
+      ),
+    );
+  }
+
+  /// 服务端搜索
+  Future<List<FnOSFileInfo>> search(String query, {String? path}) async {
+    final response = await _request(
+      '/api/v1/file/search',
+      data: {
+        'keyword': query,
+        if (path != null) 'path': path,
+      },
+    );
+
+    final body = response.data;
+    if (body is! Map<String, dynamic>) return [];
+    final dataField = body['data'];
+    final list = dataField is Map<String, dynamic>
+        ? (dataField['files'] as List? ?? dataField['list'] as List? ?? const <dynamic>[])
+        : (dataField is List ? dataField : const <dynamic>[]);
+
+    return list
+        .whereType<Map<dynamic, dynamic>>()
+        .map((m) => _parseFileInfo(m, path ?? '/'))
+        .toList();
+  }
+
   /// 发送 API 请求
   Future<Response<dynamic>> _request(
     String path, {

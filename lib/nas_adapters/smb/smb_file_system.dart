@@ -439,8 +439,18 @@ class SmbFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<Stream<List<int>>> getUrlStream(String url) =>
-      throw UnimplementedError('SMB 不支持通过 URL 获取数据流');
+  Future<Stream<List<int>>> getUrlStream(String url) {
+    // SMB 没有真正的 HTTP URL，通过 smb:// 占位符还原路径再走 getFileStream。
+    // [getFileUrl] 返回 'smb://smb-local<path>'，这里反向解析。
+    if (url.startsWith('smb://')) {
+      final withoutScheme = url.substring('smb://'.length);
+      // 形如 'smb-local/foo/bar'
+      final firstSlash = withoutScheme.indexOf('/');
+      final path = firstSlash >= 0 ? withoutScheme.substring(firstSlash) : '/';
+      return getFileStream(path);
+    }
+    throw UnsupportedError('SMB 仅支持 smb:// 占位 URL，收到: $url');
+  }
 
   @override
   Future<String> getFileUrl(String path, {Duration? expiry}) async =>
@@ -480,8 +490,41 @@ class SmbFileSystem implements NasFileSystem {
 
   @override
   Future<void> copy(String sourcePath, String destPath) async {
-    // SMB 原生不支持服务端复制，需要下载后上传
-    throw UnimplementedError('SMB 暂不支持服务端复制，请使用下载后上传');
+    // SMB 原生不支持服务端复制（除非走 SMB3 FSCTL_SRV_COPYCHUNK，smb_connect 不暴露），
+    // 这里以"下载-上传"客户端 fallback 实现：
+    // 1. 从源路径流式读
+    // 2. 写入到目标路径（先确保目标父目录存在）
+    final stream = await getFileStream(sourcePath);
+
+    await _connectionPool.withConnection(
+      (client) async {
+        // 删除已存在的目标文件，避免覆盖冲突
+        try {
+          final existing = await client.file(destPath);
+          await client.delete(existing);
+        // ignore: avoid_catches_without_on_clauses
+        } catch (e, st) {
+          AppError.ignore(e, st, 'SMB copy: 目标不存在或无法删除，继续创建');
+        }
+
+        await client.createFile(destPath);
+        final remoteFile = await client.file(destPath);
+        final writer = await client.openWrite(remoteFile);
+
+        try {
+          await for (final chunk in stream) {
+            writer.add(chunk);
+          }
+          await writer.flush();
+          await writer.close();
+        // ignore: avoid_catches_without_on_clauses
+        } catch (_) {
+          await writer.close();
+          rethrow;
+        }
+      },
+      type: SmbConnectionType.background,
+    );
   }
 
   @override
@@ -571,8 +614,40 @@ class SmbFileSystem implements NasFileSystem {
 
   @override
   Future<List<FileItem>> search(String query, {String? path}) async {
-    // SMB 不支持服务端搜索，需要客户端遍历实现
-    throw UnimplementedError('SMB 暂不支持搜索功能');
+    // SMB 不支持服务端搜索，使用客户端 BFS 递归遍历，限深度和数量避免遍历过深
+    if (query.trim().isEmpty) return const [];
+    return _clientSideSearch(query, root: path ?? '/');
+  }
+
+  /// 客户端 BFS 搜索，文件名包含 [query] 即视为命中
+  Future<List<FileItem>> _clientSideSearch(
+    String query, {
+    required String root,
+    int maxDepth = 4,
+    int maxResults = 200,
+  }) async {
+    final lower = query.toLowerCase();
+    final results = <FileItem>[];
+    final queue = <({String path, int depth})>[(path: root, depth: 0)];
+
+    while (queue.isNotEmpty && results.length < maxResults) {
+      final entry = queue.removeAt(0);
+      try {
+        final children = await listDirectory(entry.path);
+        for (final child in children) {
+          if (child.name.toLowerCase().contains(lower)) {
+            results.add(child);
+            if (results.length >= maxResults) break;
+          }
+          if (child.isDirectory && entry.depth < maxDepth) {
+            queue.add((path: child.path, depth: entry.depth + 1));
+          }
+        }
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, 'SMB 搜索：跳过无法访问的目录 ${entry.path}');
+      }
+    }
+    return results;
   }
 
   @override

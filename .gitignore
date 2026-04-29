@@ -233,6 +233,16 @@ packages/audiotags_fixed/android/.cxx/
 packages/audiotags_fixed/android/src/main/jniLibs/
 packages/audiotags_fixed/android/android.tar.gz
 packages/audiotags_fixed/logs/
+# Windows: CMake 构建时从 GitHub releases 自动下载并解压的预编译 Rust lib
+packages/audiotags_fixed/windows/windows.tar.gz
+packages/audiotags_fixed/windows/audiotags.dll
+# macOS / iOS / Linux 同类构建产物（按需启用）
+packages/audiotags_fixed/macos/macos.tar.gz
+packages/audiotags_fixed/macos/*.dylib
+packages/audiotags_fixed/macos/*.framework/
+packages/audiotags_fixed/ios/*.xcframework/
+packages/audiotags_fixed/linux/linux.tar.gz
+packages/audiotags_fixed/linux/*.so
 
 # Android build reports (generated during build)
 android/build/

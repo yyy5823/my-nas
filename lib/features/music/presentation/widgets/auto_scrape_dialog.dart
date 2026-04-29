@@ -552,8 +552,14 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       await MusicFavoritesService().updateCoverUrl(widget.music.path, newCoverUrl);
 
       // 8. 刷新收藏和播放历史的 provider（使 UI 立即更新）
-      unawaited(ref.read(musicFavoritesProvider.notifier).refresh());
-      unawaited(ref.read(musicHistoryProvider.notifier).refresh());
+      AppError.fireAndForget(
+        ref.read(musicFavoritesProvider.notifier).refresh(),
+        action: 'autoScrape.refreshFavorites',
+      );
+      AppError.fireAndForget(
+        ref.read(musicHistoryProvider.notifier).refresh(),
+        action: 'autoScrape.refreshHistory',
+      );
     } on Exception catch (e, st) {
       // 非关键功能，静默失败
       AppError.ignore(e, st, '同步封面到本地缓存失败');

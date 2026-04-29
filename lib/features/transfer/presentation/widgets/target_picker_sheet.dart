@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
 /// 上传目标选择结果
 class UploadTarget {
@@ -294,12 +296,10 @@ class _TargetPickerSheetState extends ConsumerState<TargetPickerSheet> {
     BuildContext context,
     SourceConnection connection,
   ) async {
-    // TODO: 实现目录选择器
-    // 目前先使用简单的文本输入
-    final path = await showDialog<String>(
-      context: context,
-      builder: (context) => _DirectoryInputDialog(
-        source: connection.source,
+    final path = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => _DirectoryBrowserPage(connection: connection),
+        fullscreenDialog: true,
       ),
     );
 
@@ -324,45 +324,195 @@ class _TargetPickerSheetState extends ConsumerState<TargetPickerSheet> {
       };
 }
 
-/// 目录输入对话框
-class _DirectoryInputDialog extends StatefulWidget {
-  const _DirectoryInputDialog({required this.source});
+/// 目录浏览选择页
+///
+/// 通过 [NasFileSystem.listDirectory] 浏览远端目录树，只显示文件夹。
+/// 提供"返回上一级"、"新建文件夹"、"选择此目录"操作。
+class _DirectoryBrowserPage extends StatefulWidget {
+  const _DirectoryBrowserPage({required this.connection});
 
-  final SourceEntity source;
+  final SourceConnection connection;
 
   @override
-  State<_DirectoryInputDialog> createState() => _DirectoryInputDialogState();
+  State<_DirectoryBrowserPage> createState() => _DirectoryBrowserPageState();
 }
 
-class _DirectoryInputDialogState extends State<_DirectoryInputDialog> {
-  final _controller = TextEditingController();
+class _DirectoryBrowserPageState extends State<_DirectoryBrowserPage> {
+  String _currentPath = '/';
+  List<FileItem> _entries = [];
+  bool _loading = false;
+  String? _error;
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadDirectory(_currentPath);
+  }
+
+  Future<void> _loadDirectory(String path) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final entries = await widget.connection.adapter.fileSystem.listDirectory(path);
+      if (!mounted) return;
+      setState(() {
+        _currentPath = path;
+        _entries = entries.where((e) => e.isDirectory).toList()
+          ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        _loading = false;
+      });
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'directoryPicker.list', {'path': path});
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  String _parentPath(String path) {
+    if (path == '/' || path.isEmpty) return '/';
+    final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+    final lastSep = trimmed.lastIndexOf('/');
+    if (lastSep <= 0) return '/';
+    return trimmed.substring(0, lastSep);
+  }
+
+  String _joinPath(String base, String name) {
+    if (base.endsWith('/')) return '$base$name';
+    return '$base/$name';
+  }
+
+  Future<void> _createFolder() async {
+    final controller = TextEditingController();
+    final folderName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('新建文件夹'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '文件夹名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (folderName == null || folderName.isEmpty) return;
+    if (!mounted) return;
+
+    try {
+      final newPath = _joinPath(_currentPath, folderName);
+      await widget.connection.adapter.fileSystem.createDirectory(newPath);
+      await _loadDirectory(_currentPath);
+    } on Exception catch (e, st) {
+      if (mounted) {
+        AppError.handleWithUI(context, e, st, '创建失败', 'directoryPicker.create');
+      } else {
+        AppError.handle(e, st, 'directoryPicker.create');
+      }
+    }
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-      title: const Text('输入目标路径'),
-      content: TextField(
-        controller: _controller,
-        decoration: InputDecoration(
-          hintText: '例如：/photos/upload',
-          helperText: '上传到 ${widget.source.name}',
-        ),
-        autofocus: true,
+  Widget build(BuildContext context) {
+    final atRoot = _currentPath == '/' || _currentPath.isEmpty;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.connection.source.name),
+        actions: [
+          IconButton(
+            tooltip: '新建文件夹',
+            icon: const Icon(Icons.create_new_folder_outlined),
+            onPressed: _createFolder,
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _currentPath),
+            child: const Text('选择此处'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(context, _controller.text),
-          child: const Text('确定'),
-        ),
-      ],
+      body: Column(
+        children: [
+          // 当前路径条
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Row(
+              children: [
+                const Icon(Icons.folder_open, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _currentPath,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!atRoot)
+            ListTile(
+              leading: const Icon(Icons.arrow_upward),
+              title: const Text('返回上一级'),
+              onTap: () => _loadDirectory(_parentPath(_currentPath)),
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                              const SizedBox(height: 12),
+                              Text('加载失败: $_error', textAlign: TextAlign.center),
+                              const SizedBox(height: 12),
+                              FilledButton(
+                                onPressed: () => _loadDirectory(_currentPath),
+                                child: const Text('重试'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : _entries.isEmpty
+                        ? const Center(child: Text('当前目录为空'))
+                        : ListView.builder(
+                            itemCount: _entries.length,
+                            itemBuilder: (_, index) {
+                              final item = _entries[index];
+                              return ListTile(
+                                leading: const Icon(Icons.folder),
+                                title: Text(item.name),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _loadDirectory(
+                                  _joinPath(_currentPath, item.name),
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ],
+      ),
     );
+  }
 }

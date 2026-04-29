@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
@@ -128,11 +129,16 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
       // 应用保存的字幕延时设置
       final subtitleStyle = ref.read(subtitleStyleProvider);
       if (subtitleStyle.delay != 0) {
-        _playerNotifier?.setSubtitleDelay(subtitleStyle.delay);
+        final notifier = _playerNotifier;
+        if (notifier != null) {
+          AppError.fireAndForget(
+            notifier.setSubtitleDelay(subtitleStyle.delay),
+            action: 'videoPlayer.applyInitialSubtitleDelay',
+          );
+        }
       }
       // 异步加载字幕，不阻塞播放流程
-      // 字幕搜索可能耗时，使用 fire-and-forget 模式
-      unawaited(_loadSubtitles());
+      AppError.fireAndForget(_loadSubtitles(), action: 'videoPlayer.loadSubtitles');
     });
     _startHideControlsTimer();
   }
@@ -628,7 +634,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
                             next,
                           ) {
                             if (previous?.delay != next.delay) {
-                              playerNotifier.setSubtitleDelay(next.delay);
+                              AppError.fireAndForget(
+                                playerNotifier.setSubtitleDelay(next.delay),
+                                action: 'videoPlayer.updateSubtitleDelay',
+                              );
                             }
                           });
 

@@ -7,6 +7,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image/image.dart' as img;
 import 'package:just_audio/just_audio.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -264,7 +265,10 @@ class MusicAudioHandler extends BaseAudioHandler
         //
         // 解决方案：在返回前台时重新激活 AudioSession
         if (_player.playing && Platform.isIOS) {
-          unawaited(_reactivateAudioSessionOnResumed());
+          AppError.fireAndForget(
+            _reactivateAudioSessionOnResumed(),
+            action: 'audioHandler.reactivateAudioSession',
+          );
         }
 
       case AppLifecycleState.detached:
@@ -586,7 +590,7 @@ class MusicAudioHandler extends BaseAudioHandler
     // 注意：不等待 _player.play()，因为在 iOS 上它可能不会立即返回
     // 这会导致调用者永远等待，进而导致切歌失败
     // play() 只是触发播放，实际的播放状态通过 playbackEventStream 监听
-    unawaited(_player.play());
+    AppError.fireAndForget(_player.play(), action: 'audioHandler.play');
     // 短暂等待确保播放器状态更新
     await Future<void>.delayed(const Duration(milliseconds: 50));
     // 重要：显式广播状态确保 iOS Now Playing 立即更新
@@ -598,7 +602,7 @@ class MusicAudioHandler extends BaseAudioHandler
   Future<void> pause() async {
     logger.i('MusicAudioHandler: pause() 被调用');
     // 同样不等待，避免卡住
-    unawaited(_player.pause());
+    AppError.fireAndForget(_player.pause(), action: 'audioHandler.pause');
     await Future<void>.delayed(const Duration(milliseconds: 50));
     // 显式广播状态确保 iOS Now Playing 立即更新
     _broadcastState(PlaybackEvent());
@@ -608,7 +612,7 @@ class MusicAudioHandler extends BaseAudioHandler
   Future<void> stop() async {
     logger.i('MusicAudioHandler: stop() 被调用');
     // 同样不等待，避免卡住
-    unawaited(_player.stop());
+    AppError.fireAndForget(_player.stop(), action: 'audioHandler.stop');
     await Future<void>.delayed(const Duration(milliseconds: 50));
     // 显式广播状态确保 iOS Now Playing 立即更新
     _broadcastState(PlaybackEvent());

@@ -554,7 +554,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     state = PhotoListLoaded(totalCount: 0);
 
     // 在后台初始化服务并加载数据，不阻塞UI
-    unawaited(_initAndLoadInBackground());
+    AppError.fireAndForget(_initAndLoadInBackground(), action: 'photoList.initAndLoadInBackground');
   }
 
   /// 后台初始化服务并加载数据

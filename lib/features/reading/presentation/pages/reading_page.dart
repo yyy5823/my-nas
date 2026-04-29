@@ -1268,10 +1268,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
       case 1: // 漫画
         ref.read(comicListProvider.notifier).setSearchQuery(query);
       case 2: // 笔记
-        // 笔记暂不支持搜索
-        if (query.isNotEmpty) {
-          context.showToast('笔记搜索功能开发中...');
-        }
+        ref.read(notePageProvider.notifier).setSearchQuery(query);
     }
   }
 

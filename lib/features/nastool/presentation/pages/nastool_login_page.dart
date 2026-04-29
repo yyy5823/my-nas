@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/nastool/presentation/pages/nastool_main_page.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
@@ -75,12 +76,13 @@ class _NasToolLoginPageState extends ConsumerState<NasToolLoginPage>
 
       if (connection.status == NasToolConnectionStatus.connected) {
         // 登录成功，跳转主页面
-        unawaited(
+        AppError.fireAndForget(
           Navigator.of(context).pushReplacement(
             MaterialPageRoute<void>(
               builder: (context) => NasToolMainPage(source: updatedSource),
             ),
           ),
+          action: 'nastool.navigateToMainAfterLogin',
         );
       } else {
         setState(() {

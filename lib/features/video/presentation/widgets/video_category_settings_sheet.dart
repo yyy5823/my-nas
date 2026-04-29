@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
+import 'package:my_nas/core/errors/errors.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,7 +79,11 @@ class _VideoCategorySettingsSheetState
     ];
 
     for (final category in categories) {
-      unawaited(_loadFilters(category));
+      AppError.fireAndForget(
+        _loadFilters(category),
+        action: 'videoCategorySettings.loadFilters',
+        extraData: {'category': category.name},
+      );
     }
   }
 

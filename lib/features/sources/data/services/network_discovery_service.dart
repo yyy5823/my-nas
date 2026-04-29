@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 
@@ -281,8 +282,8 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
 
   @override
   void dispose() {
-    // 使用 unawaited 因为 dispose 不能是 async
-    unawaited(stopDiscovery());
+    // dispose 不能是 async，使用 fireAndForget 异步停止扫描
+    AppError.fireAndForget(stopDiscovery(), action: 'networkDiscovery.stopDiscovery');
     super.dispose();
   }
 }

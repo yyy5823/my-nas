@@ -1,6 +1,7 @@
 import 'package:html/dom.dart' as html_dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:json_path/json_path.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:xpath_selector_html_parser/xpath_selector_html_parser.dart';
 
@@ -789,7 +790,9 @@ class RuleParser {
       if (element != null) {
         return element.attributes[attrName];
       }
-    } catch (_) {}
+    } catch (e, st) {
+      AppError.ignore(e, st, 'HTML 解析失败，返回 null');
+    }
     
     return null;
   }

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_writer.dart';
 import 'package:my_nas/features/music/data/services/unified_metadata_writer.dart';
@@ -127,7 +128,9 @@ class SafeMetadataWriter {
       if (wasPlaying) {
         try {
           await _playerController.resume();
-        } catch (_) {}
+        } catch (re, rst) {
+          AppError.ignore(re, rst, '写入失败后恢复播放失败');
+        }
       }
 
       return SafeWriteResult(
@@ -190,7 +193,9 @@ class SafeMetadataWriter {
       if (wasPlaying) {
         try {
           await _playerController.resume();
-        } catch (_) {}
+        } catch (re, rst) {
+          AppError.ignore(re, rst, '写入失败后恢复播放失败');
+        }
       }
 
       return SafeWriteResult(

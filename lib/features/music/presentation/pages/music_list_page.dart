@@ -626,7 +626,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     state = MusicListLoaded(totalCount: 0);
 
     // 在后台初始化服务并加载数据，不阻塞UI
-    unawaited(_initAndLoadInBackground());
+    AppError.fireAndForget(_initAndLoadInBackground(), action: 'musicList.initAndLoadInBackground');
   }
 
   /// 后台初始化服务并加载数据
@@ -1071,21 +1071,24 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     List<MusicFileWithSource> tracks,
     Map<String, SourceConnection> connections,
   ) {
-    unawaited(_saveTracksToDb(tracks).then((_) async {
-      // 保存后刷新 UI
-      if (state is MusicListLoading) {
-        // 扫描中：更新进度
-        final loading = state as MusicListLoading;
-        state = MusicListLoading(
-          progress: loading.progress,
-          currentFolder: loading.currentFolder,
-          scannedCount: loading.scannedCount,
-        );
-      } else if (state is MusicListLoaded) {
-        // 已加载：增量更新
-        await _loadCategorizedData();
-      }
-    }));
+    AppError.fireAndForget(
+      _saveTracksToDb(tracks).then((_) async {
+        // 保存后刷新 UI
+        if (state is MusicListLoading) {
+          // 扫描中：更新进度
+          final loading = state as MusicListLoading;
+          state = MusicListLoading(
+            progress: loading.progress,
+            currentFolder: loading.currentFolder,
+            scannedCount: loading.scannedCount,
+          );
+        } else if (state is MusicListLoaded) {
+          // 已加载：增量更新
+          await _loadCategorizedData();
+        }
+      }),
+      action: 'musicList.saveTracksAndUpdateUI',
+    );
   }
 
   /// 保存音乐到数据库（仅基本信息，无元数据）
@@ -1117,7 +1120,10 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       );
     }
 
-    unawaited(_doExtractMetadataInBackground(tracks, connections));
+    AppError.fireAndForget(
+      _doExtractMetadataInBackground(tracks, connections),
+      action: 'musicList.extractMetadataInBackground',
+    );
   }
 
   /// 并行提取元数据，实时更新进度
@@ -2692,7 +2698,10 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       // 推荐列表不跳转到播放器页面，在顶部 HeroPlayerCard 播放即可
 
       // 在后台构建完整播放队列（使用提前获取的 notifier）
-      unawaited(_buildPlayQueue(playQueueNotifier, playerNotifier, connections, track, allTracks, trackIndex));
+      AppError.fireAndForget(
+        _buildPlayQueue(playQueueNotifier, playerNotifier, connections, track, allTracks, trackIndex),
+        action: 'musicList.buildPlayQueue',
+      );
     } on Exception catch (e) {
       if (context.mounted) {
         context.showErrorToast('播放失败: $e');
@@ -8105,7 +8114,7 @@ class _MusicTableRow extends ConsumerWidget {
       if (value == null) return;
       switch (value) {
         case 'play':
-          unawaited(_playTrack(context, ref));
+          AppError.fireAndForget(_playTrack(context, ref), action: 'musicList.playTrack');
         case 'queue':
           ref.read(playQueueProvider.notifier).addToQueue(track.toMusicItem());
           if (context.mounted) {
@@ -9039,7 +9048,7 @@ class _CompactMusicTile extends ConsumerWidget {
 
       // 导航到播放器页面
       if (!context.mounted) return;
-      unawaited(MusicPlayerPage.open(context));
+      AppError.fireAndForget(MusicPlayerPage.open(context), action: 'musicList.openMusicPlayerPage');
 
       // 在后台构建完整播放队列
       if (allTracks != null && allTracks!.isNotEmpty) {

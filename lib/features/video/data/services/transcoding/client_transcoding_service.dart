@@ -775,14 +775,17 @@ class ClientTranscodingService implements NasTranscodingService {
           logger.i('ClientTranscoding: 流式转码已就绪 ${task.outputPath}');
 
           // 后台监控转码进程
-          unawaited(process.exitCode.then((exitCode) {
-            if (exitCode == 0) {
-              logger.i('ClientTranscoding: 后台转码完成 ${task.outputPath}');
-            } else {
-              logger.w('ClientTranscoding: 后台转码异常退出 $exitCode');
-            }
-            task.isRunning = false;
-          }));
+          AppError.fireAndForget(
+            process.exitCode.then((exitCode) {
+              if (exitCode == 0) {
+                logger.i('ClientTranscoding: 后台转码完成 ${task.outputPath}');
+              } else {
+                logger.w('ClientTranscoding: 后台转码异常退出 $exitCode');
+              }
+              task.isRunning = false;
+            }),
+            action: 'clientTranscoding.monitorExitCode',
+          );
         } else {
           // 等待超时，检查当前状态
           task.isRunning = false;

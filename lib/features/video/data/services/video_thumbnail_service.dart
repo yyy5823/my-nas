@@ -226,7 +226,9 @@ class VideoThumbnailService {
           if (tempFilePath != null) {
             try {
               await File(tempFilePath).delete();
-            } on Exception catch (_) {}
+            } on Exception catch (e, st) {
+              AppError.ignore(e, st, '清理上一级缩略图临时文件失败');
+            }
           }
 
           tempFilePath = await _downloadVideoForThumbnail(

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
@@ -131,7 +132,9 @@ class RemotePosterService {
       if (dotIndex > 0 && dotIndex < path.length - 1) {
         return path.substring(dotIndex + 1).toLowerCase();
       }
-    } on Exception catch (_) {}
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'URL 解析失败，无法提取扩展名');
+    }
     return null;
   }
 

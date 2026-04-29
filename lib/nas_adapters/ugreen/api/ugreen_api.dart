@@ -509,6 +509,106 @@ class UGreenApi {
     );
   }
 
+  /// 服务端复制
+  ///
+  /// UGOS 提供 `/ugreen/v1/file/copy` 端点接收 `srcs`（源路径列表）和 `dst`（目标父目录）。
+  /// 不同固件可能字段名稍有差异，调用方在失败时应自行回退到下载+上传。
+  Future<void> copy(String sourcePath, String destPath) async {
+    final lastSlash = destPath.lastIndexOf('/');
+    final destParent = lastSlash > 0 ? destPath.substring(0, lastSlash) : '/';
+    final destName = lastSlash >= 0 ? destPath.substring(lastSlash + 1) : destPath;
+    await _request(
+      '/ugreen/v1/file/copy',
+      data: {
+        'srcs': [sourcePath],
+        'dst': destParent,
+        // 部分固件支持复制时重命名
+        'new_name': destName,
+      },
+    );
+  }
+
+  /// 上传文件 (multipart/form-data)
+  ///
+  /// UGOS 上传端点：`/ugreen/v1/file/upload`，支持以 multipart 上传单文件。
+  /// [remoteDir] 目标目录，[fileName] 远端文件名。
+  /// 对于大文件，调用方应自行分块（UGOS 也支持分片上传，未来可优化）。
+  Future<void> uploadBytes({
+    required String remoteDir,
+    required String fileName,
+    required List<int> data,
+    String? mimeType,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final form = FormData.fromMap({
+      'path': remoteDir,
+      'file': MultipartFile.fromBytes(
+        data,
+        filename: fileName,
+        contentType: mimeType != null ? DioMediaType.parse(mimeType) : null,
+      ),
+    });
+
+    await dio.post<dynamic>(
+      '/ugreen/v1/file/upload',
+      queryParameters: {'token': _token ?? ''},
+      data: form,
+      onSendProgress: onProgress,
+      options: Options(
+        contentType: 'multipart/form-data',
+      ),
+    );
+  }
+
+  /// 上传本地文件
+  Future<void> uploadFile({
+    required String localPath,
+    required String remoteDir,
+    required String fileName,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final form = FormData.fromMap({
+      'path': remoteDir,
+      'file': await MultipartFile.fromFile(localPath, filename: fileName),
+    });
+
+    await dio.post<dynamic>(
+      '/ugreen/v1/file/upload',
+      queryParameters: {'token': _token ?? ''},
+      data: form,
+      onSendProgress: onProgress,
+      options: Options(
+        contentType: 'multipart/form-data',
+      ),
+    );
+  }
+
+  /// 服务端搜索
+  ///
+  /// UGOS `/ugreen/v1/file/search` 端点支持关键字搜索。
+  /// [path] 限定搜索范围（可选）。
+  Future<List<UGreenFileInfo>> search(String query, {String? path}) async {
+    final response = await _request(
+      '/ugreen/v1/file/search',
+      data: {
+        'keyword': query,
+        if (path != null) 'path': path,
+      },
+    );
+
+    final body = response.data;
+    if (body is! Map<String, dynamic>) return [];
+    final dataField = body['data'];
+    final list = dataField is Map<String, dynamic>
+        ? (dataField['files'] as List? ?? dataField['list'] as List? ?? const <dynamic>[])
+        : (dataField is List ? dataField : const <dynamic>[]);
+
+    return list
+        .whereType<Map<dynamic, dynamic>>()
+        .map((m) => _parseFileInfo(m, path ?? '/'))
+        .toList();
+  }
+
   /// 获取共享文件夹列表
   ///
   /// UGOS 共享文件夹 API 端点尝试顺序 (尝试多种已知的 UGOS API 格式)

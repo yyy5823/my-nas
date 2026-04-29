@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/pt_sites/domain/entities/pt_torrent.dart';
 import 'package:my_nas/features/pt_sites/presentation/providers/pt_site_provider.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/service_adapters/aria2/api/aria2_api.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
 import 'package:my_nas/service_adapters/transmission/api/transmission_api.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
@@ -47,8 +49,8 @@ class _SendToDownloaderSheetState extends ConsumerState<SendToDownloaderSheet> {
         _downloadUrl = await api.getDownloadUrl(widget.torrent.id);
         if (mounted) setState(() {});
       }
-    } on Exception {
-      // 忽略错误，使用种子的 downloadUrl
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '获取专属下载链接失败，回退使用 torrent.downloadUrl');
       _downloadUrl = widget.torrent.downloadUrl;
     }
   }
@@ -413,8 +415,33 @@ class _SendToDownloaderSheetState extends ConsumerState<SendToDownloaderSheet> {
   }
 
   Future<void> _sendToAria2(SourceEntity downloader) async {
-    // Aria2 使用 JSON-RPC 协议添加 BT 任务
-    // 暂时抛出未实现异常
-    throw UnimplementedError('Aria2 下载器暂未实现');
+    // Aria2 通过 JSON-RPC 提交 URI 任务，BT 种子直接传 URL，让 Aria2 自行下载并解析
+    final protocol = downloader.useSsl ? 'https' : 'http';
+    final baseUrl = '$protocol://${downloader.host}:${downloader.port}';
+    final rpcSecret = downloader.extraConfig?['rpcSecret'] as String?;
+    final downloadDir = downloader.extraConfig?['downloadDir'] as String?;
+
+    final api = Aria2Api(baseUrl: baseUrl, rpcSecret: rpcSecret);
+
+    try {
+      // 先验证连接（顺带拿到版本，便于 UI 反馈）
+      await api.connect();
+
+      final options = <String, dynamic>{};
+      if (downloadDir != null && downloadDir.isNotEmpty) {
+        options['dir'] = downloadDir;
+      }
+      // Aria2 的 pause 选项必须是字符串
+      if (_pauseAfterAdd) {
+        options['pause'] = 'true';
+      }
+
+      await api.addUri(
+        [_downloadUrl!],
+        options: options.isEmpty ? null : options,
+      );
+    } finally {
+      api.dispose();
+    }
   }
 }

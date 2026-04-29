@@ -15,8 +15,9 @@ const _baseUrl = 'https://api.opensubtitles.com/api/v1';
 /// 用户代理字符串
 const _userAgent = 'MyNas v1.0';
 
-/// 内置默认 API Key（在 opensubtitles.com 申请）
-/// TODO: 替换为正式申请的 API Key
+/// 内置默认 API Key（用作公共兜底）
+/// 用户可在「源管理 → OpenSubtitles」中填写自己的 API Key 覆盖此默认值，
+/// 以获得独立配额、避免共享 key 限流。
 const _defaultApiKey = 'eBSGArWsmT2iiGX0Et8CAqOBsKZCPYjM';
 
 /// OpenSubtitles 字幕搜索结果

@@ -358,7 +358,9 @@ class BookSearchService {
         if (decoded != name && !decoded.contains('%')) {
           return decoded.trim();
         }
-      } catch (_) {}
+      } catch (e, st) {
+        AppError.ignore(e, st, 'URL 解码书名失败，使用原文本');
+      }
       return name.trim();
     }
     
@@ -410,7 +412,9 @@ class BookSearchService {
       if (decoded != result && !decoded.contains('%')) {
         result = decoded;
       }
-    } catch (_) {}
+    } catch (e, st) {
+      AppError.ignore(e, st, 'URL 解码结果失败，使用原文本');
+    }
     
     // 清理HTML标签
     result = result.replaceAll(RegExp(r'<[^>]*>'), '');
@@ -462,8 +466,10 @@ class BookSearchService {
     // URL解码
     try {
       decoded = Uri.decodeComponent(text);
-    } catch (_) {}
-    
+    } catch (e, st) {
+      AppError.ignore(e, st, 'URL 解码作者文本失败，使用原文本');
+    }
+
     // 查找常见的作者标记模式
     final patterns = <RegExp>[
       // class="authorNm" 或 class="author"
@@ -585,8 +591,10 @@ class BookSearchService {
     // URL解码
     try {
       decoded = Uri.decodeComponent(html);
-    } catch (_) {}
-    
+    } catch (e, st) {
+      AppError.ignore(e, st, 'URL 解码 HTML 失败，使用原文本');
+    }
+
     // 查找img标签的src或data-src
     // 优先查找带有cover相关class的img
     final patterns = <RegExp>[
@@ -643,7 +651,9 @@ class BookSearchService {
       try {
         final uri = Uri.parse(baseUrl);
         return '${uri.scheme}://${uri.host}$url';
-      } catch (_) {}
+      } catch (e, st) {
+        AppError.ignore(e, st, 'baseUrl 解析失败，返回原相对 URL');
+      }
     }
     
     return url;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dlna_dart/dlna.dart';
 import 'package:dlna_dart/xmlParser.dart';
@@ -138,14 +139,19 @@ class DlnaAdapter {
 
   /// 投屏视频
   ///
-  /// [subtitleUrl] 目前 dlna_dart 库不支持直接传递字幕 URL。
-  /// 字幕需要通过 DIDL-Lite metadata 传递，或者使用内嵌字幕的视频格式。
-  /// 部分高端 DLNA 设备支持通过单独的字幕 URL 加载字幕。
+  /// 当 [subtitleUrl] 不为 null 时，会构造带字幕扩展的 DIDL-Lite metadata
+  /// 直接调用 `SetAVTransportURI`，覆盖 dlna_dart 内置不带字幕的实现。
+  /// 兼容三种主流字幕扩展（最大化设备兼容性）：
+  /// - 三星 sec:CaptionInfoEx
+  /// - 通用 res protocolInfo=text/srt
+  /// - Sony pv:subtitleFileUri / subtitleFileType
+  /// 如果带字幕的请求失败，会自动回退到不带字幕的常规投屏。
   Future<bool> castVideo({
     required String deviceId,
     required String videoUrl,
     required String title,
     String? subtitleUrl,
+    String? subtitleMime,
   }) async {
     // 找到对应的 DLNA 设备
     final device = _dlnaDevices[deviceId];
@@ -163,13 +169,28 @@ class DlnaAdapter {
     try {
       logger.i('开始投屏到 ${_currentDevice!.info.friendlyName}');
       logger.i('视频URL: $videoUrl');
-      if (subtitleUrl != null) {
-        // TODO: dlna_dart 0.0.6 不支持字幕 URL，记录日志供调试
-        logger.w('DLNA 字幕URL已提供但当前库版本不支持: $subtitleUrl');
+
+      var subtitleApplied = false;
+      if (subtitleUrl != null && subtitleUrl.isNotEmpty) {
+        try {
+          await _setAvTransportUriWithSubtitle(
+            device: _currentDevice!,
+            videoUrl: videoUrl,
+            title: title,
+            subtitleUrl: subtitleUrl,
+            subtitleMime: subtitleMime ?? _guessSubtitleMime(subtitleUrl),
+          );
+          subtitleApplied = true;
+          logger.i('DLNA: 已附带字幕 metadata 投屏 $subtitleUrl');
+        } on Exception catch (e, st) {
+          AppError.ignore(e, st, '带字幕投屏失败，回退到不带字幕');
+        }
       }
 
-      // 设置媒体 URL
-      await _currentDevice!.setUrl(videoUrl, title: title, type: PlayType.Video);
+      if (!subtitleApplied) {
+        // 标准投屏（不带字幕，或带字幕请求失败时回退）
+        await _currentDevice!.setUrl(videoUrl, title: title, type: PlayType.Video);
+      }
 
       // 播放
       await _currentDevice!.play();
@@ -182,6 +203,58 @@ class DlnaAdapter {
       return false;
     }
   }
+
+  /// 调用 DLNA 设备的 `SetAVTransportURI`，附带字幕的 DIDL-Lite metadata
+  ///
+  /// 直接调用 dlna_dart 暴露的 [DLNADevice.request] 提交手工构造的 SOAP envelope。
+  Future<void> _setAvTransportUriWithSubtitle({
+    required DLNADevice device,
+    required String videoUrl,
+    required String title,
+    required String subtitleUrl,
+    required String subtitleMime,
+  }) async {
+    final encodedVideoUrl = _xmlEscape(videoUrl);
+    final encodedSubtitleUrl = _xmlEscape(subtitleUrl);
+    final encodedTitle = _xmlEscape(title);
+    final subtitleType = subtitleMime.endsWith('vtt')
+        ? 'vtt'
+        : subtitleMime.endsWith('ass')
+            ? 'ass'
+            : 'srt';
+
+    // DIDL-Lite metadata：三种字幕扩展同时携带，提高设备兼容性
+    final metadata = '''<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:sec="http://www.sec.co.kr/" xmlns:pv="http://www.pv.com/pvns/"><item id="false" parentID="1" restricted="0"><dc:title>$encodedTitle</dc:title><dc:creator>unknown</dc:creator><upnp:class>object.item.videoItem</upnp:class><res protocolInfo="http-get:*:video/mp4:*" pv:subtitleFileUri="$encodedSubtitleUrl" pv:subtitleFileType="$subtitleType">$encodedVideoUrl</res><res protocolInfo="http-get:*:text/$subtitleType:*">$encodedSubtitleUrl</res><sec:CaptionInfoEx sec:type="$subtitleType">$encodedSubtitleUrl</sec:CaptionInfoEx><sec:CaptionInfo sec:type="$subtitleType">$encodedSubtitleUrl</sec:CaptionInfo></item></DIDL-Lite>''';
+
+    final escapedMetadata = _xmlEscape(metadata);
+
+    final envelope = '''<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+    <s:Body>
+        <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+            <InstanceID>0</InstanceID>
+            <CurrentURI>$encodedVideoUrl</CurrentURI>
+            <CurrentURIMetaData>$escapedMetadata</CurrentURIMetaData>
+        </u:SetAVTransportURI>
+    </s:Body>
+</s:Envelope>''';
+
+    await device.request('SetAVTransportURI', utf8.encode(envelope));
+  }
+
+  String _guessSubtitleMime(String url) {
+    final lower = url.toLowerCase();
+    if (lower.endsWith('.vtt')) return 'text/vtt';
+    if (lower.endsWith('.ass') || lower.endsWith('.ssa')) return 'text/x-ssa';
+    return 'text/srt';
+  }
+
+  String _xmlEscape(String input) => input
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
 
   /// 播放
   Future<void> play() async {

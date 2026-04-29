@@ -1,6 +1,10 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart' as fp;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -1205,7 +1209,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
               title: '分享',
               onTap: () {
                 Navigator.pop(context);
-                // TODO: 实现分享
+                _shareFile(file);
               },
             ),
           ],
@@ -1820,6 +1824,96 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
           backgroundColor: AppColors.warning,
         ),
       );
+    }
+  }
+
+  /// 分享 NAS 文件
+  ///
+  /// 远程文件不能直接分享 URL（多数 NAS 链接含临时凭证或私网地址），
+  /// 因此先流式下载到应用临时目录，再用 share_plus 弹系统分享面板。
+  /// 大文件会有进度提示，分享完成后异步清理临时文件。
+  Future<void> _shareFile(FileItem file) async {
+    final connection = ref.read(selectedBrowsableConnectionProvider);
+    if (connection == null || connection.status != SourceStatus.connected) {
+      return;
+    }
+
+    File? tempFile;
+    final messenger = ScaffoldMessenger.of(context);
+    final loadingController = messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text('准备分享: ${file.name}')),
+          ],
+        ),
+        duration: const Duration(minutes: 30),
+      ),
+    );
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final shareDir = Directory(p.join(tempDir.path, 'mynas_share'));
+      if (!shareDir.existsSync()) {
+        await shareDir.create(recursive: true);
+      }
+      // 在文件名前加时间戳，避免重名冲突
+      final stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+      tempFile = File(p.join(shareDir.path, '${stamp}_${file.name}'));
+
+      final stream = await connection.fileSystem.getFileStream(file.path);
+      final sink = tempFile.openWrite();
+      try {
+        await stream.pipe(sink);
+      } finally {
+        await sink.close();
+      }
+
+      loadingController.close();
+
+      if (!mounted) {
+        AppError.fireAndForget(tempFile.delete(), action: 'fileBrowser.share.cleanupAfterUnmount');
+        return;
+      }
+
+      final result = await Share.shareXFiles(
+        [XFile(tempFile.path, name: file.name)],
+        subject: file.name,
+      );
+
+      // 用户取消分享时也属正常路径
+      if (result.status == ShareResultStatus.unavailable && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前平台不支持系统分享')),
+        );
+      }
+    } on Exception catch (e, st) {
+      loadingController.close();
+      if (mounted) {
+        AppError.handleWithUI(context, e, st, '分享失败', 'shareFile');
+      } else {
+        AppError.handle(e, st, 'shareFile');
+      }
+    } finally {
+      // 5 分钟后清理临时文件，给系统分享面板足够时间使用
+      if (tempFile != null) {
+        final fileToCleanup = tempFile;
+        Future<void>.delayed(const Duration(minutes: 5), () async {
+          try {
+            if (await fileToCleanup.exists()) {
+              await fileToCleanup.delete();
+            }
+          } on Exception catch (e, st) {
+            AppError.ignore(e, st, '清理分享临时文件失败');
+          }
+        });
+      }
     }
   }
 

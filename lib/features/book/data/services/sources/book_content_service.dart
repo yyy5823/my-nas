@@ -730,8 +730,10 @@ class BookContentService {
       if (RegExp(r'[\u4e00-\u9fa5]').hasMatch(path)) {
         return path;
       }
-    } catch (_) {}
-    
+    } catch (e, st) {
+      AppError.ignore(e, st, 'URL \u7ae0\u8282\u540d\u63d0\u53d6\u5931\u8d25');
+    }
+
     return null;
   }
 

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -539,7 +540,9 @@ class NfoScraperService {
         final text = element.innerText.trim();
         return text.isNotEmpty ? text : null;
       }
-    } on Exception catch (_) {}
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'NFO 元素 $name 读取失败');
+    }
     return null;
   }
 
@@ -582,7 +585,9 @@ class NfoScraperService {
           }
         }
       }
-    } on Exception catch (_) {}
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'NFO ratings 节点解析失败');
+    }
 
     return null;
   }
@@ -649,7 +654,9 @@ class NfoScraperService {
           return int.tryParse(uniqueid.innerText.trim());
         }
       }
-    } on Exception catch (_) {}
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'NFO uniqueid TMDB 解析失败');
+    }
 
     return null;
   }
@@ -685,7 +692,9 @@ class NfoScraperService {
       if (directText.isNotEmpty && !directText.contains('<')) {
         return directText;
       }
-    } on Exception catch (_) {}
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'NFO set 名称解析失败');
+    }
     return null;
   }
 
@@ -700,7 +709,9 @@ class NfoScraperService {
         final overview = overviewElement.innerText.trim();
         return overview.isNotEmpty ? overview : null;
       }
-    } on Exception catch (_) {}
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'NFO set overview 解析失败');
+    }
     return null;
   }
 
@@ -717,7 +728,9 @@ class NfoScraperService {
         final id = tmdbColIdElement.innerText.trim();
         return int.tryParse(id);
       }
-    } on Exception catch (_) {}
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'NFO set tmdbcolid 解析失败');
+    }
     return null;
   }
 

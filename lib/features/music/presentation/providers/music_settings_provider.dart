@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
@@ -125,7 +126,10 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
     state = state.copyWith(volume: clampedVolume);
     await _save();
     // 同步到播放器（使用 setVolumeInternal 方法，避免循环调用）
-    unawaited(_ref.read(musicPlayerControllerProvider.notifier).setVolumeInternal(clampedVolume));
+    AppError.fireAndForget(
+      _ref.read(musicPlayerControllerProvider.notifier).setVolumeInternal(clampedVolume),
+      action: 'musicSettings.syncVolumeToPlayer',
+    );
   }
 
   /// 设置播放模式

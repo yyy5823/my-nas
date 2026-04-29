@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_writer.dart';
 import 'package:path/path.dart' as p;
@@ -132,7 +133,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       if (result.exitCode == 0) {
         return 'tone';
       }
-    } catch (_) {}
+    } catch (e, st) {
+      AppError.ignore(e, st, '系统 PATH 中未发现 tone 命令');
+    }
 
     // 检查应用目录
     try {
@@ -145,7 +148,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       if (await File(tonePath).exists()) {
         return tonePath;
       }
-    } catch (_) {}
+    } catch (e, st) {
+      AppError.ignore(e, st, '应用目录下未发现 tone 二进制');
+    }
 
     return null;
   }
@@ -243,7 +248,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       if (coverFile != null) {
         try {
           await coverFile.delete();
-        } catch (_) {}
+        } catch (e, st) {
+          AppError.ignore(e, st, '清理 Tone 临时封面失败');
+        }
       }
     }
   }
@@ -312,7 +319,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       if (coverFile != null) {
         try {
           await coverFile.delete();
-        } catch (_) {}
+        } catch (e, st) {
+          AppError.ignore(e, st, '清理 FFmpeg 临时封面失败');
+        }
       }
 
       if (result.exitCode == 0) {
@@ -324,7 +333,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
         // 清理临时输出
         try {
           await File(tempOutput).delete();
-        } catch (_) {}
+        } catch (e, st) {
+          AppError.ignore(e, st, 'FFmpeg 失败后清理临时文件失败');
+        }
         logger.e('FFmpegMetadataWriter: FFmpeg 写入失败: ${result.stderr}');
         return false;
       }
@@ -415,7 +426,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
         // 清理临时输出
         try {
           await File(tempOutput).delete();
-        } catch (_) {}
+        } catch (e, st) {
+          AppError.ignore(e, st, 'FFmpegKit 失败后清理临时输出失败');
+        }
         return false;
       }
     } catch (e, st) {
@@ -425,7 +438,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       if (tempOutput != null) {
         try {
           await File(tempOutput).delete();
-        } catch (_) {}
+        } catch (ce, cst) {
+          AppError.ignore(ce, cst, 'FFmpegKit 异常后清理临时输出失败');
+        }
       }
       return false;
     } finally {
@@ -433,7 +448,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
       if (coverFile != null) {
         try {
           await coverFile.delete();
-        } catch (_) {}
+        } catch (e, st) {
+          AppError.ignore(e, st, '清理 FFmpegKit 临时封面失败');
+        }
       }
     }
   }
@@ -537,7 +554,9 @@ class FFmpegMetadataWriter implements MusicMetadataWriter {
           // 清理临时文件
           try {
             await File(tempOutput).delete();
-          } catch (_) {}
+          } catch (e, st) {
+            AppError.ignore(e, st, '清除元数据失败后清理临时文件失败');
+          }
         }
       } catch (e) {
         logger.e('FFmpegMetadataWriter: FFmpegKit 清除元数据失败', e);
