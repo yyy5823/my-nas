@@ -1,3 +1,4 @@
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/hive_utils.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -63,9 +64,9 @@ class PlexAdapter extends MediaServerAdapter {
         _clientId = _cachedClientId!;
         logger.d('PlexAdapter: 生成并存储新的 clientId');
       }
-    } on Exception catch (e) {
-      // 存储失败时使用临时 ID
-      logger.w('PlexAdapter: 无法持久化 clientId', e);
+    } on Exception catch (e, st) {
+      // 存储失败（如 Hive 未初始化），降级到内存临时 clientId，不影响连接
+      AppError.ignore(e, st, 'Plex clientId 持久化失败，使用临时 ID');
       _clientId = 'mynas-${const Uuid().v4()}';
     }
   }
@@ -102,7 +103,8 @@ class PlexAdapter extends MediaServerAdapter {
       );
 
       return ServiceConnectionSuccess(this);
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'plexAdapter.connect', {'host': config.baseUrl});
       return ServiceConnectionFailure(_parseError(e));
     }
   }
@@ -114,6 +116,7 @@ class PlexAdapter extends MediaServerAdapter {
     _serverName = null;
     _serverVersion = null;
     _machineIdentifier = null;
+    _virtualFs = null;
   }
 
   @override
@@ -347,14 +350,39 @@ class PlexAdapter extends MediaServerAdapter {
       return onDeck.items.isNotEmpty ? onDeck.items.first : null;
     }
 
-    // 获取剧集的下一集
-    final result = await _api.getItemChildren(seriesId);
-    // 找到第一个未观看的
-    for (final item in result.items) {
-      if (!item.isWatched) {
-        return _toMediaItem(item);
+    // 1. 优先从 On Deck 中找属于该剧集的集（包含正在看且未完成的，有 viewOffset）
+    //    Plex 的 episode 通过 grandparentRatingKey 关联到 series
+    final onDeck = await _api.getOnDeck(limit: 50);
+    PlexMediaItem? inProgress;
+    for (final item in onDeck.items) {
+      if (item.grandparentRatingKey == seriesId) {
+        inProgress = item;
+        break;
       }
     }
+    if (inProgress != null) {
+      return _toMediaItem(inProgress);
+    }
+
+    // 2. On Deck 没有，则按季依次找首个未看的集
+    final children = await _api.getItemChildren(seriesId);
+    for (final child in children.items) {
+      if (child.type == 'season') {
+        // 跳过 "All Episodes" / 特别篇 等空季
+        final episodes = await _api.getItemChildren(child.ratingKey);
+        for (final ep in episodes.items) {
+          if (!ep.isWatched) {
+            return _toMediaItem(ep);
+          }
+        }
+      } else if (child.type == 'episode') {
+        // children 已经是 episodes（部分 Plex 设置直接返回扁平剧集列表）
+        if (!child.isWatched) {
+          return _toMediaItem(child);
+        }
+      }
+    }
+
     return null;
   }
 

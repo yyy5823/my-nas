@@ -1,3 +1,4 @@
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/network/dio_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -109,8 +110,8 @@ class JellyfinAdapter extends MediaServerAdapter {
 
       logger.i('JellyfinAdapter: 连接成功');
       return ServiceConnectionSuccess(this);
-    } on Exception catch (e) {
-      logger.e('JellyfinAdapter: 连接失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'jellyfinAdapter.connect', {'host': config.baseUrl});
       return ServiceConnectionFailure(_parseError(e));
     }
   }
@@ -120,8 +121,8 @@ class JellyfinAdapter extends MediaServerAdapter {
     logger.i('JellyfinAdapter: 断开连接');
     try {
       await _api.logout();
-    } on Exception catch (e) {
-      logger.w('JellyfinAdapter: 登出失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'Jellyfin 登出失败（已断开连接，无影响）');
     }
     _connected = false;
     _virtualFs = null;

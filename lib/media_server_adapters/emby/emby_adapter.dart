@@ -1,3 +1,4 @@
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/hive_utils.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -61,9 +62,9 @@ class EmbyAdapter extends MediaServerAdapter {
         _deviceId = _cachedDeviceId!;
         logger.d('EmbyAdapter: 生成并存储新的 deviceId');
       }
-    } on Exception catch (e) {
-      // 存储失败时使用临时 ID
-      logger.w('EmbyAdapter: 无法持久化 deviceId', e);
+    } on Exception catch (e, st) {
+      // 存储失败（如 Hive 未初始化），降级到内存临时 deviceId，不影响连接
+      AppError.ignore(e, st, 'Emby deviceId 持久化失败，使用临时 ID');
       _deviceId = 'mynas-emby-${const Uuid().v4()}';
     }
   }
@@ -121,7 +122,8 @@ class EmbyAdapter extends MediaServerAdapter {
       );
 
       return ServiceConnectionSuccess(this);
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'embyAdapter.connect', {'host': config.baseUrl});
       return ServiceConnectionFailure(_parseError(e));
     }
   }
@@ -131,6 +133,7 @@ class EmbyAdapter extends MediaServerAdapter {
     _isConnected = false;
     _userId = null;
     _config = null;
+    _virtualFs = null;
   }
 
   @override
