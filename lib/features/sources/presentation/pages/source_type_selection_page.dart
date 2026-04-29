@@ -21,11 +21,9 @@ class SourceTypeSelectionPage extends ConsumerWidget {
   /// 如果为 null，则显示所有分类
   final List<SourceCategory>? allowedCategories;
 
-  /// 检查分类是否应该显示（同时考虑 allowedCategories 和 Store 版本过滤）
+  /// 检查分类是否应该显示
   bool _shouldShowCategory(SourceCategory category) =>
-      category.isVisibleInCurrentBuild &&
-      (allowedCategories == null ||
-      allowedCategories!.contains(category));
+      allowedCategories == null || allowedCategories!.contains(category);
 
   /// 检查是否有存储类分类
   bool get _hasStorageCategories =>
