@@ -7,8 +7,6 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 /// 设备信息帮助类
-/// @author cq
-/// @date 2025-12-08
 class DeviceInfoHelper {
   DeviceInfoHelper._();
 

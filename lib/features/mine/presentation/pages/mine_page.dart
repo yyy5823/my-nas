@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:my_nas/core/config/store_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
@@ -17,7 +16,6 @@ import 'package:my_nas/features/music/presentation/pages/music_player_settings_p
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_sites_list_page.dart';
-import 'package:my_nas/features/settings/presentation/pages/error_report_settings_page.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
@@ -115,12 +113,12 @@ class MinePage extends ConsumerWidget {
                     _SubtitleSourcesTile(isDark: isDark),
                     _buildDivider(isDark),
                     _LanguagePreferenceTile(isDark: isDark),
-                    if (StoreConfig.showMediaTracking) ...[_buildDivider(isDark),
-                    _MediaTrackingTile(isDark: isDark)],
-                    if (StoreConfig.showMediaManagement) ...[_buildDivider(isDark),
-                    _MediaManagementTile(isDark: isDark)],
-                    if (StoreConfig.showDownloaders) ...[_buildDivider(isDark),
-                    _DownloaderTile(isDark: isDark)],
+                    _buildDivider(isDark),
+                    _MediaTrackingTile(isDark: isDark),
+                    _buildDivider(isDark),
+                    _MediaManagementTile(isDark: isDark),
+                    _buildDivider(isDark),
+                    _DownloaderTile(isDark: isDark),
                     _buildDivider(isDark),
                     _LiveStreamingTile(isDark: isDark),
                   ],
@@ -163,13 +161,12 @@ class MinePage extends ConsumerWidget {
                   isDark,
                   uiStyle,
                   children: [
-                    if (StoreConfig.showBookSources) ...[_BookSourcesTile(isDark: isDark),
-                    _buildDivider(isDark)],
+                    _BookSourcesTile(isDark: isDark),
+                    _buildDivider(isDark),
                     _BookSettingsTile(isDark: isDark),
                   ],
                 ),
 
-                if (StoreConfig.showPTSites) ...[
                 const SizedBox(height: AppSpacing.lg),
 
                 // 站点
@@ -183,7 +180,6 @@ class MinePage extends ConsumerWidget {
                     _PTSitesTile(isDark: isDark),
                   ],
                 ),
-                ],
 
                 const SizedBox(height: AppSpacing.lg),
 
@@ -230,20 +226,8 @@ class MinePage extends ConsumerWidget {
                   uiStyle,
                   children: [
                     _VersionTile(isDark: isDark),
-                    if (StoreConfig.showUpdateCheck) ...[_buildDivider(isDark),
-                    CheckUpdateTile(isDark: isDark)],
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.bug_report_rounded,
-                      iconColor: AppColors.warning,
-                      title: '日志上报',
-                      subtitle: '帮助我们改进应用',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(builder: (_) => const ErrorReportSettingsPage()),
-                      ),
-                    ),
+                    _buildDivider(isDark),
+                    CheckUpdateTile(isDark: isDark),
                     _buildDivider(isDark),
                     _buildSettingsTile(
                       context,

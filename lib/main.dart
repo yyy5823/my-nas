@@ -14,8 +14,6 @@ import 'package:media_kit/media_kit.dart';
 import 'package:my_nas/app/app.dart';
 import 'package:my_nas/core/di/injection.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
-import 'package:my_nas/core/services/error_report/error_report.dart';
-import 'package:my_nas/core/services/native_log_bridge_service.dart';
 import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
@@ -93,43 +91,21 @@ void _setupGlobalErrorHandling() {
   };
 }
 
-/// 报告 Flutter 框架错误
+/// 记录 Flutter 框架错误（仅本地日志）
 void _reportFlutterError(FlutterErrorDetails details) {
-  // ignore: no_runtimeType_toString
-  final errorType = details.exception.runtimeType.toString();
-  final errorMessage = details.exceptionAsString();
-  final stackTrace = details.stack?.toString();
-
-  ErrorReportService.instance.reportError(
-    errorType: errorType,
-    errorMessage: errorMessage,
-    stackTrace: stackTrace,
-    action: 'FlutterFrameworkError',
-    extraData: {
-      'library': details.library,
-      'context': details.context?.toString(),
-      'informationCollector': details.informationCollector?.call().map((e) => e.toString()).toList(),
-    },
+  logger.f(
+    '[FlutterFrameworkError] ${details.exceptionAsString()} '
+    '(library=${details.library})',
+    details.exception,
+    details.stack,
   );
 }
 
-/// 报告平台错误
+/// 记录平台异步错误（仅本地日志）
 void _reportPlatformError(Object error, StackTrace stack) {
   // ignore: no_runtimeType_toString
   final errorType = error.runtimeType.toString();
-  final errorMessage = 'Platform Error [$errorType]: $error';
-  final stackTrace = stack.toString();
-
-  // 打印详细错误信息到日志，便于调试
-  logger.e(errorMessage, error, stack);
-
-  ErrorReportService.instance.reportError(
-    errorType: errorType,
-    errorMessage: errorMessage,
-    stackTrace: stackTrace,
-    errorLevel: ErrorLevel.fatal,
-    action: 'PlatformDispatcherError',
-  );
+  logger.f('[PlatformDispatcherError] $errorType: $error', error, stack);
 }
 
 Future<void> _initApp() async {
@@ -138,21 +114,8 @@ Future<void> _initApp() async {
 
   logger.i('Initializing MyNAS...');
 
-  // Initialize Hive for local storage (需要在 ErrorReportService 之前初始化)
+  // Initialize Hive for local storage
   await Hive.initFlutter();
-
-  // 初始化错误报告服务（非阻塞，在后台连接）
-  AppError.fireAndForget(
-    ErrorReportService.instance.initialize(),
-    action: 'ErrorReportService.initialize',
-  );
-
-  // 初始化原生日志桥接服务（iOS）
-  // 用于接收 Widget Extension 的日志并上传到 RabbitMQ
-  AppError.fireAndForget(
-    NativeLogBridgeService().init(),
-    action: 'NativeLogBridgeService.init',
-  );
 
   // 初始化原生 Tab Bar 服务（iOS）
   // 必须在 UI 启动前初始化，以便接收原生 Tab 事件

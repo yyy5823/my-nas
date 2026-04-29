@@ -5,7 +5,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/errors/exceptions.dart';
 import 'package:my_nas/core/errors/failures.dart';
-import 'package:my_nas/core/services/error_report/error_report.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 
@@ -60,52 +59,36 @@ class AppError {
   // 核心方法
   // ============================================================
 
-  /// 处理错误并上报
+  /// 处理错误并写入本地日志
   ///
   /// [error] 错误对象
   /// [stackTrace] 堆栈跟踪
   /// [action] 触发错误的操作描述（如 'loadVideo', 'saveFile'）
-  /// [extraData] 额外的上下文数据
-  /// [level] 错误级别，默认根据错误类型自动判断
+  /// [extraData] 额外的上下文数据（仅用于本地日志输出）
   static void handle(
     Object error, [
     StackTrace? stackTrace,
     String? action,
     Map<String, dynamic>? extraData,
-    ErrorLevel? level,
   ]) {
     final st = stackTrace ?? StackTrace.current;
-    final errorLevel = level ?? _determineErrorLevel(error);
     final errorInfo = _extractErrorInfo(error);
 
-    // 检查是否需要上报
+    // 不需要上报/记录的（用户取消、校验等）：仅 debug 级日志
     if (!isReportable(error)) {
-      // 仅记录本地日志
       logger.w('[AppError] 忽略上报: ${errorInfo.type} - ${errorInfo.message}', error, st);
       return;
     }
 
-    // 记录日志并上报
-    if (errorLevel == ErrorLevel.fatal) {
-      logger.f('[${action ?? 'Unknown'}] ${errorInfo.message}', error, st);
-    } else {
-      logger.e('[${action ?? 'Unknown'}] ${errorInfo.message}', error, st);
-    }
+    // 根据严重程度决定日志级别
+    final isFatal = _categorizeError(error) == ErrorCategory.fatal;
+    final tag = '[${action ?? 'Unknown'}] ${errorInfo.message}'
+        '${extraData != null ? ' | extra=$extraData' : ''}';
 
-    // 上报到服务器（logger.e/f 会自动调用 ErrorReportService，这里补充额外信息）
-    if (extraData != null || action != null) {
-      ErrorReportService.instance.reportError(
-        errorType: errorInfo.type,
-        errorMessage: errorInfo.message,
-        errorCode: errorInfo.code,
-        stackTrace: st.toString(),
-        errorLevel: errorLevel,
-        action: action,
-        extraData: {
-          ...?extraData,
-          'errorCategory': _categorizeError(error).name,
-        },
-      );
+    if (isFatal) {
+      logger.f(tag, error, st);
+    } else {
+      logger.e(tag, error, st);
     }
   }
 
@@ -403,24 +386,6 @@ class AppError {
     }
 
     return ErrorCategory.unknown;
-  }
-
-  /// 确定错误级别
-  static ErrorLevel _determineErrorLevel(Object error) {
-    final category = _categorizeError(error);
-
-    return switch (category) {
-      ErrorCategory.fatal => ErrorLevel.fatal,
-      ErrorCategory.security => ErrorLevel.error,
-      ErrorCategory.server => ErrorLevel.error,
-      ErrorCategory.resource => ErrorLevel.error,
-      ErrorCategory.data => ErrorLevel.error,
-      ErrorCategory.network => ErrorLevel.warning,
-      ErrorCategory.validation => ErrorLevel.warning,
-      ErrorCategory.userAction => ErrorLevel.info,
-      ErrorCategory.cancelled => ErrorLevel.debug,
-      ErrorCategory.unknown => ErrorLevel.error,
-    };
   }
 
   /// 提取错误信息

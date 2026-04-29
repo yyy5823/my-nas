@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/errors/errors.dart';
-import 'package:my_nas/core/services/error_report/device_info_helper.dart';
+import 'package:my_nas/core/services/device_info_helper.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
