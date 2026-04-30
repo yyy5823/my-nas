@@ -261,8 +261,16 @@ jobs:
     needs: extract-version
     # 必须用 macos-15+，否则 device_info_plus 12.4 用到的 isiOSAppOnVision (iOS 17.2 SDK) 找不到
     runs-on: macos-15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      # 显式选择最新稳定版 Xcode（macos-15 默认 Xcode 可能不是最新，
+      # 需要 Xcode 15.2+ 才有 iOS 17.2 SDK，里面才声明了 isiOSAppOnVision）
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -305,6 +313,8 @@ jobs:
   build-macos:
     needs: extract-version
     runs-on: ${{ matrix.os }}
+    # 加入超时保护：x86 build 可能因 SDK/工具链问题挂起，避免阻塞 create-release
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -317,6 +327,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # 显式选择最新稳定版 Xcode（macos-13 上是 Xcode 15.x，没有 macOS 26 SDK；
+      # Swift 代码已用 NSClassFromString 运行时查找 NSGlassEffectView，因此即使
+      # 没有 macOS 26 SDK 也能编译）
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       # 验证 checkout 完整性
       - name: Verify checkout
@@ -444,6 +462,7 @@ jobs:
   build-windows:
     needs: extract-version
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -572,6 +591,7 @@ jobs:
   build-linux:
     needs: extract-version
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -628,6 +648,7 @@ jobs:
   build-linux-arm64:
     needs: extract-version
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -869,16 +890,12 @@ jobs:
   # 创建 Release
   create-release:
     needs: [extract-version, build-android, build-ios, build-macos, build-windows, build-linux, build-linux-arm64, generate-changelog]
-    # 只要有一个构建成功就创建 release
-    if: |
-      always() &&
-      needs.extract-version.result == 'success' &&
-      (needs.build-android.result == 'success' ||
-       needs.build-ios.result == 'success' ||
-       needs.build-macos.result == 'success' ||
-       needs.build-windows.result == 'success' ||
-       needs.build-linux.result == 'success' ||
-       needs.build-linux-arm64.result == 'success')
+    # 只要 extract-version 成功就尝试创建 release（不依赖具体某个 build 结果）。
+    # 真正决定是否发布由后面的 "Check artifacts" 步骤判断 —— 只要有任意构建产物就发布，
+    # 这样可以处理：
+    # 1) build-macos 是 matrix，整体 result 为 'failure' 时其实可能还有 arm64 的产物
+    # 2) 某些平台失败但其它平台成功
+    if: always() && needs.extract-version.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -915,6 +932,19 @@ jobs:
 
       - name: List artifacts
         run: find artifacts -type f 2>/dev/null || echo "No artifacts found"
+
+      # 检查是否有任何构建产物 —— 没有就跳过发布（避免发布空 release）
+      - name: Check artifacts
+        id: check_artifacts
+        run: |
+          ARTIFACT_COUNT=$(find artifacts -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "Found $ARTIFACT_COUNT artifact files"
+          if [ "$ARTIFACT_COUNT" -gt 0 ]; then
+            echo "has_artifacts=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_artifacts=false" >> $GITHUB_OUTPUT
+            echo "::warning::No build artifacts found across all platforms — skipping release"
+          fi
 
       # 生成构建状态报告
       - name: Generate build status
@@ -971,6 +1001,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
+        if: steps.check_artifacts.outputs.has_artifacts == 'true'
         uses: softprops/action-gh-release@v1
         with:
           name: MyNAS v${{ needs.extract-version.outputs.full_version }}

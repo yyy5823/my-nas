@@ -94,23 +94,37 @@ class NativeBlurPlatformView: NSView {
     }
 
     /// macOS Tahoe 26+: 设置 Liquid Glass 效果
+    ///
+    /// 使用 NSClassFromString 运行时查找 NSGlassEffectView，避免对 macOS 26 SDK
+    /// 的编译期依赖（这样在没有 Xcode 26 的 CI（如 macos-13）上也能编译）。
     @available(macOS 26.0, *)
     private func setupLiquidGlass(cornerRadius: Double, isDark: Bool) {
-        // 创建 NSGlassEffectView
-        let glassView = NSGlassEffectView()
+        guard
+            let glassClass = NSClassFromString("NSGlassEffectView") as? NSObject.Type,
+            let glassView = glassClass.init() as? NSView
+        else {
+            // 运行时不存在（理论上 macOS 26+ 一定有；保险回退到 NSVisualEffectView）
+            setupVisualEffectView(
+                material: "contentBackground",
+                blendingMode: "behindWindow",
+                isDark: isDark,
+                cornerRadius: cornerRadius,
+                enableBorder: true,
+                borderOpacity: 0.2
+            )
+            return
+        }
         glassView.translatesAutoresizingMaskIntoConstraints = false
 
-        // 设置圆角
+        // 设置圆角（NSGlassEffectView.cornerRadius 通过 KVC 设置）
         if cornerRadius > 0 {
-            glassView.cornerRadius = CGFloat(cornerRadius)
+            glassView.setValue(CGFloat(cornerRadius), forKey: "cornerRadius")
         }
 
-        // 设置外观
-        if isDark {
-            glassView.appearance = NSAppearance(named: .darkAqua)
-        } else {
-            glassView.appearance = NSAppearance(named: .aqua)
-        }
+        // 设置外观（appearance 是 NSView 的属性，可直接访问）
+        glassView.appearance = isDark
+            ? NSAppearance(named: .darkAqua)
+            : NSAppearance(named: .aqua)
 
         // 添加到视图层级
         self.addSubview(glassView)

@@ -146,11 +146,17 @@ private final class GlassMenuViewController: NSViewController {
         view.layer?.masksToBounds = true
         view.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
 
+        // 使用 NSClassFromString 运行时查找 NSGlassEffectView，避免编译期依赖 macOS 26 SDK。
         let backgroundView: NSView
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
+        var resolvedGlass: NSView? = nil
+        if #available(macOS 26.0, *),
+           let cls = NSClassFromString("NSGlassEffectView") as? NSObject.Type,
+           let glass = cls.init() as? NSView {
             glass.translatesAutoresizingMaskIntoConstraints = false
-            glass.cornerRadius = 14
+            glass.setValue(CGFloat(14), forKey: "cornerRadius")
+            resolvedGlass = glass
+        }
+        if let glass = resolvedGlass {
             backgroundView = glass
         } else {
             let visual = NSVisualEffectView()

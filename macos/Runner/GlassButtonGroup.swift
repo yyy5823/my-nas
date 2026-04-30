@@ -65,12 +65,18 @@ final class GlassButtonGroupPlatformView: NSView {
             }
         }
 
-        // 玻璃背景
-        if #available(macOS 26.0, *) {
-            let glassEffect = NSGlassEffectView()
-            glassEffect.translatesAutoresizingMaskIntoConstraints = false
-            glassEffect.cornerRadius = CGFloat(cornerRadius)
-            glassView = glassEffect
+        // 玻璃背景。使用 NSClassFromString 运行时查找 NSGlassEffectView，避免编译期
+        // 依赖 macOS 26 SDK（CI 上的 Xcode 15 等老版本仍能编译）。
+        var resolvedGlass: NSView? = nil
+        if #available(macOS 26.0, *),
+           let cls = NSClassFromString("NSGlassEffectView") as? NSObject.Type,
+           let glass = cls.init() as? NSView {
+            glass.translatesAutoresizingMaskIntoConstraints = false
+            glass.setValue(CGFloat(cornerRadius), forKey: "cornerRadius")
+            resolvedGlass = glass
+        }
+        if let glass = resolvedGlass {
+            glassView = glass
         } else {
             let visualEffect = NSVisualEffectView()
             visualEffect.translatesAutoresizingMaskIntoConstraints = false
@@ -191,13 +197,14 @@ final class GlassButtonGroupPlatformView: NSView {
 
     private func updateTheme(isDark: Bool) {
         self.isDark = isDark
-        self.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
+        let newAppearance: NSAppearance? = isDark
+            ? NSAppearance(named: .darkAqua)
+            : NSAppearance(named: .aqua)
 
-        if #available(macOS 26.0, *), let glassEffect = glassView as? NSGlassEffectView {
-            glassEffect.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
-        } else if let visualEffect = glassView as? NSVisualEffectView {
-            visualEffect.appearance = isDark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
-        }
+        self.appearance = newAppearance
+        // appearance 是 NSView 上的属性，无论是 NSGlassEffectView 还是 NSVisualEffectView
+        // 都可以直接设置，无需向下转型。
+        glassView.appearance = newAppearance
 
         buttons.forEach { $0.contentTintColor = isDark ? .white : NSColor(white: 0.2, alpha: 1.0) }
     }

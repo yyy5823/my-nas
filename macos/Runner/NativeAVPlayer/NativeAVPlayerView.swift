@@ -27,7 +27,7 @@ class NativeAVPlayerViewFactory: NSObject, FlutterPlatformViewFactory {
         )
     }
 
-    func createArgsCodec() -> FlutterMessageCodec & NSObjectProtocol {
+    func createArgsCodec() -> (FlutterMessageCodec & NSObjectProtocol)? {
         return FlutterStandardMessageCodec.sharedInstance()
     }
 }
