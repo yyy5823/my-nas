@@ -45,6 +45,8 @@ MyNAS 是一款跨平台的家用 NAS 媒体管理工具，把你常用的多种
 - 系列 / 季 / 集组织、推荐 / 相似内容
 - **TMDB 推荐 → PT 站搜索一键跳转**
 
+![](https://nas.allbs.cn:8888/cloudpic/2026/04/067b17d8152f8b514bdc979853b5ff55.png)
+
 ### 🎵 音乐
 - 有损 / 无损（FLAC / APE / WAV / AIFF / ALAC / DSD / MP3 / AAC 等）
 - 后台播放、锁屏控制、媒体键、iOS Now Playing、Android 灵动岛、macOS Media Widget
@@ -53,16 +55,22 @@ MyNAS 是一款跨平台的家用 NAS 媒体管理工具，把你常用的多种
 - NCM 加密格式解密
 - 自动刮削（封面 / 歌词 / 标签）
 
+![](https://nas.allbs.cn:8888/cloudpic/2026/04/7183e33fb6af7f88f2d9793a890d1a3e.png)
+
 ### 📚 漫画 & 📖 书籍
 - 漫画：CBZ / CBR / ZIP / RAR / 7Z / PDF；单页 / 双页 / 长条；左右翻页
 - 书籍：EPUB / PDF / MOBI / AZW3 / TXT / HTML
 - 自定义字体 / 字号 / 主题（日 / 夜 / 护眼 / 纯黑）
 - 书签、目录导航、TTS 朗读
 - **在线书源**（兼容 Legado JSON / XPath / JSONPath / CSS / 正则规则；用户自行导入，应用不内置任何书源）
+  ![](https://nas.allbs.cn:8888/cloudpic/2026/04/2509128918beb534c06f1f971074fa53.jpg)
+
 
 ### 🖼️ 照片
 - 相册浏览、时间线、EXIF 元数据
-- **人脸识别 + 人物聚合**（点击人物头像跳转该人物所有照片）
+- **人脸识别 + 人物聚合**（点击人物头像跳转该人物所有照片）待实现
+
+![](https://nas.allbs.cn:8888/cloudpic/2026/04/602eb0553cb0a73cd1182f21edcb592c.jpg)
 
 ### 📝 笔记
 - Markdown 渲染（含任务列表 / 代码块 / 表格 / 图片）
@@ -83,6 +91,8 @@ MyNAS 是一款跨平台的家用 NAS 媒体管理工具，把你常用的多种
 
 ### 📡 媒体追踪
 - Trakt.tv OAuth 同步（待看 / 在看 / 已看 / 评分）
+
+![](https://nas.allbs.cn:8888/cloudpic/2026/04/269b8b60c7661ab033aa061c7a86056b.jpg)
 
 ## NAS 适配
 
@@ -118,6 +128,8 @@ MyNAS 是一款跨平台的家用 NAS 媒体管理工具，把你常用的多种
 | NASTool | ✅ | 订阅 / 任务 / 搜索 |
 
 种子卡片一键发送，支持暂停后添加、自定义下载目录。
+
+![](https://nas.allbs.cn:8888/cloudpic/2026/04/ce0f3b75b935111238661939939abf10.png)
 
 ## 支持平台
 
