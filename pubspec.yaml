@@ -1,7 +1,7 @@
 name: my_nas
 description: "跨平台 NAS 客户端 - 统一管理你的 NAS 资源"
 publish_to: "none"
-version: 1.0.0+5
+version: 1.0.1+1
 
 environment:
   sdk: ^3.10.1
@@ -218,7 +218,7 @@ msix_config:
   display_name: MyNAS
   publisher_display_name: kkape
   identity_name: com.kkape.mynas
-  msix_version: 1.0.0.0
+  msix_version: 1.0.1.0
   capabilities: internetClient, privateNetworkClientServer
   languages: zh-cn, en-us
 
