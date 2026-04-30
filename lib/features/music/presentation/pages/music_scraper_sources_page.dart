@@ -222,6 +222,12 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 
     if (!isImplemented) return;
 
+    // 启用高风险刮削源前要求显式确认
+    if (enabled && type.requiresRiskAcknowledgement) {
+      final acknowledged = await _confirmRiskAcknowledgement(type);
+      if (!acknowledged) return;
+    }
+
     if (source != null) {
       if (enabled && !source.isConfigured && needsConfig) {
         _showConfigSheet(type, source);
@@ -235,6 +241,67 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
         await _createAndEnableSource(type);
       }
     }
+  }
+
+  /// 启用高风险刮削源前的二次确认
+  Future<bool> _confirmRiskAcknowledgement(MusicScraperType type) async {
+    final notice = type.riskNotice;
+    if (notice == null) return true;
+
+    final isHigh = type.riskLevel == MusicScraperRiskLevel.antiCircumvention;
+    final title = isHigh ? '启用前请知悉（较高风险）' : '启用前请知悉';
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              isHigh ? Icons.error_outline_rounded : Icons.warning_amber_rounded,
+              color: isHigh ? AppColors.error : Colors.orange,
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '即将启用：${type.displayName}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              Text(notice, style: const TextStyle(height: 1.5)),
+              const SizedBox(height: 12),
+              const Text(
+                '本应用仅获取元数据 / 封面 / 歌词写入你本地的音频文件， '
+                '不下载也不传播音频本体。',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: isHigh ? AppColors.error : null,
+            ),
+            child: const Text('我已知悉，启用'),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? false;
   }
 
   /// 创建并启用源
@@ -361,13 +428,23 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('推荐配置：', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('推荐配置（按合规优先级）：',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 8),
-              Text('1. MusicBrainz - 元数据和封面（内置，无需配置）'),
-              Text('2. AcoustID - 声纹识别（需要 API Key）'),
-              Text('3. 网易云音乐 - 歌词和封面（可选 Cookie）'),
-              Text('4. QQ音乐 - 歌词和封面（可选 Cookie）'),
-              Text('5. 酷狗音乐 - 歌词库丰富（无需配置）'),
+              Text('1. MusicBrainz - 开放音乐数据库，CC0 元数据 + 封面（默认启用）'),
+              Text('2. AcoustID - 声纹识别（需要 API Key，建议使用）'),
+              SizedBox(height: 12),
+              Text('以下为商业平台刮削源（默认禁用）：',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+              SizedBox(height: 8),
+              Text('• QQ音乐 / 酷狗 / 酷我 / 咪咕：使用未公开 API，违反平台 ToS'),
+              Text('• 网易云音乐：使用加密请求绕过限制，存在不正当竞争争议'),
+              SizedBox(height: 8),
+              Text(
+                '启用上述商业平台刮削源前请知悉相关法律风险。本应用仅获取元数据/封面/歌词写入你本地音频文件，'
+                '不下载也不传播音频本体；请仅用于管理你合法获取的音乐，并自行承担合规责任。',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
               SizedBox(height: 16),
               Text('功能说明：', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 8),

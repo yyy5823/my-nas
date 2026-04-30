@@ -1,6 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+/// 法律/合规风险等级
+enum MusicScraperRiskLevel {
+  /// 开放数据库，明确许可使用
+  open,
+
+  /// 使用未公开/逆向工程的 API，违反平台 ToS，但不绕过技术保护措施
+  tosViolation,
+
+  /// 主动绕过加密/签名等技术保护措施，存在不正当竞争争议
+  antiCircumvention,
+}
+
 /// 音乐刮削源类型
 enum MusicScraperType {
   musicBrainz('MusicBrainz', 'musicbrainz'),
@@ -104,6 +116,34 @@ enum MusicScraperType {
 
   /// 是否需要服务器地址
   bool get requiresServerUrl => this == MusicScraperType.musicTagWeb;
+
+  /// 法律/合规风险等级
+  MusicScraperRiskLevel get riskLevel => switch (this) {
+        MusicScraperType.musicBrainz => MusicScraperRiskLevel.open,
+        MusicScraperType.acoustId => MusicScraperRiskLevel.open,
+        MusicScraperType.neteaseMusic => MusicScraperRiskLevel.antiCircumvention,
+        MusicScraperType.qqMusic => MusicScraperRiskLevel.tosViolation,
+        MusicScraperType.kugouMusic => MusicScraperRiskLevel.tosViolation,
+        MusicScraperType.kuwoMusic => MusicScraperRiskLevel.tosViolation,
+        MusicScraperType.miguMusic => MusicScraperRiskLevel.tosViolation,
+        // MusicTagWeb 转发到自托管服务，风险由用户部署决定，按 ToS 违反等级提示
+        MusicScraperType.musicTagWeb => MusicScraperRiskLevel.tosViolation,
+      };
+
+  /// 风险提示文案（启用前向用户展示）
+  String? get riskNotice => switch (riskLevel) {
+        MusicScraperRiskLevel.open => null,
+        MusicScraperRiskLevel.tosViolation =>
+            '该刮削源使用未公开 API，可能违反平台服务条款。仅获取公开元数据/封面/歌词写入你本地的音频文件； '
+                '请仅用于管理你合法获取的音乐，并自行承担合规责任。',
+        MusicScraperRiskLevel.antiCircumvention =>
+            '该刮削源通过加密请求绕过平台限制，存在不正当竞争争议（参见网易诉酷我案等先例）。 '
+                '建议优先使用开放数据源（MusicBrainz / AcoustID）。如需启用，请仅用于管理你合法获取的音乐，并自行承担合规责任。',
+      };
+
+  /// 是否需要在启用前显式确认（高风险源）
+  bool get requiresRiskAcknowledgement =>
+      riskLevel != MusicScraperRiskLevel.open;
 
   /// 从 id 获取类型
   static MusicScraperType fromId(String id) => MusicScraperType.values.firstWhere(

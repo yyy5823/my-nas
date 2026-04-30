@@ -21,6 +21,10 @@ class MusicScraperManagerService {
   static const String _boxName = 'music_scrapers';
   static const String _credentialPrefix = 'music_scraper_credential_';
 
+  /// 一次性合规迁移标记（写入 Hive box 自身的特殊 key）
+  /// 旧版本默认启用了商业平台刮削源；该迁移会把高风险源置为禁用状态。
+  static const String _migrationKeyComplianceV1 = '__migration_compliance_v1__';
+
   late final FlutterSecureStorage _secureStorage;
   Box<dynamic>? _box;
   final Map<String, MusicScraper> _scraperCache = {};
@@ -50,10 +54,14 @@ class MusicScraperManagerService {
     } else {
       // 为已有用户添加新的刮削源类型
       await _addMissingDefaultSources();
+      // 一次性合规迁移：将高风险源（绕过加密的网易云）置为禁用
+      await _runComplianceMigrationV1();
     }
 
     final sources = <MusicScraperSourceEntity>[];
     for (final key in _box!.keys) {
+      // 跳过迁移标记之类的内部 key
+      if (key is String && key.startsWith('__')) continue;
       final data = _box!.get(key);
       if (data != null && data is Map) {
         try {
@@ -83,16 +91,16 @@ class MusicScraperManagerService {
 
   /// 初始化默认刮削源（不需要配置的源）
   Future<void> _initDefaultSources() async {
-    // 默认启用不需要额外配置的源
-    // 优先级：酷狗 > 酷我 > 咪咕 > QQ音乐 > 网易云 > MusicBrainz（国内源优先，歌词库丰富的优先）
-    // 注意：MusicBrainz 默认禁用，用户可手动开启
+    // 优先级：开放数据源（MusicBrainz / AcoustID）放最前；
+    // 商业平台刮削源默认禁用，用户需在阅读风险提示后手动启用。
     final defaultTypes = [
-      (MusicScraperType.kugouMusic, true),    // 酷狗音乐（歌词库最丰富）
-      (MusicScraperType.kuwoMusic, true),     // 酷我音乐
-      (MusicScraperType.miguMusic, true),     // 咪咕音乐（无损音源丰富）
-      (MusicScraperType.qqMusic, true),       // QQ音乐
-      (MusicScraperType.neteaseMusic, true),  // 网易云音乐
-      (MusicScraperType.musicBrainz, false),  // MusicBrainz（国际开源数据库，默认禁用）
+      (MusicScraperType.musicBrainz, true),    // 开放音乐数据库（CC0 元数据）
+      (MusicScraperType.acoustId, false),      // 声纹识别（需用户填入 API Key 后启用）
+      (MusicScraperType.kugouMusic, false),    // 商业平台 ToS 风险，默认禁用
+      (MusicScraperType.kuwoMusic, false),
+      (MusicScraperType.miguMusic, false),
+      (MusicScraperType.qqMusic, false),
+      (MusicScraperType.neteaseMusic, false),  // 加密绕过风险最高，默认禁用
     ];
 
     for (var i = 0; i < defaultTypes.length; i++) {
@@ -106,19 +114,22 @@ class MusicScraperManagerService {
       // 直接保存，不通过 addSource 避免重复计算优先级
       await _box!.put(source.id, source.toJson());
     }
+
+    // 新装即视为已完成合规迁移，避免后续重复处理
+    await _box!.put(_migrationKeyComplianceV1, true);
   }
 
   /// 为已有用户添加缺失的默认刮削源
   Future<void> _addMissingDefaultSources() async {
-    // 默认应该启用的无需配置的源
-    // 注意：MusicBrainz 新增时默认禁用
+    // 新增源时遵循同样的安全默认：开放源默认启用，商业平台默认禁用。
     final defaultTypes = [
-      (MusicScraperType.kugouMusic, true),
-      (MusicScraperType.kuwoMusic, true),
-      (MusicScraperType.miguMusic, true),
-      (MusicScraperType.qqMusic, true),
-      (MusicScraperType.neteaseMusic, true),
-      (MusicScraperType.musicBrainz, false),
+      (MusicScraperType.musicBrainz, true),
+      (MusicScraperType.acoustId, false),
+      (MusicScraperType.kugouMusic, false),
+      (MusicScraperType.kuwoMusic, false),
+      (MusicScraperType.miguMusic, false),
+      (MusicScraperType.qqMusic, false),
+      (MusicScraperType.neteaseMusic, false),
     ];
 
     // 获取当前已有的源类型
@@ -164,6 +175,36 @@ class MusicScraperManagerService {
       );
       await _box!.put(source.id, source.toJson());
     }
+  }
+
+  /// 一次性合规迁移：将所有非开放数据源（tosViolation / antiCircumvention）置为禁用。
+  ///
+  /// 仅在已存在配置且尚未跑过该迁移时执行。用户保留的 cookie / API Key 不受影响，
+  /// 重新启用后立即恢复。该迁移只调整 isEnabled 状态。
+  Future<void> _runComplianceMigrationV1() async {
+    final alreadyDone = _box!.get(_migrationKeyComplianceV1) == true;
+    if (alreadyDone) return;
+
+    for (final key in _box!.keys.toList()) {
+      if (key is String && key.startsWith('__')) continue;
+      final data = _box!.get(key);
+      if (data is! Map) continue;
+
+      try {
+        final source = MusicScraperSourceEntity.fromJson(
+          Map<String, dynamic>.from(data),
+        );
+        if (source.type.riskLevel == MusicScraperRiskLevel.open) continue;
+        if (!source.isEnabled) continue;
+
+        final disabled = source.copyWith(isEnabled: false);
+        await _box!.put(source.id, disabled.toJson());
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '合规迁移解析失败: $key');
+      }
+    }
+
+    await _box!.put(_migrationKeyComplianceV1, true);
   }
 
   /// 获取单个刮削源
