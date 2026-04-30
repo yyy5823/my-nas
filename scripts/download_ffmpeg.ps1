@@ -1,5 +1,5 @@
 # FFmpeg Download Script for Windows
-# Downloads pre-built FFmpeg binary from Martin Riedl's build server
+# Downloads pre-built FFmpeg binary from BtbN's GitHub Releases (most stable mirror)
 #
 # Usage: .\scripts\download_ffmpeg.ps1
 
@@ -10,7 +10,8 @@ $ProjectDir = Split-Path -Parent $ScriptDir
 $TargetDir = Join-Path $ProjectDir "windows\ffmpeg"
 $TargetFile = Join-Path $TargetDir "ffmpeg.exe"
 
-$DownloadUrl = "https://ffmpeg.martin-riedl.de/redirect/latest/windows/amd64/release/ffmpeg.zip"
+# BtbN/FFmpeg-Builds: 自动构建的 FFmpeg Windows 二进制（GPL 版含全部编解码器）
+$DownloadUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 
 function Write-Info { param($Message) Write-Host "[FFmpeg] $Message" -ForegroundColor Green }
 function Write-Warn { param($Message) Write-Host "[FFmpeg] $Message" -ForegroundColor Yellow }
@@ -39,10 +40,11 @@ try {
     Write-Info "  Extracting..."
     Expand-Archive -Path $ZipFile -DestinationPath $TempDir -Force
 
-    # Move ffmpeg.exe to target
-    $ExtractedExe = Join-Path $TempDir "ffmpeg.exe"
-    if (Test-Path $ExtractedExe) {
-        Move-Item -Path $ExtractedExe -Destination $TargetFile -Force
+    # BtbN 压缩包结构：ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
+    # 兼容老结构（顶层 ffmpeg.exe）以防上游变更
+    $ExtractedExe = Get-ChildItem -Path $TempDir -Filter "ffmpeg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($ExtractedExe) {
+        Move-Item -Path $ExtractedExe.FullName -Destination $TargetFile -Force
     } else {
         throw "ffmpeg.exe not found in downloaded archive"
     }
