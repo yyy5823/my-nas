@@ -133,9 +133,14 @@ jobs:
           echo "Created tag: $TAG_NAME"
 
   # 提取版本信息（用于后续构建）
+  # 注意：故意只依赖 check-release，不依赖 create-tag。
+  # 之前依赖 create-tag 时，tag 触发场景下 create-tag 被跳过，extract-version
+  # 必须用 if: always() 才能跑；这会让 GH Actions 把"链路含 skipped"传播到所有
+  # 下游 build job，导致它们被无声跳过（即使 build job 自己写了显式 if 也救不回来）。
+  # extract-version 本身只是算个 tag_name 字符串，不需要等 create-tag 完成。
   extract-version:
-    needs: [check-release, create-tag]
-    if: always() && needs.check-release.outputs.should_release == 'true'
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ needs.check-release.outputs.version }}
