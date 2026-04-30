@@ -318,29 +318,24 @@ jobs:
           path: build/ios/iphoneos/MyNAS-*.ipa
           retention-days: 3
 
-  # 构建 macOS（Intel + Apple Silicon）
+  # 构建 macOS Universal Binary
+  # 之前用过 matrix 同时构建 Intel(x86_64) 和 Apple Silicon(arm64)，但 GitHub
+  # 免费 macos-13 (Intel) runner 容量极度紧张，runner_name 长时间为空、排队
+  # 数十分钟到几小时拿不到机器是常态。改为只在 macos-15 (Apple Silicon) 上构建
+  # 一个 universal binary —— Flutter 默认就会同时输出 x86_64 和 arm64 切片，
+  # 一个 .app/.dmg 在 Intel 和 Apple Silicon Mac 上都能跑（这也是 Apple
+  # 推荐的发布方式）。
   build-macos:
     needs: extract-version
     if: needs.extract-version.result == 'success'
-    runs-on: ${{ matrix.os }}
-    # 加入超时保护：x86 build 可能因 SDK/工具链问题挂起，避免阻塞 create-release
+    runs-on: macos-15
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-13        # Intel (x86_64)
-            arch: x86_64
-          - os: macos-15        # Apple Silicon (arm64)，需 macos-15 以匹配 device_info_plus 12.4 SDK 要求
-            arch: arm64
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 显式选择最新稳定版 Xcode（macos-13 上是 Xcode 15.x，没有 macOS 26 SDK；
-      # Swift 代码已用 NSClassFromString 运行时查找 NSGlassEffectView，因此即使
-      # 没有 macOS 26 SDK 也能编译）
+      # 显式选择最新稳定版 Xcode（确保用最新工具链编译）
       - name: Select latest Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -439,6 +434,15 @@ jobs:
       - name: Build macOS
         run: flutter build macos --release
 
+      # 验证产物为 universal binary（应同时包含 x86_64 和 arm64 切片）
+      - name: Verify universal binary
+        run: |
+          BIN="build/macos/Build/Products/Release/my_nas.app/Contents/MacOS/my_nas"
+          if [ -f "$BIN" ]; then
+            echo "=== lipo -info ==="
+            lipo -info "$BIN" || true
+          fi
+
       - name: Create DMG
         run: |
           brew install create-dmg
@@ -450,19 +454,19 @@ jobs:
             --icon "my_nas.app" 150 185 \
             --hide-extension "my_nas.app" \
             --app-drop-link 450 185 \
-            "MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ matrix.arch }}.dmg" \
+            "MyNAS-${{ needs.extract-version.outputs.version }}-macos.dmg" \
             "build/macos/Build/Products/Release/my_nas.app" || true
 
           # 如果 create-dmg 失败，创建简单的 zip
-          if [ ! -f "MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ matrix.arch }}.dmg" ]; then
+          if [ ! -f "MyNAS-${{ needs.extract-version.outputs.version }}-macos.dmg" ]; then
             cd build/macos/Build/Products/Release
-            zip -r ../../../../../MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ matrix.arch }}.zip my_nas.app
+            zip -r ../../../../../MyNAS-${{ needs.extract-version.outputs.version }}-macos.zip my_nas.app
           fi
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-app-${{ matrix.arch }}
+          name: macos-app
           retention-days: 3
           path: |
             MyNAS-*.dmg
@@ -1040,8 +1044,7 @@ jobs:
             |------|----------|----------|
             | **Android** | arm64-v8a | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-android-arm64-v8a.apk](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-android-arm64-v8a.apk) |
             | **iOS** | arm64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-ios-arm64.ipa](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-ios-arm64.ipa) |
-            | **macOS (Apple Silicon)** | arm64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-macos-arm64.dmg](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos-arm64.dmg) |
-            | **macOS (Intel)** | x86_64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-macos-x86_64.dmg](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos-x86_64.dmg) |
+            | **macOS** | universal (Intel + Apple Silicon) | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-macos.dmg](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos.dmg) |
             | **Windows** | x64 安装包 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64-setup.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64-setup.exe) |
             | **Linux** | x64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-linux-x64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-linux-x64.tar.gz) |
             | **Linux (ARM)** | arm64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-linux-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-linux-arm64.tar.gz) |
@@ -1076,8 +1079,7 @@ jobs:
 
             | 架构 | 说明 | 下载 |
             |------|------|------|
-            | arm64 | Apple Silicon (M1/M2/M3/M4) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos-arm64.dmg) |
-            | x86_64 | Intel 芯片 | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos-x86_64.dmg) |
+            | universal | Universal binary，Apple Silicon (M 系列) 和 Intel Mac 通用 | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos.dmg) |
 
             </details>
 
