@@ -515,126 +515,160 @@ class TimelineFilterBottomSheet extends ConsumerWidget {
     final notifier = ref.read(timelineNavigatorProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.7,
-      ),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 拖动指示器
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
-              borderRadius: BorderRadius.circular(2),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.95,
+      expand: false,
+      snap: true,
+      snapSizes: const [0.5, 0.95],
+      builder: (context, scrollController) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // 拖动指示器
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          // 标题栏
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.calendar_month_rounded,
-                  color: AppColors.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '时间筛选',
-                  style: context.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-                const Spacer(),
-                // 当前筛选提示
-                if (currentYear != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          currentMonth != null
-                              ? '$currentYear年$currentMonth月'
-                              : '$currentYear年',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () {
-                            onClearFilter();
-                            Navigator.pop(context);
-                          },
-                          child: Icon(
-                            Icons.close,
-                            size: 14,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          // 年份和月份列表
-          if (state.isLoading)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: CircularProgressIndicator(),
-            )
-          else if (state.yearGroups.isEmpty)
+            // 标题栏
             Padding(
-              padding: const EdgeInsets.all(32),
-              child: Text(
-                '暂无照片数据',
-                style: TextStyle(
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                ),
-              ),
-            )
-          else
-            Flexible(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                shrinkWrap: true,
-                itemCount: state.yearGroups.length,
-                itemBuilder: (context, index) {
-                  final yearGroup = state.yearGroups[index];
-                  final isSelectedYear = yearGroup.year == currentYear;
-
-                  return _buildYearSection(
-                    context,
-                    yearGroup,
-                    isSelectedYear,
-                    isDark,
-                    notifier,
-                  );
-                },
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.calendar_month_rounded,
+                    color: AppColors.primary,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '时间筛选',
+                    style: context.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  // 当前筛选提示
+                  if (currentYear != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            currentMonth != null
+                                ? '$currentYear年$currentMonth月'
+                                : '$currentYear年',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () {
+                              onClearFilter();
+                              Navigator.pop(context);
+                            },
+                            child: Icon(
+                              Icons.close,
+                              size: 14,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
-          // 底部安全区域
-          SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 8),
-        ],
+            const Divider(height: 1),
+            // 年份和月份列表（用 scrollController 驱动 sheet 拖动放大/缩小）
+            Expanded(
+              child: _buildContent(
+                context,
+                state,
+                notifier,
+                scrollController,
+                isDark,
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildContent(
+    BuildContext context,
+    TimelineNavigatorState state,
+    TimelineNavigatorNotifier notifier,
+    ScrollController scrollController,
+    bool isDark,
+  ) {
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom + 8;
+
+    if (state.isLoading) {
+      return SingleChildScrollView(
+        controller: scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: const Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    if (state.yearGroups.isEmpty) {
+      return SingleChildScrollView(
+        controller: scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Center(
+            child: Text(
+              '暂无照片数据',
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(0, 8, 0, bottomInset),
+      itemCount: state.yearGroups.length,
+      itemBuilder: (context, index) {
+        final yearGroup = state.yearGroups[index];
+        final isSelectedYear = yearGroup.year == currentYear;
+
+        return _buildYearSection(
+          context,
+          yearGroup,
+          isSelectedYear,
+          isDark,
+          notifier,
+        );
+      },
     );
   }
 
