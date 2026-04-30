@@ -259,7 +259,8 @@ jobs:
   # 构建 iOS IPA
   build-ios:
     needs: extract-version
-    runs-on: macos-latest
+    # 必须用 macos-15+，否则 device_info_plus 12.4 用到的 isiOSAppOnVision (iOS 17.2 SDK) 找不到
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -310,7 +311,7 @@ jobs:
         include:
           - os: macos-13        # Intel (x86_64)
             arch: x86_64
-          - os: macos-latest    # Apple Silicon (arm64)
+          - os: macos-15        # Apple Silicon (arm64)，需 macos-15 以匹配 device_info_plus 12.4 SDK 要求
             arch: arm64
     steps:
       - uses: actions/checkout@v4

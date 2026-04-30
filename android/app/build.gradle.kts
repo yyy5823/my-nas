@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.kkape.mynas"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"  // NDK r27
+    ndkVersion = "28.2.13676358"  // NDK r28（jni 插件要求）
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
