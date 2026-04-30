@@ -155,6 +155,9 @@ jobs:
   # 构建 Android APK（多架构）
   build-android:
     needs: extract-version
+    # 显式 if: 必需 —— extract-version 用了 if: always()，下游不写 if 会被 GH Actions
+    # 当作"链路含 skipped"自动跳过。
+    if: needs.extract-version.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -259,6 +262,7 @@ jobs:
   # 构建 iOS IPA
   build-ios:
     needs: extract-version
+    if: needs.extract-version.result == 'success'
     # 必须用 macos-15+，否则 device_info_plus 12.4 用到的 isiOSAppOnVision (iOS 17.2 SDK) 找不到
     runs-on: macos-15
     timeout-minutes: 60
@@ -312,6 +316,7 @@ jobs:
   # 构建 macOS（Intel + Apple Silicon）
   build-macos:
     needs: extract-version
+    if: needs.extract-version.result == 'success'
     runs-on: ${{ matrix.os }}
     # 加入超时保护：x86 build 可能因 SDK/工具链问题挂起，避免阻塞 create-release
     timeout-minutes: 60
@@ -461,6 +466,7 @@ jobs:
   # 构建 Windows x64
   build-windows:
     needs: extract-version
+    if: needs.extract-version.result == 'success'
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -590,6 +596,7 @@ jobs:
   # 构建 Linux x64
   build-linux:
     needs: extract-version
+    if: needs.extract-version.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -647,6 +654,7 @@ jobs:
   # 构建 Linux arm64
   build-linux-arm64:
     needs: extract-version
+    if: needs.extract-version.result == 'success'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
