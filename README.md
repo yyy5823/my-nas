@@ -14,6 +14,7 @@
   <a href="#媒体服务器">媒体服务器</a> •
   <a href="#下载器">下载器</a> •
   <a href="#支持平台">支持平台</a> •
+  <a href="#xcode-配置macos--ios新手必读">Xcode 配置</a> •
   <a href="#快速开始">快速开始</a> •
   <a href="#文档">文档</a>
 </p>
@@ -146,6 +147,287 @@ MyNAS 是一款跨平台的家用 NAS 媒体管理工具，把你常用的多种
 | iOS | 12.0+ | ✅ 含麦克风 / 相机权限、应用签名 |
 | Android | 6.0+ | ✅ 含媒体通知、应用 ID 规范 |
 | Linux | - | 🚧 编译通过，部分依赖支持有限（如 share_plus） |
+
+## Xcode 配置（macOS / iOS，新手必读）
+
+> 这一节面向**第一次拿到这份代码、想在自己 Mac 上把 macOS / iOS 跑起来**的开发者。仓库里所有 Apple 平台的 Bundle ID、Team ID、App Group、Keychain Group 都是作者本人的，**直接 `flutter run` 一定签名失败**，必须先按下面的步骤改成你自己的。整套流程跟着做大约 15–30 分钟。
+
+### 0. 前置工具
+
+| 工具 | 版本 | 安装方式 |
+|---|---|---|
+| macOS | 12+ 推荐 13/14 | — |
+| Xcode | **15.0 及以上**（Live Activity 部分要 16+，对应 iOS 16.1+ SDK） | App Store |
+| Xcode Command Line Tools | 跟随 Xcode | `xcode-select --install` |
+| CocoaPods | 1.14+ | `sudo gem install cocoapods` 或 `brew install cocoapods` |
+| Flutter SDK | ≥ 3.16.0 | [flutter.dev](https://docs.flutter.dev/get-started/install/macos) |
+| Apple ID | 个人或付费开发者账号 | [appleid.apple.com](https://appleid.apple.com) |
+
+执行一次自检：
+
+```bash
+flutter doctor -v
+# 看到 "Xcode - develop for iOS and macOS" 一栏全绿 ✓ 就行
+```
+
+`flutter doctor` 提示让你跑 `sudo xcodebuild -runFirstLaunch`、`pod setup` 之类的就照跑。
+
+> **个人 Apple ID 也能跑真机和本地 macOS**，只是不能上架；不需要 99 美元的付费账号。
+
+### 1. 拉代码 + 装依赖
+
+```bash
+git clone git@github.com:chenqi92/my-nas.git
+cd my-nas
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+```
+
+`build_runner` 会生成大量 `*.g.dart` / `*.freezed.dart`，**漏跑这步项目根本编译不过**。
+
+### 2. 在 Xcode 里登录你的 Apple ID
+
+打开 Xcode → 顶部菜单 **Xcode → Settings → Accounts** → 点左下 `+` → **Apple ID** → 登录 → 选中账号 → 右下角 **Manage Certificates...** 确认有 `Apple Development` 证书（没有就点 `+` 新建）。
+
+记下你的 **Team ID**（10 位字母数字，比如 `AB12CDE34F`），下一步要替换。
+
+### 3. 关键：把 Bundle ID / Team / App Group 改成你自己的
+
+仓库里目前的标识：
+
+| 项 | 当前值（作者的） | 你需要改成 |
+|---|---|---|
+| Team ID | `2U97K3U27A` | 你自己的 10 位 Team ID |
+| 主 App Bundle ID | `com.kkape.mynas` | `com.<你的反域名>.mynas` |
+| iOS Widget Extension | `com.kkape.mynas.MyNasWidgets` | `com.<你的反域名>.mynas.MyNasWidgets` |
+| iOS Live Activity Extension | `com.kkape.mynas.MusicActivityWidget` | `com.<你的反域名>.mynas.MusicActivityWidget` |
+| macOS Widget Extension | `com.kkape.mynas.MyNasWidgets` | `com.<你的反域名>.mynas.MyNasWidgets` |
+| App Group | `group.com.kkape.mynas.app` | `group.com.<你的反域名>.mynas.app` |
+| Keychain Group | `$(AppIdentifierPrefix)com.kkape.mynas` | `$(AppIdentifierPrefix)com.<你的反域名>.mynas` |
+
+> **App Group / Keychain Group 是主 App 与各 Widget / Live Activity 之间共享数据用的**，三方必须保持一致，否则桌面小组件 / 灵动岛 / 音乐持久播放都会拿不到数据。
+>
+> Bundle ID 用反向域名，建议用一个你拥有或可控的域名（比如 `com.github.<你的用户名>.mynas`）。**不要继续用 `com.kkape.*`**，否则上 TestFlight / App Store 会和作者账号冲突。
+
+下面用 **`com.example.mynas`** 当占位符，请按你自己的来替换。
+
+#### 3.1 改 iOS Bundle ID + Team
+
+```bash
+open ios/Runner.xcworkspace      # 必须开 .xcworkspace 不是 .xcodeproj
+```
+
+在 Xcode 左侧选中蓝色 `Runner` 项目 → 中间面板顶部选 **TARGETS**，逐个 target 切到 **Signing & Capabilities** 标签页，依次设置：
+
+| Target | Bundle Identifier | Team |
+|---|---|---|
+| `Runner` | `com.example.mynas` | 你的 Team |
+| `RunnerTests` | `com.example.mynas.RunnerTests` | 你的 Team |
+| `MyNasWidgetsExtension` | `com.example.mynas.MyNasWidgets` | 你的 Team |
+| `MusicActivityWidget` | `com.example.mynas.MusicActivityWidget` | 你的 Team |
+
+每个 target 都勾上 **Automatically manage signing**（自动签名），Xcode 会自动给你生成 Provisioning Profile。
+
+#### 3.2 改 macOS Bundle ID + Team
+
+```bash
+open macos/Runner.xcworkspace
+```
+
+| Target | Bundle Identifier | Team |
+|---|---|---|
+| `Runner` | `com.example.mynas` | 你的 Team |
+| `RunnerTests` | `com.example.mynas.RunnerTests` | 你的 Team |
+| `MyNasWidgetsExtension` | `com.example.mynas.MyNasWidgets` | 你的 Team |
+
+同样勾 **Automatically manage signing**。
+
+#### 3.3 改 App Group / Keychain Group（关键！）
+
+App Group 是 4 个文件里的硬编码字符串，最快的方法是命令行批量替换：
+
+```bash
+# 先看看会改哪些（dry run）
+grep -rn "group.com.kkape.mynas.app" ios/ macos/
+
+# 替换 App Group（请把右侧换成你的反域名）
+LC_ALL=C find ios macos -type f \( -name "*.entitlements" -o -name "*.plist" -o -name "project.pbxproj" \) \
+  -exec sed -i '' 's/group\.com\.kkape\.mynas\.app/group.com.example.mynas.app/g' {} +
+
+# 替换 Keychain Group（含在 macOS Release/Debug entitlements）
+LC_ALL=C find ios macos -type f -name "*.entitlements" \
+  -exec sed -i '' 's/com\.kkape\.mynas/com.example.mynas/g' {} +
+```
+
+替换完成后回到 Xcode：
+
+- iOS `Runner` / `MyNasWidgetsExtension` / `MusicActivityWidget` → **Signing & Capabilities** → **App Groups** → 确认勾上 `group.com.example.mynas.app`（如果列表里没有就点 `+` 新建一个，**三个 target 必须勾同一个**）。
+- macOS `Runner` / `MyNasWidgetsExtension` → 同上。
+- iOS `Runner` 的 **Keychain Sharing** 已默认勾上 `$(AppIdentifierPrefix)com.example.mynas`，确认就行。
+
+#### 3.4 替换 Podfile / Pods 的 DEVELOPMENT_TEAM
+
+`ios/Podfile` 里 hardcode 了一行 `config.build_settings['DEVELOPMENT_TEAM'] = '2U97K3U27A'`，需要换成你的：
+
+```bash
+sed -i '' "s/'2U97K3U27A'/'YOURTEAMID'/g" ios/Podfile
+```
+
+> 这一行是为了修复某些预编译 framework 的签名问题，**留空会让 Pod 重新签名失败**。
+
+#### 3.5 替换 BGTaskScheduler 标识符（仅 iOS）
+
+`ios/Runner/Info.plist` 里有：
+
+```xml
+<key>BGTaskSchedulerPermittedIdentifiers</key>
+<array>
+  <string>com.kkape.mynas.scrape</string>
+</array>
+```
+
+改成你的 Bundle ID 前缀：
+
+```bash
+sed -i '' 's/com\.kkape\.mynas\.scrape/com.example.mynas.scrape/g' ios/Runner/Info.plist
+```
+
+如果代码里有匹配字符串也要一起改：
+
+```bash
+grep -rn "com.kkape.mynas.scrape" lib/ ios/Runner/
+```
+
+### 4. Capabilities 一览（确认 Xcode 里都打开了）
+
+#### iOS（target = Runner）
+
+| Capability | 用途 |
+|---|---|
+| **App Groups** = `group.com.example.mynas.app` | Widget / Live Activity 共享数据 |
+| **Keychain Sharing** = `$(AppIdentifierPrefix)com.example.mynas` | Keychain 凭据共享、降级到 Hive AES 前的优先方案 |
+| **Background Modes** | 已勾 `Audio, AirPlay, and Picture in Picture` / `Background fetch` / `Background processing` |
+| **Push Notifications** | 一般不需要；如果要做远程通知再勾 |
+
+iOS Live Activity 是**靠 Info.plist 的 `NSSupportsLiveActivities=true` + 单独的 widget extension target** 实现的，不需要在 Capabilities 面板单独添加。
+
+#### iOS（target = MyNasWidgetsExtension / MusicActivityWidget）
+
+| Capability | 值 |
+|---|---|
+| **App Groups** | 跟主 App 一致：`group.com.example.mynas.app` |
+
+#### macOS（target = Runner）
+
+| Capability | 用途 |
+|---|---|
+| **App Sandbox** | macOS 强制；下面这些是放行项 |
+| **App Groups** = `group.com.example.mynas.app` | Widget 共享数据 |
+| **Keychain Sharing** = `$(AppIdentifierPrefix)com.example.mynas` | 凭据 |
+| **File Access → User Selected File** = Read/Write | 用户在 Finder 选的文件 |
+| **File Access → Downloads Folder** = Read/Write | 下载到下载目录 |
+| **Network → Incoming Connections (Server)** | DLNA / 局域网服务 |
+| **Network → Outgoing Connections (Client)** | 访问 NAS |
+
+> macOS 有 `Debug` / `DebugProfile` / `Release` **三套** entitlements 文件，三个文件里的 App Group 都得对，前面 3.3 步骤的 sed 已经把它们一起改了。
+
+#### macOS（target = MyNasWidgetsExtension）
+
+| Capability | 值 |
+|---|---|
+| **App Sandbox** | 已勾 |
+| **App Groups** | 跟主 App 一致 |
+
+### 5. 装 Pods
+
+每次拉代码、改完 Podfile 或者 `flutter pub get` 之后都要重装 Pods：
+
+```bash
+# iOS
+cd ios && pod install --repo-update && cd ..
+
+# macOS
+cd macos && pod install --repo-update && cd ..
+```
+
+如果遇到 `pod install` 失败（常见于 M 系芯片首次装、或 ffmpeg_kit 报 framework 类型不一致），按下面对应处理：
+
+```bash
+# 清缓存重装
+cd ios && rm -rf Pods Podfile.lock && pod install --repo-update && cd ..
+cd macos && rm -rf Pods Podfile.lock && pod install --repo-update && cd ..
+
+# 顽固问题：清掉 Flutter 中间产物再来一遍
+flutter clean
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+```
+
+### 6. （可选）配置 Chromaprint 音纹识别
+
+音乐刮削里"听声识曲"功能依赖 [Chromaprint](https://acoustid.org/)。**不配置也能跑**，只是音纹识别会自动降级成"按标题/艺术家搜索"。
+
+#### macOS
+
+最简单：
+
+```bash
+brew install chromaprint
+```
+
+或者把 fpcalc 打包进 app bundle：
+
+```bash
+./native/chromaprint/bundle_fpcalc.sh all
+./native/chromaprint/bundle_fpcalc.sh install
+# 这会把 fpcalc 放到 macos/Runner/Resources/fpcalc，构建时自动打包
+```
+
+#### iOS
+
+需要预编译 `Chromaprint.xcframework` 放到 `ios/Frameworks/`（仓库默认不带，因为体积大）。详见 [`native/chromaprint/build_mobile.md`](native/chromaprint/build_mobile.md)。**不放也能编译过**，Podfile 里 `-DCHROMAPRINT_AVAILABLE` 这个宏只是开启代码路径，运行时找不到 framework 会自动降级。
+
+### 7. 启动
+
+到这一步你应该可以跑起来了：
+
+```bash
+# macOS（最快验证签名是否搞对）
+flutter run -d macos
+
+# iOS 模拟器
+open -a Simulator           # 先开一个模拟器
+flutter run -d <模拟器名>     # 例如 "iPhone 15"
+
+# iOS 真机：用 USB 接上手机，信任电脑，然后
+flutter devices              # 确认能看到你的真机
+flutter run -d <真机ID>
+```
+
+第一次在真机上跑，iOS 会提示**"未受信任的开发者"**，去手机 **设置 → 通用 → VPN 与设备管理 → 你的 Apple ID → 信任** 即可。
+
+### 8. 常见问题排查
+
+| 现象 | 原因 / 解决 |
+|---|---|
+| `Signing for "Runner" requires a development team` | 第 3 步没改 Team，或 Xcode 没登录 Apple ID |
+| `No profiles for 'com.kkape.mynas' were found` | Bundle ID 没改，还在用作者的；按 3.1 / 3.2 改成自己的 |
+| `Provisioning profile doesn't include the com.apple.security.application-groups entitlement` | 3.3 步骤的 App Group 没勾全，回到 Xcode 把每个 target 的 App Groups 都打勾刷新一次 |
+| Widget / 灵动岛拿不到主 App 数据 | App Group 在主 App 和 Widget Extension 上不一致；用 `grep -rn "group\." ios macos` 自检 |
+| `pod install` 卡在 `Updating spec repo "trunk"` | 网络问题；切换网络或加 `--verbose` 看具体卡在哪 |
+| `Sandbox: ... deny file-write-create` | macOS 沙盒问题；确认 4.macOS 那张表里的 File Access 全勾上 |
+| 真机安装后立刻闪退 | 大概率是 entitlements 里 App Group / Keychain Group 跟 Provisioning Profile 不匹配；重新 Clean Build Folder（`Cmd+Shift+K`）再 run |
+| Live Activity 不显示 | 个人 Apple ID 默认不支持 Live Activity 真机调试，需要付费开发者账号；模拟器上可以跑 |
+
+### 9. 改完别忘了改名（可选但推荐）
+
+如果你打算二次开发，建议把以下也一起改了：
+
+- `ios/Runner/Info.plist` 里 `CFBundleDisplayName`（启动器图标下的名字，目前是 "My Nas"）
+- `macos/Runner/Configs/AppInfo.xcconfig` 里 `PRODUCT_NAME` / `PRODUCT_COPYRIGHT`
+- `pubspec.yaml` 里 `name`（这个改起来连锁反应大，慎重）
+
+---
 
 ## 技术栈
 
