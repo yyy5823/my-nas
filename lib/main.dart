@@ -17,7 +17,10 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/sync/syncable_module.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/sync/favorites_sync_module.dart';
 import 'package:my_nas/features/music/data/services/sync/playlist_sync_module.dart';
+import 'package:my_nas/features/reading/data/services/sync/reading_progress_sync_module.dart';
+import 'package:my_nas/features/video/data/services/sync/video_favorites_sync_module.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/data/services/music_media_kit_handler.dart';
@@ -179,7 +182,11 @@ Future<void> _initApp() async {
 
 /// 把所有支持云同步的模块注册到中心同步系统
 void _registerSyncModules() {
-  CloudSyncRegistry.instance.register(PlaylistSyncModule());
+  CloudSyncRegistry.instance
+    ..register(PlaylistSyncModule())
+    ..register(FavoritesSyncModule())
+    ..register(VideoFavoritesSyncModule())
+    ..register(ReadingProgressSyncModule());
 }
 
 /// 注册第三方开源库的许可证
