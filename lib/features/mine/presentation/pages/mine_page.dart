@@ -13,8 +13,10 @@ import 'package:my_nas/features/downloader/presentation/pages/downloader_list_pa
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
 import 'package:my_nas/features/media_tracking/presentation/pages/media_tracking_list_page.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
+import 'package:my_nas/features/music/presentation/pages/duplicate_songs_page.dart';
 import 'package:my_nas/features/music/presentation/pages/listening_stats_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_settings_page.dart';
+import 'package:my_nas/features/music/presentation/pages/recycle_bin_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_sites_list_page.dart';
@@ -185,6 +187,36 @@ class MinePage extends ConsumerWidget {
                         context,
                         MaterialPageRoute<void>(
                           builder: (_) => const ListeningStatsPage(),
+                        ),
+                      ),
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.content_copy_rounded,
+                      iconColor: AppColors.primary,
+                      title: '重复歌曲',
+                      subtitle: '检测同首歌的多个版本（mp3 + flac 等）',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const DuplicateSongsPage(),
+                        ),
+                      ),
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.delete_outline_rounded,
+                      iconColor: AppColors.primary,
+                      title: '回收站',
+                      subtitle: '已删除的播放列表保留 30 天，可恢复',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const RecycleBinPage(),
                         ),
                       ),
                     ),

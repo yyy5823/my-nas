@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/router/routes.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/theme/dynamic_accent_provider.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
@@ -195,24 +196,32 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         extendBodyBehindAppBar: true,
         backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[100],
         appBar: _buildAppBar(context, ref, currentMusic, isDark),
-        body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isDark
-                ? [
-                    AppColors.primary.withValues(alpha: 0.15),
-                    AppColors.darkBackground,
-                    AppColors.darkBackground,
-                  ]
-                : [
-                    AppColors.primary.withValues(alpha: 0.1),
-                    Colors.white,
-                    Colors.grey[100]!,
-                  ],
+        body: AnimatedContainer(
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: isDark
+                  ? [
+                      ref
+                          .watch(musicDynamicAccentValueProvider)
+                          .accent
+                          .withValues(alpha: 0.18),
+                      AppColors.darkBackground,
+                      AppColors.darkBackground,
+                    ]
+                  : [
+                      ref
+                          .watch(musicDynamicAccentValueProvider)
+                          .accent
+                          .withValues(alpha: 0.12),
+                      Colors.white,
+                      Colors.grey[100]!,
+                    ],
+            ),
           ),
-        ),
         child: SafeArea(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 400),
