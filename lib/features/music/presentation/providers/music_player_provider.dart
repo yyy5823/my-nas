@@ -20,6 +20,7 @@ import 'package:my_nas/features/music/data/services/music_metadata_service.dart'
 import 'package:my_nas/features/music/data/services/ffmpeg_audio_tag_service.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/data/services/play_history_store.dart';
+import 'package:my_nas/features/music/data/services/scrobble/music_scrobble_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
@@ -383,6 +384,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       _savePlayStateIfNeeded(position);
       // 听歌统计：维护 high-water mark
       PlayHistoryStore.instance.tick(position);
+      // Scrobble：同步 high-water mark
+      MusicScrobbleService.instance.tick(position);
     });
 
     // 监听总时长
@@ -677,6 +680,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     AppError.fireAndForget(
       PlayHistoryStore.instance.endSession(),
       action: 'playHistory.endSession',
+    );
+    // Scrobble：歌曲播完，触发 50%/240s 阈值检查 + 上报
+    AppError.fireAndForget(
+      MusicScrobbleService.instance.endSession(),
+      action: 'scrobble.endSession',
     );
 
     // 如果正在交叉淡化，检查是否超时
@@ -1176,6 +1184,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     AppError.fireAndForget(
       PlayHistoryStore.instance.beginSession(music),
       action: 'playHistory.beginSession',
+    );
+    // Scrobble：开启新会话（now playing 上报 + 内部 endSession 上一首）
+    AppError.fireAndForget(
+      MusicScrobbleService.instance.beginSession(music),
+      action: 'scrobble.beginSession',
     );
 
     logger..i('MusicPlayer: 开始播放 ${music.name}')

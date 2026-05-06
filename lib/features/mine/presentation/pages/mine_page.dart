@@ -17,6 +17,7 @@ import 'package:my_nas/features/music/presentation/pages/duplicate_songs_page.da
 import 'package:my_nas/features/music/presentation/pages/listening_stats_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_settings_page.dart';
 import 'package:my_nas/features/music/presentation/pages/recycle_bin_page.dart';
+import 'package:my_nas/features/music/presentation/pages/scrobble_settings_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_sites_list_page.dart';
@@ -217,6 +218,21 @@ class MinePage extends ConsumerWidget {
                         context,
                         MaterialPageRoute<void>(
                           builder: (_) => const RecycleBinPage(),
+                        ),
+                      ),
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.cast_rounded,
+                      iconColor: AppColors.primary,
+                      title: 'Scrobble 上报',
+                      subtitle: 'Last.fm / ListenBrainz 听歌历史同步',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ScrobbleSettingsPage(),
                         ),
                       ),
                     ),
