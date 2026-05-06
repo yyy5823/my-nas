@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/music/data/services/lyric_service.dart';
 import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
+import 'package:my_nas/features/music/presentation/widgets/karaoke_line_widget.dart';
 
 /// Spotify 风格的歌词视图 - 现代化设计
 /// 参考主流音乐APP的歌词展示方式：
@@ -29,16 +32,20 @@ class LyricView extends ConsumerStatefulWidget {
 }
 
 class _LyricViewState extends ConsumerState<LyricView>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _listKey = GlobalKey();
 
-  int _lastLineIndex = -1;
   bool _userScrolling = false;
-  bool _isAnimating = false;
   DateTime? _lastUserScrollTime;
 
+  // 双指缩放状态：基准值 = pinch 开始时的已存 scale；transient = 实时倍率
+  double _pinchBaseScale = 1.0;
+  double _pinchTransient = 1.0;
+  bool _isPinching = false;
+
   late AnimationController _pulseController;
+  Ticker? _scrollTicker;
 
   // 每行歌词的 GlobalKey，用于精确计算位置
   final Map<int, GlobalKey> _lineKeys = {};
@@ -50,10 +57,12 @@ class _LyricViewState extends ConsumerState<LyricView>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+    _scrollTicker = createTicker(_onScrollTick)..start();
   }
 
   @override
   void dispose() {
+    _scrollTicker?.dispose();
     _scrollController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -63,56 +72,105 @@ class _LyricViewState extends ConsumerState<LyricView>
   GlobalKey _getKeyForLine(int index) =>
       _lineKeys.putIfAbsent(index, GlobalKey.new);
 
-  /// 滚动到指定行，使其居中显示
-  void _scrollToLine(int index, int totalLines) {
-    if (!_scrollController.hasClients) return;
-    if (index < 0 || index >= totalLines) return;
-    if (_isAnimating) return;
+  /// 估算行高（含 padding）
+  double get _estimatedLineHeight => widget.showFullScreen ? 56.0 : 44.0;
 
-    // 检查是否在用户滚动的冷却期内
-    if (_userScrolling) return;
+  /// 60fps Ticker：基于当前播放位置在「当前行 → 下一行」之间线性插值滚动偏移，
+  /// 实现连续平滑滚动而非按行跳变。
+  void _onScrollTick(Duration _) {
+    if (!_scrollController.hasClients) return;
+    if (_userScrolling || _isPinching) return;
     if (_lastUserScrollTime != null) {
       final elapsed = DateTime.now().difference(_lastUserScrollTime!);
       if (elapsed.inSeconds < 3) return;
     }
 
-    // 计算估算的行高（包含 padding）
-    // 全屏模式: fontSize 26/18 + padding 14*2 = 约 56px
-    // 非全屏: fontSize 20/16 + padding 10*2 = 约 44px
-    final estimatedLineHeight = widget.showFullScreen ? 56.0 : 44.0;
+    final lyricData = ref.read(currentLyricProvider).lyricData;
+    if (lyricData.isEmpty) return;
 
-    // 列表使用 verticalPadding = screenHeight * 0.4 作为顶部/底部 padding
-    // 这样第一行会从屏幕 40% 处开始，我们需要考虑这个偏移
-    // 目标：让当前行显示在视口中央
-    //
-    // 内容结构：[顶部padding 40%][歌词内容][底部padding 40%]
-    // 第 index 行在列表中的位置 = index * lineHeight
-    // 我们希望这一行居中，即它距离视口顶部 = viewportHeight / 2 - lineHeight / 2
-    // 所以 scrollOffset = index * lineHeight - (viewportHeight / 2 - lineHeight / 2)
-    // 但由于有顶部 padding，实际滚动位置需要考虑这个 padding
-    final targetOffset = index * estimatedLineHeight;
+    final position = ref.read(musicPlayerControllerProvider).position;
+    final lines = lyricData.lines;
+    final idx = lyricData.getCurrentLineIndex(position);
+    if (idx < 0) return;
 
-    final clampedOffset = targetOffset.clamp(
+    // 行内进度 0..1：基于当前行 time 到下一行 time（或 endTime） 的占比
+    double progress = 0;
+    final cur = lines[idx];
+    Duration? rangeEnd;
+    if (idx + 1 < lines.length) {
+      rangeEnd = lines[idx + 1].time;
+    } else if (cur.endTime != null) {
+      rangeEnd = cur.endTime;
+    }
+    if (rangeEnd != null && rangeEnd > cur.time) {
+      final span = (rangeEnd - cur.time).inMicroseconds;
+      final passed = (position - cur.time).inMicroseconds.clamp(0, span);
+      progress = passed / span;
+    }
+
+    final lh = _estimatedLineHeight;
+    final curOffset = idx * lh;
+    final nextOffset = (idx + 1) * lh;
+    final targetOffset = curOffset + (nextOffset - curOffset) * progress;
+
+    final clamped = targetOffset.clamp(
       0.0,
       _scrollController.position.maxScrollExtent,
     );
 
-    _isAnimating = true;
-    _scrollController.animateTo(
-      clampedOffset,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    ).then((_) {
-      if (mounted) {
-        _isAnimating = false;
-      }
+    // 用 jumpTo 才能跟上 60fps；与现有 offset 差距过小时跳过避免闪烁
+    if ((_scrollController.offset - clamped).abs() < 0.5) return;
+    _scrollController.jumpTo(clamped);
+  }
+
+  void _onScaleStart(ScaleStartDetails details) {
+    // 仅响应 2 指及以上的捏合，单指交给 ListView 滚动
+    if (details.pointerCount < 2) return;
+    _pinchBaseScale =
+        ref.read(musicSettingsProvider.select((s) => s.lyricsFontScale));
+    _pinchTransient = 1.0;
+    _isPinching = true;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    if (!_isPinching) return;
+    if (details.pointerCount < 2) return;
+    setState(() {
+      _pinchTransient = details.scale;
     });
+  }
+
+  void _onScaleEnd(ScaleEndDetails details) {
+    if (!_isPinching) return;
+    _isPinching = false;
+    final finalScale = (_pinchBaseScale * _pinchTransient).clamp(
+      MusicSettings.minLyricsFontScale,
+      MusicSettings.maxLyricsFontScale,
+    );
+    _pinchTransient = 1.0;
+    setState(() {});
+    AppError.fireAndForget(
+      ref
+          .read(musicSettingsProvider.notifier)
+          .setLyricsFontScale(finalScale),
+      action: 'lyricView.persistFontScale',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final lyricState = ref.watch(currentLyricProvider);
     final playerState = ref.watch(musicPlayerControllerProvider);
+    final savedScale = ref.watch(
+      musicSettingsProvider.select((s) => s.lyricsFontScale),
+    );
+    final effectiveScale = (_isPinching
+            ? _pinchBaseScale * _pinchTransient
+            : savedScale)
+        .clamp(
+      MusicSettings.minLyricsFontScale,
+      MusicSettings.maxLyricsFontScale,
+    );
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (lyricState.isLoading) {
@@ -126,16 +184,7 @@ class _LyricViewState extends ConsumerState<LyricView>
     final lyrics = lyricState.lyricData;
     final currentIndex = lyrics.getCurrentLineIndex(playerState.position);
 
-    // 自动滚动到当前行 - 只要索引变化就滚动
-    if (currentIndex >= 0 && currentIndex != _lastLineIndex) {
-      _lastLineIndex = currentIndex;
-      // 使用 SchedulerBinding 确保在布局完成后滚动
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _scrollToLine(currentIndex, lyrics.lines.length);
-        }
-      });
-    }
+    // 滚动由 _onScrollTick 持续插值驱动，无需在 build 中显式 scrollTo
 
     // 计算视口高度用于 padding
     // 顶部 padding 较小，让当前歌词显示在屏幕上方约 1/3 处
@@ -165,6 +214,10 @@ class _LyricViewState extends ConsumerState<LyricView>
       child: GestureDetector(
         // 整个区域可点击返回唱片视图
         onTap: widget.onTap,
+        // 双指捏合调节歌词字号
+        onScaleStart: _onScaleStart,
+        onScaleUpdate: _onScaleUpdate,
+        onScaleEnd: _onScaleEnd,
         behavior: HitTestBehavior.translucent,
         child: ShaderMask(
           shaderCallback: (bounds) => LinearGradient(
@@ -202,6 +255,7 @@ class _LyricViewState extends ConsumerState<LyricView>
                 isPast: isPast,
                 isDark: isDark,
                 showFullScreen: widget.showFullScreen,
+                fontScale: effectiveScale,
                 onTap: () {
                   // 点击歌词跳转到对应位置（而不是切换视图）
                   ref.read(musicPlayerControllerProvider.notifier).seek(line.time);
@@ -320,6 +374,7 @@ class _LyricLineWidget extends StatelessWidget {
     required this.isPast,
     required this.isDark,
     required this.showFullScreen,
+    required this.fontScale,
     required this.onTap,
     super.key,
   });
@@ -329,6 +384,7 @@ class _LyricLineWidget extends StatelessWidget {
   final bool isPast;
   final bool isDark;
   final bool showFullScreen;
+  final double fontScale;
   final VoidCallback onTap;
 
   @override
@@ -356,6 +412,11 @@ class _LyricLineWidget extends StatelessWidget {
       fontWeight = FontWeight.normal;
     }
 
+    fontSize *= fontScale;
+
+    // 当前行 + 字级歌词：走 Karaoke 渲染器
+    final isWordLevel = isCurrent && line.isWordLevel;
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -365,20 +426,28 @@ class _LyricLineWidget extends StatelessWidget {
         padding: EdgeInsets.symmetric(
           vertical: showFullScreen ? 14 : 10,
         ),
-        child: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: fontWeight,
-            color: textColor,
-            height: 1.4,
-          ),
-          child: Text(
-            line.text,
-            textAlign: TextAlign.center,
-          ),
-        ),
+        child: isWordLevel
+            ? KaraokeLineWidget(
+                line: line,
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                activeColor: textColor,
+                inactiveColor: textColor.withValues(alpha: 0.35),
+              )
+            : AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: fontWeight,
+                  color: textColor,
+                  height: 1.4,
+                ),
+                child: Text(
+                  line.text,
+                  textAlign: TextAlign.center,
+                ),
+              ),
       ),
     );
   }

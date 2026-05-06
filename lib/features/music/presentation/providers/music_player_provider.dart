@@ -19,6 +19,7 @@ import 'package:my_nas/features/music/data/services/music_favorites_service.dart
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/data/services/ffmpeg_audio_tag_service.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
+import 'package:my_nas/features/music/data/services/play_history_store.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
@@ -380,6 +381,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       _checkFadeOut(position);
       // 定期保存播放状态（用于连接后自动恢复）
       _savePlayStateIfNeeded(position);
+      // 听歌统计：维护 high-water mark
+      PlayHistoryStore.instance.tick(position);
     });
 
     // 监听总时长
@@ -669,6 +672,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     logger.i('MusicPlayer: _onTrackCompleted 触发, '
         'isCrossfading=$_isCrossfading, '
         'currentMusic=${currentMusic?.name}');
+
+    // 听歌统计：歌曲播完，结算当前会话
+    AppError.fireAndForget(
+      PlayHistoryStore.instance.endSession(),
+      action: 'playHistory.endSession',
+    );
 
     // 如果正在交叉淡化，检查是否超时
     if (_isCrossfading) {
@@ -1162,6 +1171,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     _ref.read(currentMusicProvider.notifier).state = music;
     state = state.copyWith(isBuffering: true);
+
+    // 听歌统计：开启新会话（内部会先 endSession 上一首）
+    AppError.fireAndForget(
+      PlayHistoryStore.instance.beginSession(music),
+      action: 'playHistory.beginSession',
+    );
 
     logger..i('MusicPlayer: 开始播放 ${music.name}')
       ..d('MusicPlayer: URL => ${music.url}')

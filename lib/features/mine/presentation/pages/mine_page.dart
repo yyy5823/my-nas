@@ -13,6 +13,7 @@ import 'package:my_nas/features/downloader/presentation/pages/downloader_list_pa
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
 import 'package:my_nas/features/media_tracking/presentation/pages/media_tracking_list_page.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
+import 'package:my_nas/features/music/presentation/pages/listening_stats_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_settings_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
@@ -170,6 +171,21 @@ class MinePage extends ConsumerWidget {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute<void>(builder: (_) => const MusicPlayerSettingsPage()),
+                      ),
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.bar_chart_rounded,
+                      iconColor: AppColors.primary,
+                      title: '听歌统计',
+                      subtitle: '本周/本月/本年 Top 歌曲、艺术家、专辑',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ListeningStatsPage(),
+                        ),
                       ),
                     ),
                     _buildDivider(isDark),

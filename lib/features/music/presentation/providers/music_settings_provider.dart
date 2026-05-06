@@ -18,6 +18,7 @@ class MusicSettings {
     this.gaplessPlayback = true,
     this.dynamicIslandEnabled = true, // 默认开启，不在 UI 上显示开关
     this.playerEngine = MusicPlayerEngine.justAudio, // 播放引擎
+    this.lyricsFontScale = 1.0, // 歌词字号缩放（pinch 持久化）
   });
 
   factory MusicSettings.fromMap(Map<dynamic, dynamic> map) => MusicSettings(
@@ -29,6 +30,8 @@ class MusicSettings {
         gaplessPlayback: map['gaplessPlayback'] as bool? ?? true,
         dynamicIslandEnabled: map['dynamicIslandEnabled'] as bool? ?? true,
         playerEngine: MusicPlayerEngine.values[map['playerEngine'] as int? ?? 0],
+        lyricsFontScale:
+            (map['lyricsFontScale'] as num?)?.toDouble() ?? 1.0,
       );
 
   final double volume;
@@ -39,6 +42,11 @@ class MusicSettings {
   final bool gaplessPlayback; // 无缝播放
   final bool dynamicIslandEnabled; // Android 灵动岛悬浮窗（默认开启，不在 UI 显示）
   final MusicPlayerEngine playerEngine; // 播放引擎
+  final double lyricsFontScale; // 歌词字号缩放 (0.7 - 1.8)
+
+  /// 歌词字号缩放范围
+  static const double minLyricsFontScale = 0.7;
+  static const double maxLyricsFontScale = 1.8;
 
   /// 是否使用 media_kit 引擎
   bool get useMediaKitEngine => playerEngine == MusicPlayerEngine.mediaKit;
@@ -52,6 +60,7 @@ class MusicSettings {
     bool? gaplessPlayback,
     bool? dynamicIslandEnabled,
     MusicPlayerEngine? playerEngine,
+    double? lyricsFontScale,
   }) =>
       MusicSettings(
         volume: volume ?? this.volume,
@@ -62,6 +71,7 @@ class MusicSettings {
         gaplessPlayback: gaplessPlayback ?? this.gaplessPlayback,
         dynamicIslandEnabled: dynamicIslandEnabled ?? this.dynamicIslandEnabled,
         playerEngine: playerEngine ?? this.playerEngine,
+        lyricsFontScale: lyricsFontScale ?? this.lyricsFontScale,
       );
 
   Map<String, dynamic> toMap() => {
@@ -73,6 +83,7 @@ class MusicSettings {
         'gaplessPlayback': gaplessPlayback,
         'dynamicIslandEnabled': dynamicIslandEnabled,
         'playerEngine': playerEngine.index,
+        'lyricsFontScale': lyricsFontScale,
       };
 }
 
@@ -181,6 +192,17 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
     state = state.copyWith(playerEngine: engine);
     await _save();
     logger.i('MusicSettingsNotifier: 播放引擎已更改为 $engine，需要重启应用生效');
+  }
+
+  /// 设置歌词字号缩放（0.7 - 1.8）
+  Future<void> setLyricsFontScale(double scale) async {
+    final clamped = scale.clamp(
+      MusicSettings.minLyricsFontScale,
+      MusicSettings.maxLyricsFontScale,
+    );
+    if ((state.lyricsFontScale - clamped).abs() < 0.001) return;
+    state = state.copyWith(lyricsFontScale: clamped);
+    await _save();
   }
 
   /// 重置设置

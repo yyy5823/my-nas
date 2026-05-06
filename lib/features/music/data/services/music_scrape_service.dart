@@ -346,18 +346,32 @@ class MusicScrapeService {
   ) async {
     try {
       // 检查各项是否已有
-      final hasCover = track.coverPath != null && track.coverPath!.isNotEmpty;
+      var hasCover = track.coverPath != null && track.coverPath!.isNotEmpty;
       final hasTitle = track.title != null && track.title!.isNotEmpty;
       final hasArtist = track.artist != null && track.artist!.isNotEmpty;
       final hasAlbum = track.album != null && track.album!.isNotEmpty;
       final hasYear = track.year != null;
       final hasGenre = track.genre != null && track.genre!.isNotEmpty;
 
+      // 缺封面时先尝试 NAS sidecar 文件（<basename>-cover.jpg 等）
+      var workingTrack = track;
+      if (!hasCover) {
+        final sidecarCache = await _trySidecarCover(track, fileSystem);
+        if (sidecarCache != null) {
+          workingTrack = workingTrack.copyWith(coverPath: sidecarCache);
+          hasCover = true;
+        }
+      }
+
       // 检查是否已有歌词文件
       final hasLyrics = await _checkLyricsExists(track.filePath, fileSystem);
 
       // 如果全部都有，直接跳过
       if (hasCover && hasTitle && hasArtist && hasAlbum && hasLyrics) {
+        // 若 sidecar 命中后 coverPath 与原 track 不同，需要持久化
+        if (workingTrack != track) {
+          await _db.upsert(workingTrack);
+        }
         return _TrackResult.skip;
       }
 
@@ -391,7 +405,7 @@ class MusicScrapeService {
 
       // 应用结果（只补充缺失的内容）
       await _applyResult(
-        track,
+        workingTrack,
         result,
         fileSystem: fileSystem,
         needCover: needCover,
@@ -431,6 +445,39 @@ class MusicScrapeService {
     }
   }
 
+  /// 尝试从 NAS sidecar 文件加载封面（`<basename>-cover.{jpg,png,webp}`）
+  /// 命中后写入本地缓存，返回缓存路径；未命中返回 null。
+  Future<String?> _trySidecarCover(
+    MusicTrackEntity track,
+    NasFileSystem? fileSystem,
+  ) async {
+    if (fileSystem == null) return null;
+    final musicDir = p.dirname(track.filePath);
+    final baseName = p.basenameWithoutExtension(track.filePath);
+    const exts = ['jpg', 'jpeg', 'png', 'webp'];
+    for (final ext in exts) {
+      final coverPath = p.join(musicDir, '$baseName-cover.$ext');
+      try {
+        await fileSystem.getFileInfo(coverPath);
+      } on Exception {
+        continue;
+      }
+      try {
+        final stream = await fileSystem.getFileStream(coverPath);
+        final bytes = await stream.fold<List<int>>(
+          [],
+          (prev, chunk) => prev..addAll(chunk),
+        );
+        if (bytes.isEmpty) continue;
+        final uniqueKey = '${track.sourceId}_${track.filePath}';
+        return _coverCache.saveCover(uniqueKey, Uint8List.fromList(bytes));
+      } on Exception catch (e) {
+        logger.w('MusicScrapeService: 读取 sidecar 封面失败 $coverPath: $e');
+      }
+    }
+    return null;
+  }
+
   /// 应用刮削结果
   Future<void> _applyResult(
     MusicTrackEntity track,
@@ -463,6 +510,20 @@ class MusicScrapeService {
 
           if (localCoverPath != null) {
             updatedTrack = updatedTrack.copyWith(coverPath: localCoverPath);
+          }
+
+          // Sidecar 回写：把封面同步保存到曲目目录 <basename>-cover.jpg
+          // 让其它播放器（VLC、PotPlayer、Jellyfin 等）也能识别封面
+          if (fileSystem != null) {
+            try {
+              final musicDir = p.dirname(track.filePath);
+              final baseName = p.basenameWithoutExtension(track.filePath);
+              final coverPath =
+                  p.join(musicDir, '$baseName-cover.jpg');
+              await fileSystem.writeFile(coverPath, coverData);
+            } on Exception catch (e) {
+              logger.w('MusicScrapeService: 回写 sidecar 封面失败: $e');
+            }
           }
         }
       } on Exception catch (e) {
