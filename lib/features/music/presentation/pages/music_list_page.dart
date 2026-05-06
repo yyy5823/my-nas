@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,6 +24,7 @@ import 'package:my_nas/core/utils/background_task_pool.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
+import 'package:my_nas/features/music/data/services/playlist_io_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
@@ -7419,10 +7421,16 @@ class _PlaylistsView extends ConsumerWidget {
 
     return Column(
       children: [
-        // 创建歌单按钮
+        // 创建 + 导入歌单按钮
         Padding(
           padding: const EdgeInsets.all(16),
-          child: _CreatePlaylistButton(isDark: isDark),
+          child: Row(
+            children: [
+              Expanded(child: _CreatePlaylistButton(isDark: isDark)),
+              const SizedBox(width: 12),
+              _ImportPlaylistButton(isDark: isDark),
+            ],
+          ),
         ),
         // 歌单列表
         Expanded(
@@ -7439,6 +7447,82 @@ class _PlaylistsView extends ConsumerWidget {
         ),
       ],
     );
+  }
+}
+
+/// 导入歌单按钮（m3u8 / JSON）
+class _ImportPlaylistButton extends ConsumerWidget {
+  const _ImportPlaylistButton({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _import(context, ref),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.black.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.file_upload_rounded,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '导入',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  Future<void> _import(BuildContext context, WidgetRef ref) async {
+    final result = await fp.FilePicker.platform.pickFiles(
+      type: fp.FileType.custom,
+      allowedExtensions: ['m3u8', 'm3u', 'json'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.first.path;
+    if (path == null) return;
+    final imported = await PlaylistIoService.instance.importFromFile(path);
+    if (imported != null) {
+      await ref.read(playlistProvider.notifier).refresh();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '已导入「${imported.name}」，匹配到 ${imported.trackCount} 首',
+            ),
+          ),
+        );
+      }
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('导入失败：格式无效或为空')),
+      );
+    }
   }
 }
 

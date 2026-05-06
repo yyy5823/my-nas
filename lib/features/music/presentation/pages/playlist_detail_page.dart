@@ -1,12 +1,18 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
+import 'package:my_nas/features/music/data/services/playlist_io_service.dart';
 import 'package:my_nas/features/music/data/services/playlist_service.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/playlist_provider.dart';
@@ -489,6 +495,26 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage>
                 ),
               ),
               const PopupMenuItem(
+                value: 'export_m3u8',
+                child: Row(
+                  children: [
+                    Icon(Icons.file_download_rounded, size: 20),
+                    SizedBox(width: 12),
+                    Text('导出为 m3u8'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'export_json',
+                child: Row(
+                  children: [
+                    Icon(Icons.code_rounded, size: 20),
+                    SizedBox(width: 12),
+                    Text('导出为 JSON'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
                 value: 'delete',
                 child: Row(
                   children: [
@@ -845,7 +871,29 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage>
         _showClearConfirm();
       case 'delete':
         _showDeleteConfirm();
+      case 'export_m3u8':
+        AppError.fireAndForget(_exportPlaylist(asJson: false), action: 'playlist.exportM3u8');
+      case 'export_json':
+        AppError.fireAndForget(_exportPlaylist(asJson: true), action: 'playlist.exportJson');
     }
+  }
+
+  Future<void> _exportPlaylist({required bool asJson}) async {
+    final fresh =
+        await PlaylistService().getPlaylist(widget.playlist.id) ??
+            widget.playlist;
+    final content = asJson
+        ? await PlaylistIoService.instance.exportJson(fresh)
+        : await PlaylistIoService.instance.exportM3u8(fresh);
+    final dir = await getTemporaryDirectory();
+    final ext = asJson ? 'json' : 'm3u8';
+    final safeName = fresh.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    final filePath = p.join(dir.path, '$safeName.$ext');
+    await File(filePath).writeAsString(content);
+    await Share.shareXFiles(
+      [XFile(filePath)],
+      subject: fresh.name,
+    );
   }
 
   void _showRenameDialog() {
