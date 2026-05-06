@@ -252,6 +252,13 @@ class PlaylistService {
     }
   }
 
+  /// 同步用：直接覆盖写入（保留来自远端的 createdAt / updatedAt / deletedAt 时间戳）
+  Future<void> upsertFromSync(PlaylistEntry remote) async {
+    await init();
+    if (_box == null) return;
+    await _box!.put(remote.id, remote.toMap());
+  }
+
   /// 永久删除（跳过回收站）
   Future<void> purgePlaylist(String id) async {
     await init();
