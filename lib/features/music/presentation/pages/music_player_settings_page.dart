@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/features/music/data/services/lyrics_translation_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
@@ -341,8 +342,102 @@ class MusicPlayerSettingsPage extends ConsumerWidget {
           isDark: isDark,
           onChanged: (value) => notifier.setAutoPlayOnConnect(enabled: value),
         ),
+        const SizedBox(height: 12),
+        _SettingsSwitch(
+          icon: Icons.translate_rounded,
+          title: '歌词翻译',
+          subtitle: '使用 Google 翻译（免费，需联网）',
+          value: settings.lyricsTranslateEnabled,
+          isDark: isDark,
+          onChanged: (value) => notifier.setLyricsTranslateEnabled(enabled: value),
+        ),
+        if (settings.lyricsTranslateEnabled) ...[
+          const SizedBox(height: 8),
+          _LyricsTranslateLangTile(settings: settings, notifier: notifier, isDark: isDark),
+        ],
       ],
     );
+}
+
+class _LyricsTranslateLangTile extends StatelessWidget {
+  const _LyricsTranslateLangTile({
+    required this.settings,
+    required this.notifier,
+    required this.isDark,
+  });
+
+  final MusicSettings settings;
+  final MusicSettingsNotifier notifier;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = LyricsTranslationLang.fromBcp47(settings.lyricsTranslateLang);
+    return InkWell(
+      onTap: () => _pick(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.04)
+              : Colors.black.withValues(alpha: 0.02),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.language_rounded,
+              size: 20,
+              color: isDark ? Colors.white60 : Colors.black54,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '目标语言',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ),
+            Text(
+              current.displayName,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final picked = await showDialog<LyricsTranslationLang>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('翻译目标语言'),
+        children: [
+          for (final lang in LyricsTranslationLang.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, lang),
+              child: Text(lang.displayName),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) {
+      await notifier.setLyricsTranslateLang(picked.bcp47);
+    }
+  }
 }
 
 /// 设置区块组件

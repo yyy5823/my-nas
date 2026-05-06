@@ -417,6 +417,29 @@ class _LyricLineWidget extends StatelessWidget {
     // 当前行 + 字级歌词：走 Karaoke 渲染器
     final isWordLevel = isCurrent && line.isWordLevel;
 
+    final mainBody = isWordLevel
+        ? KaraokeLineWidget(
+            line: line,
+            fontSize: fontSize,
+            fontWeight: fontWeight,
+            activeColor: textColor,
+            inactiveColor: textColor.withValues(alpha: 0.35),
+          )
+        : AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: fontWeight,
+              color: textColor,
+              height: 1.4,
+            ),
+            child: Text(
+              line.text,
+              textAlign: TextAlign.center,
+            ),
+          );
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -426,28 +449,25 @@ class _LyricLineWidget extends StatelessWidget {
         padding: EdgeInsets.symmetric(
           vertical: showFullScreen ? 14 : 10,
         ),
-        child: isWordLevel
-            ? KaraokeLineWidget(
-                line: line,
-                fontSize: fontSize,
-                fontWeight: fontWeight,
-                activeColor: textColor,
-                inactiveColor: textColor.withValues(alpha: 0.35),
-              )
-            : AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            mainBody,
+            if (line.hasTranslation) ...[
+              const SizedBox(height: 4),
+              Text(
+                line.translation!,
                 style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: fontWeight,
-                  color: textColor,
-                  height: 1.4,
+                  fontSize: fontSize * 0.72,
+                  fontWeight: FontWeight.normal,
+                  color: textColor.withValues(alpha: 0.65),
+                  height: 1.3,
                 ),
-                child: Text(
-                  line.text,
-                  textAlign: TextAlign.center,
-                ),
+                textAlign: TextAlign.center,
               ),
+            ],
+          ],
+        ),
       ),
     );
   }

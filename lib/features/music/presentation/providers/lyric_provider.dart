@@ -1,9 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/lyric_service.dart';
+import 'package:my_nas/features/music/data/services/lyrics_translation_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -43,6 +46,20 @@ class LyricNotifier extends StateNotifier<LyricState> {
         loadLyrics(next);
       } else if (next == null) {
         state = const LyricState();
+      }
+    });
+
+    // 监听翻译开关 / 目标语言变化 → 即时重翻当前歌词
+    _ref.listen<MusicSettings>(musicSettingsProvider, (prev, next) {
+      final toggled = prev?.lyricsTranslateEnabled !=
+          next.lyricsTranslateEnabled;
+      final langChanged =
+          prev?.lyricsTranslateLang != next.lyricsTranslateLang;
+      if (toggled || langChanged) {
+        AppError.fireAndForget(
+          retranslate(),
+          action: 'lyric.retranslateOnSettingsChange',
+        );
       }
     });
 
@@ -100,6 +117,12 @@ class LyricNotifier extends StateNotifier<LyricState> {
         lyricData: lyricData,
         isLoading: false,
       );
+
+      // 异步触发翻译（不阻塞首屏歌词渲染）
+      AppError.fireAndForget(
+        _translateIfEnabled(),
+        action: 'lyricNotifier.translate',
+      );
     } on Exception catch (e) {
       logger.e('LyricNotifier: 加载歌词失败', e);
       state = state.copyWith(
@@ -133,4 +156,33 @@ class LyricNotifier extends StateNotifier<LyricState> {
   void clear() {
     state = const LyricState();
   }
+
+  /// 若开启翻译开关，调 LyricsTranslationService 把每行 text 翻译后回填
+  Future<void> _translateIfEnabled() async {
+    final settings = _ref.read(musicSettingsProvider);
+    if (!settings.lyricsTranslateEnabled) return;
+    final data = state.lyricData;
+    if (data.isEmpty) return;
+    final texts = data.lines.map((l) => l.text).toList();
+    final results = await LyricsTranslationService.instance.translateBatch(
+      texts: texts,
+      targetLang: settings.lyricsTranslateLang,
+    );
+    final translated = data.lines.map((l) {
+      final t = results[l.text];
+      if (t == null || t.trim().isEmpty || t == l.text) return l;
+      return l.copyWith(translation: t);
+    }).toList();
+    state = state.copyWith(
+      lyricData: LyricData(
+        lines: translated,
+        title: data.title,
+        artist: data.artist,
+        album: data.album,
+      ),
+    );
+  }
+
+  /// 用户切换翻译开关后，重新翻译当前歌词
+  Future<void> retranslate() => _translateIfEnabled();
 }

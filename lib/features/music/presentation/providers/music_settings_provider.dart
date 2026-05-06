@@ -19,6 +19,8 @@ class MusicSettings {
     this.dynamicIslandEnabled = true, // 默认开启，不在 UI 上显示开关
     this.playerEngine = MusicPlayerEngine.justAudio, // 播放引擎
     this.lyricsFontScale = 1.0, // 歌词字号缩放（pinch 持久化）
+    this.lyricsTranslateEnabled = false, // 启用歌词翻译
+    this.lyricsTranslateLang = 'zh-CN', // 翻译目标语言（BCP-47）
   });
 
   factory MusicSettings.fromMap(Map<dynamic, dynamic> map) => MusicSettings(
@@ -32,6 +34,10 @@ class MusicSettings {
         playerEngine: MusicPlayerEngine.values[map['playerEngine'] as int? ?? 0],
         lyricsFontScale:
             (map['lyricsFontScale'] as num?)?.toDouble() ?? 1.0,
+        lyricsTranslateEnabled:
+            map['lyricsTranslateEnabled'] as bool? ?? false,
+        lyricsTranslateLang:
+            (map['lyricsTranslateLang'] as String?) ?? 'zh-CN',
       );
 
   final double volume;
@@ -43,6 +49,8 @@ class MusicSettings {
   final bool dynamicIslandEnabled; // Android 灵动岛悬浮窗（默认开启，不在 UI 显示）
   final MusicPlayerEngine playerEngine; // 播放引擎
   final double lyricsFontScale; // 歌词字号缩放 (0.7 - 1.8)
+  final bool lyricsTranslateEnabled;
+  final String lyricsTranslateLang; // BCP-47
 
   /// 歌词字号缩放范围
   static const double minLyricsFontScale = 0.7;
@@ -61,6 +69,8 @@ class MusicSettings {
     bool? dynamicIslandEnabled,
     MusicPlayerEngine? playerEngine,
     double? lyricsFontScale,
+    bool? lyricsTranslateEnabled,
+    String? lyricsTranslateLang,
   }) =>
       MusicSettings(
         volume: volume ?? this.volume,
@@ -72,6 +82,10 @@ class MusicSettings {
         dynamicIslandEnabled: dynamicIslandEnabled ?? this.dynamicIslandEnabled,
         playerEngine: playerEngine ?? this.playerEngine,
         lyricsFontScale: lyricsFontScale ?? this.lyricsFontScale,
+        lyricsTranslateEnabled:
+            lyricsTranslateEnabled ?? this.lyricsTranslateEnabled,
+        lyricsTranslateLang:
+            lyricsTranslateLang ?? this.lyricsTranslateLang,
       );
 
   Map<String, dynamic> toMap() => {
@@ -84,6 +98,8 @@ class MusicSettings {
         'dynamicIslandEnabled': dynamicIslandEnabled,
         'playerEngine': playerEngine.index,
         'lyricsFontScale': lyricsFontScale,
+        'lyricsTranslateEnabled': lyricsTranslateEnabled,
+        'lyricsTranslateLang': lyricsTranslateLang,
       };
 }
 
@@ -192,6 +208,18 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
     state = state.copyWith(playerEngine: engine);
     await _save();
     logger.i('MusicSettingsNotifier: 播放引擎已更改为 $engine，需要重启应用生效');
+  }
+
+  /// 启用 / 禁用歌词翻译
+  Future<void> setLyricsTranslateEnabled({required bool enabled}) async {
+    state = state.copyWith(lyricsTranslateEnabled: enabled);
+    await _save();
+  }
+
+  /// 设置翻译目标语言（BCP-47）
+  Future<void> setLyricsTranslateLang(String lang) async {
+    state = state.copyWith(lyricsTranslateLang: lang);
+    await _save();
   }
 
   /// 设置歌词字号缩放（0.7 - 1.8）

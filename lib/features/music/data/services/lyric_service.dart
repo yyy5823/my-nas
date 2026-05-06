@@ -68,6 +68,7 @@ class LyricLine {
     this.syllables,
     this.voice = LyricVoice.primary,
     this.endTime,
+    this.translation,
   });
 
   /// 时间点（行开始）
@@ -85,7 +86,32 @@ class LyricLine {
   /// 行结束时间。字级行外部解析时填最后一字 end；行级行可由下一行 timestamp 推得
   final Duration? endTime;
 
+  /// 翻译文本（按需异步填充，由 LyricsTranslationService 注入）
+  final String? translation;
+
   bool get isWordLevel => syllables != null && syllables!.isNotEmpty;
+
+  bool get hasTranslation =>
+      translation != null && translation!.trim().isNotEmpty;
+
+  LyricLine copyWith({
+    Duration? time,
+    String? text,
+    List<LyricSyllable>? syllables,
+    LyricVoice? voice,
+    Duration? endTime,
+    Object? translation = const Object(),
+  }) =>
+      LyricLine(
+        time: time ?? this.time,
+        text: text ?? this.text,
+        syllables: syllables ?? this.syllables,
+        voice: voice ?? this.voice,
+        endTime: endTime ?? this.endTime,
+        translation: identical(translation, const Object())
+            ? this.translation
+            : translation as String?,
+      );
 
   @override
   String toString() => '[${time.inMilliseconds}] $text';
