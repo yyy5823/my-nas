@@ -167,6 +167,7 @@ class _ImportSheet extends StatefulWidget {
 class _ImportSheetState extends State<_ImportSheet> {
   final TextEditingController _controller = TextEditingController();
   bool _busy = false;
+  bool _isUrl = false;
 
   @override
   void dispose() {
@@ -184,7 +185,9 @@ class _ImportSheetState extends State<_ImportSheet> {
     if (raw.isEmpty) return;
     setState(() => _busy = true);
     try {
-      final list = ScrapeSourceManager.parseImport(raw);
+      final list = _isUrl
+          ? await ScrapeSourceManager.fetchFromUrl(raw)
+          : ScrapeSourceManager.parseImport(raw);
       if (list.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -233,12 +236,25 @@ class _ImportSheetState extends State<_ImportSheet> {
                 ),
               ),
               const SizedBox(height: 16),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('粘贴 JSON')),
+                  ButtonSegment(value: true, label: Text('远端 URL')),
+                ],
+                selected: {_isUrl},
+                onSelectionChanged: (s) => setState(() => _isUrl = s.first),
+              ),
+              const SizedBox(height: 16),
               TextField(
                 controller: _controller,
-                maxLines: 8,
+                maxLines: _isUrl ? 1 : 8,
+                keyboardType:
+                    _isUrl ? TextInputType.url : TextInputType.multiline,
                 decoration: InputDecoration(
                   border: const OutlineInputBorder(),
-                  hintText: '粘贴 JSON（单对象或数组）',
+                  hintText: _isUrl
+                      ? 'https://example.com/scrape-sources.json'
+                      : '粘贴 JSON（单对象或数组）',
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.content_paste_rounded),
                     onPressed: _pasteFromClipboard,

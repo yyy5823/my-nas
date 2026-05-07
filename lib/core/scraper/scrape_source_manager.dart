@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/scraper/scrape_source.dart';
@@ -117,6 +118,23 @@ class ScrapeSourceManager {
     final s = await getById(id);
     if (s == null) return;
     await addOrUpdate(s.copyWith(enabled: enabled));
+  }
+
+  /// 远端拉取并解析 JSON。响应可以是单对象或数组。
+  /// 不在此方法内入库；调用方收到列表后再 [addMany]。
+  static Future<List<JsScrapeSource>> fetchFromUrl(String url) async {
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 20),
+      headers: const {'Accept': 'application/json, text/plain, */*'},
+    ));
+    final resp = await dio.getUri<String>(
+      Uri.parse(url),
+      options: Options(responseType: ResponseType.plain),
+    );
+    final body = resp.data ?? '';
+    if (body.isEmpty) return const [];
+    return parseImport(body);
   }
 
   /// 解析用户粘贴的 JSON 文本。支持单对象或数组两种形式。

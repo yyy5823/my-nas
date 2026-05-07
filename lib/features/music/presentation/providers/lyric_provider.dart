@@ -1,5 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/errors/errors.dart';
+import 'package:my_nas/core/scraper/scrape_engine.dart';
+import 'package:my_nas/core/scraper/scrape_source.dart';
+import 'package:my_nas/core/scraper/scrape_source_manager.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/lyric_service.dart';
 import 'package:my_nas/features/music/data/services/lyrics_translation_service.dart';
@@ -113,6 +116,11 @@ class LyricNotifier extends StateNotifier<LyricState> {
         lyricData = await _extractEmbeddedLyrics(music, connection);
       }
 
+      // 第三档：用户导入的 scrape 源（仅 type=lyric）
+      if (lyricData.isEmpty) {
+        lyricData = await _fetchFromScrapeSources(music);
+      }
+
       state = state.copyWith(
         lyricData: lyricData,
         isLoading: false,
@@ -148,6 +156,33 @@ class LyricNotifier extends StateNotifier<LyricState> {
       }
     } on Exception catch (e) {
       logger.w('LyricNotifier: 从音频提取嵌入歌词失败', e);
+    }
+    return LyricData.empty;
+  }
+
+  /// 用户导入的歌词类 scrape 源逐个尝试，命中第一个非空结果即返回。
+  ///
+  /// 数据流：title/artist → ScrapeEngine.getLyric() → 返回 lrc 文本 → parseLrc。
+  /// 若无任何启用的 lyric 源，返回 empty。
+  Future<LyricData> _fetchFromScrapeSources(MusicItem music) async {
+    try {
+      await ScrapeSourceManager.instance.init();
+      final sources =
+          await ScrapeSourceManager.instance.getByType(ScrapeSourceType.lyric);
+      if (sources.isEmpty) return LyricData.empty;
+
+      final title = music.title ?? music.name;
+      final artist = music.artist ?? '';
+      for (final s in sources) {
+        final lrc = await ScrapeEngine.instance
+            .getLyric(s, title: title, artist: artist);
+        if (lrc != null && lrc.trim().isNotEmpty) {
+          logger.i('LyricNotifier: 命中 scrape 源 ${s.displayName}');
+          return LyricService().parseLyrics(lrc);
+        }
+      }
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'lyric.scrape', {'music': music.name});
     }
     return LyricData.empty;
   }
