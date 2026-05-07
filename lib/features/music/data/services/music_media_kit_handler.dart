@@ -11,6 +11,7 @@ import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/audio_effects_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
+import 'package:my_nas/features/music/data/services/music_browser_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/video/domain/entities/audio_capability.dart';
 import 'package:path_provider/path_provider.dart';
@@ -166,6 +167,40 @@ class MusicMediaKitAudioHandler extends BaseAudioHandler
     _isInitialized = true;
     logger.i('MusicMediaKitHandler: 初始化完成');
   }
+
+  // ============ MediaBrowserService（Android Auto / CarPlay）============
+
+  @override
+  Future<List<MediaItem>> getChildren(
+    String parentMediaId, [
+    Map<String, dynamic>? options,
+  ]) =>
+      MusicBrowserService.instance.getChildren(parentMediaId);
+
+  @override
+  Future<MediaItem?> getMediaItem(String mediaId) =>
+      MusicBrowserService.instance.getMediaItem(mediaId);
+
+  @override
+  Future<void> playFromMediaId(
+    String mediaId, [
+    Map<String, dynamic>? extras,
+  ]) =>
+      MusicBrowserService.instance.playFromMediaId(mediaId);
+
+  @override
+  Future<void> playFromSearch(
+    String query, [
+    Map<String, dynamic>? extras,
+  ]) =>
+      MusicBrowserService.instance.playFromSearch(query);
+
+  @override
+  Future<List<MediaItem>> search(
+    String query, [
+    Map<String, dynamic>? extras,
+  ]) =>
+      MusicBrowserService.instance.search(query);
 
   /// 初始化均衡器并订阅状态变化
   Future<void> _initEqualizer() async {

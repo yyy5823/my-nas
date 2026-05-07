@@ -11,13 +11,14 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/android_dynamic_island_service.dart';
+import 'package:my_nas/features/music/data/services/ffmpeg_audio_tag_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
+import 'package:my_nas/features/music/data/services/music_browser_service.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_favorites_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
-import 'package:my_nas/features/music/data/services/ffmpeg_audio_tag_service.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/data/services/play_history_store.dart';
 import 'package:my_nas/features/music/data/services/scrobble/music_scrobble_service.dart';
@@ -342,6 +343,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _audioHandler.onSkipToIndex = (index) async {
       await playAt(index);
     };
+
+    // 注册 Android Auto / CarPlay 浏览播放回调
+    MusicBrowserService.instance.playFromPathsHandler =
+        _playFromBrowserPaths;
 
     // 配置 AudioSession（关键：确保灵动岛/Now Playing 正常显示）
     _configureAudioSession();
@@ -1921,6 +1926,52 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     if (tracks.isNotEmpty && startIndex < tracks.length) {
       await play(tracks[startIndex]);
     }
+  }
+
+  /// Android Auto / CarPlay 浏览树触发播放：根据路径还原 MusicItem。
+  ///
+  /// 当前实现仅查 favorites + history 缓存（已经存了 musicUrl），命中即组队播放；
+  /// 未命中的路径直接跳过。如果整批都未命中（用户访问了某个无缓存的歌单），
+  /// 退化为不动作 —— 避免在车载场景里因为找不到 url 卡死或乱播。
+  Future<void> _playFromBrowserPaths(List<String> paths, int startIndex) async {
+    if (paths.isEmpty) return;
+    final favSvc = MusicFavoritesService();
+    await favSvc.init();
+    final favs = await favSvc.getAllFavorites();
+    final history = await favSvc.getRecentHistory(limit: 200);
+
+    final favByPath = {for (final f in favs) f.musicPath: f};
+    final histByPath = {for (final h in history) h.musicPath: h};
+
+    final items = <MusicItem>[];
+    for (final p in paths) {
+      final fav = favByPath[p];
+      if (fav != null) {
+        items.add(MusicBrowserService.buildMusicItemFromFavorite(fav));
+        continue;
+      }
+      final h = histByPath[p];
+      if (h != null) {
+        items.add(MusicItem(
+          id: '${h.sourceId ?? ''}_${h.musicPath}',
+          name: h.musicName,
+          path: h.musicPath,
+          url: h.musicUrl,
+          sourceId: h.sourceId,
+          title: h.musicName,
+          artist: h.artist,
+          album: h.album,
+          coverUrl: h.coverUrl,
+          duration: h.duration,
+        ));
+      }
+    }
+    if (items.isEmpty) {
+      logger.w('MusicPlayer: browser play 全部路径未命中缓存 → 跳过');
+      return;
+    }
+    final start = startIndex.clamp(0, items.length - 1);
+    await playQueue(items, startIndex: start);
   }
 
   /// 播放/暂停切换
