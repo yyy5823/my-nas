@@ -33,10 +33,13 @@ class MusicBrowserService {
   MusicBrowserService._();
   static final MusicBrowserService instance = MusicBrowserService._();
 
-  /// 由播放层注入：把一组路径加入队列并起播。
-  /// 第二个参数为初始播放索引。
-  Future<void> Function(List<String> paths, int startIndex)?
-      playFromPathsHandler;
+  /// 由播放层注入：把一组 `(sourceId, path)` 入队并起播。
+  ///
+  /// `sourceId` 可以为 null（兼容老缓存里只有 path 的情况）；播放层会先查
+  /// favorites + history 缓存，命中失败再用 sourceId 通过 NAS 适配器
+  /// `getFileUrl(path)` 解析 URL。
+  Future<void> Function(List<({String? sourceId, String path})> entries,
+      int startIndex)? playFromPathsHandler;
 
   /// 根节点 / 所有可浏览节点
   Future<List<MediaItem>> getChildren(String parentMediaId) async {
@@ -87,18 +90,22 @@ class MusicBrowserService {
     if (handler == null) return;
 
     if (mediaId.startsWith(_kTrackPrefix)) {
-      // 单曲：在「全部收藏」或「最近播放」上下文里选了一首，构造单条队列
-      final path = mediaId.substring(_kTrackPrefix.length);
-      await handler([path], 0);
+      // 单曲：曲目 id 编码为 `track:<sourceId>|<path>`，sourceId 可空
+      final body = mediaId.substring(_kTrackPrefix.length);
+      final entry = _parseTrackId(body);
+      await handler([entry], 0);
       return;
     }
 
     if (mediaId.startsWith(_kPlaylistPrefix)) {
-      // 整张歌单：从头开始播
+      // 整张歌单：从头开始播。歌单里只有 path，sourceId 留空让播放层自己查
       final id = mediaId.substring(_kPlaylistPrefix.length);
       final entry = await PlaylistService().getPlaylist(id);
       if (entry != null && entry.trackPaths.isNotEmpty) {
-        await handler(entry.trackPaths, 0);
+        await handler(
+          [for (final p in entry.trackPaths) (sourceId: null, path: p)],
+          0,
+        );
       }
       return;
     }
@@ -106,30 +113,43 @@ class MusicBrowserService {
     if (mediaId.startsWith(_kArtistPrefix)) {
       final artist = mediaId.substring(_kArtistPrefix.length);
       final tracks = await _collectKnownTracks();
-      final paths = [
+      final entries = [
         for (final t in tracks)
-          if ((t.artist ?? '').trim() == artist) t.path,
+          if ((t.artist ?? '').trim() == artist)
+            (sourceId: t.sourceId, path: t.path),
       ];
-      if (paths.isNotEmpty) await handler(paths, 0);
+      if (entries.isNotEmpty) await handler(entries, 0);
       return;
     }
 
     if (mediaId.startsWith(_kAlbumPrefix)) {
       final album = mediaId.substring(_kAlbumPrefix.length);
       final tracks = await _collectKnownTracks();
-      final paths = [
+      final entries = [
         for (final t in tracks)
-          if ((t.album ?? '').trim() == album) t.path,
+          if ((t.album ?? '').trim() == album)
+            (sourceId: t.sourceId, path: t.path),
       ];
-      if (paths.isNotEmpty) await handler(paths, 0);
+      if (entries.isNotEmpty) await handler(entries, 0);
       return;
     }
 
     if (mediaId == kMediaFavoritesId) {
       final favs = await MusicFavoritesService().getAllFavorites();
-      final paths = favs.map((f) => f.musicPath).toList();
-      if (paths.isNotEmpty) await handler(paths, 0);
+      final entries = [
+        for (final f in favs) (sourceId: f.sourceId, path: f.musicPath),
+      ];
+      if (entries.isNotEmpty) await handler(entries, 0);
     }
+  }
+
+  /// 把 `<sourceId>|<path>` 拆回 (sourceId, path)。空字符串 sourceId 视为 null。
+  ({String? sourceId, String path}) _parseTrackId(String body) {
+    final i = body.indexOf('|');
+    if (i < 0) return (sourceId: null, path: body);
+    final src = body.substring(0, i);
+    final path = body.substring(i + 1);
+    return (sourceId: src.isEmpty ? null : src, path: path);
   }
 
   /// 语音搜索：按曲目名 / 歌手匹配收藏 + 最近播放。
@@ -138,13 +158,12 @@ class MusicBrowserService {
     if (handler == null || query.trim().isEmpty) return;
     final results = await search(query);
     if (results.isEmpty) return;
-    final paths = results
-        .map((m) => m.id.startsWith(_kTrackPrefix)
-            ? m.id.substring(_kTrackPrefix.length)
-            : null)
-        .whereType<String>()
-        .toList();
-    if (paths.isNotEmpty) await handler(paths, 0);
+    final entries = <({String? sourceId, String path})>[];
+    for (final m in results) {
+      if (!m.id.startsWith(_kTrackPrefix)) continue;
+      entries.add(_parseTrackId(m.id.substring(_kTrackPrefix.length)));
+    }
+    if (entries.isNotEmpty) await handler(entries, 0);
   }
 
   Future<List<MediaItem>> search(String query) async {
@@ -162,6 +181,7 @@ class MusicBrowserService {
       final artist = (f.artist ?? '').toLowerCase();
       if ((name.contains(q) || artist.contains(q)) && seen.add(f.musicPath)) {
         hits.add(_trackItem(
+          sourceId: f.sourceId,
           path: f.musicPath,
           title: f.musicName,
           artist: f.artist,
@@ -176,6 +196,7 @@ class MusicBrowserService {
       final artist = (h.artist ?? '').toLowerCase();
       if ((name.contains(q) || artist.contains(q)) && seen.add(h.musicPath)) {
         hits.add(_trackItem(
+          sourceId: h.sourceId,
           path: h.musicPath,
           title: h.musicName,
           artist: h.artist,
@@ -205,6 +226,7 @@ class MusicBrowserService {
     return [
       for (final f in list)
         _trackItem(
+          sourceId: f.sourceId,
           path: f.musicPath,
           title: f.musicName,
           artist: f.artist,
@@ -222,6 +244,7 @@ class MusicBrowserService {
     return [
       for (final h in list)
         _trackItem(
+          sourceId: h.sourceId,
           path: h.musicPath,
           title: h.musicName,
           artist: h.artist,
@@ -269,6 +292,7 @@ class MusicBrowserService {
     final byPath = <String, _BrowserTrack>{};
     for (final f in favs) {
       byPath[f.musicPath] = _BrowserTrack(
+        sourceId: f.sourceId,
         path: f.musicPath,
         title: f.musicName,
         artist: f.artist,
@@ -281,6 +305,7 @@ class MusicBrowserService {
       byPath.putIfAbsent(
         h.musicPath,
         () => _BrowserTrack(
+          sourceId: h.sourceId,
           path: h.musicPath,
           title: h.musicName,
           artist: h.artist,
@@ -341,6 +366,7 @@ class MusicBrowserService {
       for (final t in tracks)
         if ((t.artist ?? '').trim() == artist)
           _trackItem(
+            sourceId: t.sourceId,
             path: t.path,
             title: t.title,
             artist: t.artist,
@@ -357,6 +383,7 @@ class MusicBrowserService {
       for (final t in tracks)
         if ((t.album ?? '').trim() == album)
           _trackItem(
+            sourceId: t.sourceId,
             path: t.path,
             title: t.title,
             artist: t.artist,
@@ -377,6 +404,7 @@ class MusicBrowserService {
   MediaItem _trackItem({
     required String path,
     required String title,
+    String? sourceId,
     String? artist,
     String? album,
     String? coverUrl,
@@ -384,8 +412,9 @@ class MusicBrowserService {
   }) {
     final art =
         coverUrl != null && coverUrl.isNotEmpty ? Uri.tryParse(coverUrl) : null;
+    final id = '$_kTrackPrefix${sourceId ?? ''}|$path';
     return MediaItem(
-      id: '$_kTrackPrefix$path',
+      id: id,
       title: title,
       artist: artist,
       album: album,
@@ -423,12 +452,14 @@ class _BrowserTrack {
   _BrowserTrack({
     required this.path,
     required this.title,
+    this.sourceId,
     this.artist,
     this.album,
     this.coverUrl,
     this.duration,
   });
 
+  final String? sourceId;
   final String path;
   final String title;
   final String? artist;
