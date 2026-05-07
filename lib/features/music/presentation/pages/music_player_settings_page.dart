@@ -6,6 +6,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/features/music/data/services/lyrics_translation_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
+import 'package:my_nas/features/music/presentation/pages/audio_effects_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
 import 'package:my_nas/shared/mixins/tab_bar_visibility_mixin.dart';
@@ -60,6 +61,9 @@ class MusicPlayerSettingsPage extends ConsumerWidget {
             const SizedBox(height: AppSpacing.lg),
             // 开关选项
             _buildSwitchOptions(settings, notifier, isDark),
+            const SizedBox(height: AppSpacing.lg),
+            // 均衡器入口
+            _buildEqualizerEntry(context, isDark),
             const SizedBox(height: AppSpacing.xxxl),
           ],
         ),
@@ -309,6 +313,24 @@ class MusicPlayerSettingsPage extends ConsumerWidget {
         }).toList(),
       ),
     );
+
+  Widget _buildEqualizerEntry(BuildContext context, bool isDark) =>
+      _SettingsSection(
+        title: '均衡器',
+        subtitle: '10 段 EQ + 8 个预设',
+        icon: Icons.equalizer_rounded,
+        isDark: isDark,
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.tune_rounded),
+          title: const Text('打开均衡器'),
+          subtitle: const Text('Android 走系统硬件 EQ；桌面 media_kit 走 mpv af'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => Navigator.of(context).push<void>(
+            MaterialPageRoute(builder: (_) => const AudioEffectsPage()),
+          ),
+        ),
+      );
 
   Widget _buildSwitchOptions(
     MusicSettings settings,

@@ -9,6 +9,7 @@ import 'package:image/image.dart' as img;
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/audio_effects_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:path_provider/path_provider.dart';
@@ -29,7 +30,17 @@ class MusicAudioHandler extends BaseAudioHandler
     _init();
   }
 
-  final AudioPlayer _player = AudioPlayer();
+  /// Android 端硬件均衡器（其他平台为 no-op，仍可放入 pipeline）
+  final AndroidEqualizer _androidEqualizer = AndroidEqualizer();
+
+  late final AudioPipeline _audioPipeline = AudioPipeline(
+    androidAudioEffects: [_androidEqualizer],
+  );
+
+  late final AudioPlayer _player =
+      AudioPlayer(audioPipeline: _audioPipeline);
+
+  StreamSubscription<EqualizerState>? _eqSub;
 
   /// 当前封面数据
   Uint8List? _currentArtworkData;
@@ -75,6 +86,9 @@ class MusicAudioHandler extends BaseAudioHandler
 
     // 初始化封面缓存目录
     await _initArtworkCacheDir();
+
+    // 接入均衡器（仅 Android 真实生效；其他平台 no-op）
+    AppError.fireAndForget(_initEqualizer(), action: 'justAudio.initEqualizer');
 
     // 监听播放状态变化，更新 playbackState
     _player.playbackEventStream.listen(_broadcastState);
@@ -786,11 +800,46 @@ class MusicAudioHandler extends BaseAudioHandler
     await _resetMediaItemForNowPlaying();
   }
 
+  /// 接入均衡器：初始应用一次 + 订阅后续变化
+  Future<void> _initEqualizer() async {
+    if (!Platform.isAndroid) {
+      // 其他平台 AndroidEqualizer 不会生效（pipeline 内部 no-op），直接退出
+      return;
+    }
+    await AudioEffectsService.instance.init();
+    await _applyEqualizer(AudioEffectsService.instance.state);
+    _eqSub = AudioEffectsService.instance.onChange.listen((state) {
+      AppError.fireAndForget(
+        _applyEqualizer(state),
+        action: 'justAudio.applyEqualizer',
+      );
+    });
+  }
+
+  Future<void> _applyEqualizer(EqualizerState state) async {
+    try {
+      await _androidEqualizer.setEnabled(state.enabled);
+      if (!state.enabled) return;
+      final params = await _androidEqualizer.parameters;
+      final bands = params.bands;
+      // bands 数量由系统决定（一般 5 / 10），按比例线性插值
+      for (var i = 0; i < bands.length; i++) {
+        final t = bands.length == 1 ? 0.0 : i / (bands.length - 1);
+        final srcIdx = (t * (state.gains.length - 1)).round();
+        final gainDb = state.gains[srcIdx].clamp(kEqMinGain, kEqMaxGain);
+        await bands[i].setGain(gainDb);
+      }
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'justAudio.applyEqualizer');
+    }
+  }
+
   /// 释放资源
   @override
   Future<void> dispose() async {
     // 移除生命周期监听器
     WidgetsBinding.instance.removeObserver(this);
+    await _eqSub?.cancel();
     await _player.dispose();
   }
 }

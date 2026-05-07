@@ -9,6 +9,7 @@ import 'package:image/image.dart' as img;
 import 'package:media_kit/media_kit.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/audio_effects_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/video/domain/entities/audio_capability.dart';
@@ -156,11 +157,43 @@ class MusicMediaKitAudioHandler extends BaseAudioHandler
     // 设置 Stream 监听
     _setupStreamListeners();
 
+    // 接入均衡器：初始应用一次 + 订阅后续变化
+    await _initEqualizer();
+
     // 广播初始状态
     _broadcastPlaybackState();
 
     _isInitialized = true;
     logger.i('MusicMediaKitHandler: 初始化完成');
+  }
+
+  /// 初始化均衡器并订阅状态变化
+  Future<void> _initEqualizer() async {
+    await AudioEffectsService.instance.init();
+    await _applyEqualizer(AudioEffectsService.instance.state);
+    _subscriptions.add(
+      AudioEffectsService.instance.onChange.listen((state) {
+        if (_isDisposed) return;
+        AppError.fireAndForget(
+          _applyEqualizer(state),
+          action: 'mediaKit.applyEqualizer',
+        );
+      }),
+    );
+  }
+
+  /// 把均衡器状态写到 mpv `af` 滤镜
+  Future<void> _applyEqualizer(EqualizerState state) async {
+    final nativePlayer = _player.platform;
+    if (nativePlayer is! NativePlayer) return;
+    final filter = buildMpvEqualizerFilter(state);
+    try {
+      // 空字符串 → 关闭 af；否则下发滤镜链
+      await nativePlayer.setProperty('af', filter);
+      logger.d('MusicMediaKitHandler: af="$filter"');
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'mediaKit.setAf', {'filter': filter});
+    }
   }
 
   /// 设置 Stream 监听器
