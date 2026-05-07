@@ -8,18 +8,23 @@ import 'package:my_nas/features/music/domain/entities/music_item.dart';
 const String kMediaRootId = 'root';
 const String kMediaFavoritesId = 'favorites';
 const String kMediaRecentId = 'recent';
+const String kMediaArtistsId = 'artists';
+const String kMediaAlbumsId = 'albums';
 const String kMediaPlaylistsId = 'playlists';
 const String _kPlaylistPrefix = 'playlist:';
+const String _kArtistPrefix = 'artist:';
+const String _kAlbumPrefix = 'album:';
 const String _kTrackPrefix = 'track:';
 
 /// 提供给 Android Auto / CarPlay 浏览的内容树。
 ///
 /// 树结构：
 ///   root
-///   ├─ favorites      (用户收藏的曲目)
-///   ├─ recent         (最近播放)
-///   └─ playlists
-///      └─ `<id>`      (播放列表的曲目)
+///   ├─ favorites          (用户收藏)
+///   ├─ recent             (最近播放)
+///   ├─ artists/`<name>`   (按艺术家分组，数据来自 favorites + history)
+///   ├─ albums/`<name>`    (按专辑分组，数据来自 favorites + history)
+///   └─ playlists/`<id>`   (用户歌单)
 ///
 /// 播放回调由播放层注入：在 MusicPlayerNotifier 初始化时把
 /// `playQueueByPaths` 函数注册到 [playFromPathsHandler]。当用户在车载界面
@@ -42,11 +47,19 @@ class MusicBrowserService {
       }
       if (parentMediaId == kMediaFavoritesId) return _favoriteChildren();
       if (parentMediaId == kMediaRecentId) return _recentChildren();
+      if (parentMediaId == kMediaArtistsId) return _artistFolderChildren();
+      if (parentMediaId == kMediaAlbumsId) return _albumFolderChildren();
       if (parentMediaId == kMediaPlaylistsId) return _playlistFolderChildren();
       if (parentMediaId.startsWith(_kPlaylistPrefix)) {
         return _playlistTrackChildren(
           parentMediaId.substring(_kPlaylistPrefix.length),
         );
+      }
+      if (parentMediaId.startsWith(_kArtistPrefix)) {
+        return _tracksByArtist(parentMediaId.substring(_kArtistPrefix.length));
+      }
+      if (parentMediaId.startsWith(_kAlbumPrefix)) {
+        return _tracksByAlbum(parentMediaId.substring(_kAlbumPrefix.length));
       }
       return const [];
     } on Exception catch (e, st) {
@@ -87,6 +100,28 @@ class MusicBrowserService {
       if (entry != null && entry.trackPaths.isNotEmpty) {
         await handler(entry.trackPaths, 0);
       }
+      return;
+    }
+
+    if (mediaId.startsWith(_kArtistPrefix)) {
+      final artist = mediaId.substring(_kArtistPrefix.length);
+      final tracks = await _collectKnownTracks();
+      final paths = [
+        for (final t in tracks)
+          if ((t.artist ?? '').trim() == artist) t.path,
+      ];
+      if (paths.isNotEmpty) await handler(paths, 0);
+      return;
+    }
+
+    if (mediaId.startsWith(_kAlbumPrefix)) {
+      final album = mediaId.substring(_kAlbumPrefix.length);
+      final tracks = await _collectKnownTracks();
+      final paths = [
+        for (final t in tracks)
+          if ((t.album ?? '').trim() == album) t.path,
+      ];
+      if (paths.isNotEmpty) await handler(paths, 0);
       return;
     }
 
@@ -158,6 +193,8 @@ class MusicBrowserService {
   List<MediaItem> _rootChildren() => [
         _folder(kMediaFavoritesId, '收藏'),
         _folder(kMediaRecentId, '最近播放'),
+        _folder(kMediaArtistsId, '艺术家'),
+        _folder(kMediaAlbumsId, '专辑'),
         _folder(kMediaPlaylistsId, '播放列表'),
       ];
 
@@ -218,6 +255,118 @@ class MusicBrowserService {
     ];
   }
 
+  // ============ 私有：按艺术家 / 专辑分组 ============
+  //
+  // 数据来源仅限本地有 musicUrl 缓存的曲目（favorites + history）；
+  // 跨设备 / 大库扫描需要 NAS 适配器把全库索引暴露上来，目前不做。
+
+  /// 收集所有可用条目（去重，path 主键）
+  Future<List<_BrowserTrack>> _collectKnownTracks() async {
+    final svc = MusicFavoritesService();
+    await svc.init();
+    final favs = await svc.getAllFavorites();
+    final history = await svc.getRecentHistory(limit: 500);
+    final byPath = <String, _BrowserTrack>{};
+    for (final f in favs) {
+      byPath[f.musicPath] = _BrowserTrack(
+        path: f.musicPath,
+        title: f.musicName,
+        artist: f.artist,
+        album: f.album,
+        coverUrl: f.coverUrl,
+        duration: f.duration,
+      );
+    }
+    for (final h in history) {
+      byPath.putIfAbsent(
+        h.musicPath,
+        () => _BrowserTrack(
+          path: h.musicPath,
+          title: h.musicName,
+          artist: h.artist,
+          album: h.album,
+          coverUrl: h.coverUrl,
+          duration: h.duration,
+        ),
+      );
+    }
+    return byPath.values.toList();
+  }
+
+  Future<List<MediaItem>> _artistFolderChildren() async {
+    final tracks = await _collectKnownTracks();
+    final byArtist = <String, int>{};
+    for (final t in tracks) {
+      final a = (t.artist ?? '').trim();
+      if (a.isEmpty) continue;
+      byArtist[a] = (byArtist[a] ?? 0) + 1;
+    }
+    final names = byArtist.keys.toList()..sort();
+    return [
+      for (final a in names)
+        MediaItem(
+          id: '$_kArtistPrefix$a',
+          title: a,
+          album: '${byArtist[a]} 首',
+          playable: false,
+          extras: const {'browsable': true},
+        ),
+    ];
+  }
+
+  Future<List<MediaItem>> _albumFolderChildren() async {
+    final tracks = await _collectKnownTracks();
+    final byAlbum = <String, int>{};
+    for (final t in tracks) {
+      final a = (t.album ?? '').trim();
+      if (a.isEmpty) continue;
+      byAlbum[a] = (byAlbum[a] ?? 0) + 1;
+    }
+    final names = byAlbum.keys.toList()..sort();
+    return [
+      for (final a in names)
+        MediaItem(
+          id: '$_kAlbumPrefix$a',
+          title: a,
+          album: '${byAlbum[a]} 首',
+          playable: false,
+          extras: const {'browsable': true},
+        ),
+    ];
+  }
+
+  Future<List<MediaItem>> _tracksByArtist(String artist) async {
+    final tracks = await _collectKnownTracks();
+    return [
+      for (final t in tracks)
+        if ((t.artist ?? '').trim() == artist)
+          _trackItem(
+            path: t.path,
+            title: t.title,
+            artist: t.artist,
+            album: t.album,
+            coverUrl: t.coverUrl,
+            duration: t.duration,
+          ),
+    ];
+  }
+
+  Future<List<MediaItem>> _tracksByAlbum(String album) async {
+    final tracks = await _collectKnownTracks();
+    return [
+      for (final t in tracks)
+        if ((t.album ?? '').trim() == album)
+          _trackItem(
+            path: t.path,
+            title: t.title,
+            artist: t.artist,
+            album: t.album,
+            coverUrl: t.coverUrl,
+            duration: t.duration,
+          ),
+    ];
+  }
+
   MediaItem _folder(String id, String title) => MediaItem(
         id: id,
         title: title,
@@ -267,4 +416,23 @@ class MusicBrowserService {
         coverUrl: f.coverUrl,
         duration: f.duration,
       );
+}
+
+/// 浏览树用的轻量曲目快照（去重后的统一视图）
+class _BrowserTrack {
+  _BrowserTrack({
+    required this.path,
+    required this.title,
+    this.artist,
+    this.album,
+    this.coverUrl,
+    this.duration,
+  });
+
+  final String path;
+  final String title;
+  final String? artist;
+  final String? album;
+  final String? coverUrl;
+  final Duration? duration;
 }
