@@ -2402,7 +2402,7 @@ class _ScrapeSourcesTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '刮削源（脚本式）',
+                      '音乐元数据源',
                       style: context.textTheme.bodyLarge?.copyWith(
                         color: isDark
                             ? AppColors.darkOnSurface
@@ -2412,7 +2412,7 @@ class _ScrapeSourcesTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '导入声明式 JSON 模板进行视频/音乐/歌词刮削',
+                      '导入用户提供的 JSON 配置（元数据 / 封面 / 歌词）',
                       style: context.textTheme.bodySmall?.copyWith(
                         color: isDark
                             ? AppColors.darkOnSurfaceVariant

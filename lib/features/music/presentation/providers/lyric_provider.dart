@@ -162,20 +162,19 @@ class LyricNotifier extends StateNotifier<LyricState> {
 
   /// 用户导入的歌词类 scrape 源逐个尝试，命中第一个非空结果即返回。
   ///
-  /// 数据流：title/artist → ScrapeEngine.getLyric() → 返回 lrc 文本 → parseLrc。
-  /// 若无任何启用的 lyric 源，返回 empty。
+  /// 流程：先 search() 拿到候选 id，再 lyrics(id) 拿 lrc 文本。某些源没有 search
+  /// 时直接以 title/artist 调 lyrics()，看脚本能否凭参数自查。
   Future<LyricData> _fetchFromScrapeSources(MusicItem music) async {
     try {
       await ScrapeSourceManager.instance.init();
-      final sources =
-          await ScrapeSourceManager.instance.getByType(ScrapeSourceType.lyric);
+      final sources = await ScrapeSourceManager.instance
+          .getByCapability(ScraperCapability.lyrics);
       if (sources.isEmpty) return LyricData.empty;
 
       final title = music.title ?? music.name;
       final artist = music.artist ?? '';
       for (final s in sources) {
-        final lrc = await ScrapeEngine.instance
-            .getLyric(s, title: title, artist: artist);
+        final lrc = await _tryFetchLyric(s, title: title, artist: artist);
         if (lrc != null && lrc.trim().isNotEmpty) {
           logger.i('LyricNotifier: 命中 scrape 源 ${s.displayName}');
           return LyricService().parseLyrics(lrc);
@@ -185,6 +184,31 @@ class LyricNotifier extends StateNotifier<LyricState> {
       AppError.handle(e, st, 'lyric.scrape', {'music': music.name});
     }
     return LyricData.empty;
+  }
+
+  Future<String?> _tryFetchLyric(
+    ScraperConfig source, {
+    required String title,
+    required String artist,
+  }) async {
+    // 1. 直接调 lyrics 端点（脚本可凭 title/artist 参数自查）
+    var data = await ScrapeEngine.instance
+        .lyrics(source, title: title, artist: artist);
+    var lrc = data?['lrcContent'] as String?;
+    if (lrc != null && lrc.isNotEmpty) return lrc;
+
+    // 2. 没结果时尝试先 search 取 id，再 lyrics
+    if (source.search != null) {
+      final hits = await ScrapeEngine.instance.search(source, query: title);
+      if (hits.isEmpty) return null;
+      final id = hits.first['id']?.toString();
+      if (id == null || id.isEmpty) return null;
+      data = await ScrapeEngine.instance
+          .lyrics(source, id: id, title: title, artist: artist);
+      lrc = data?['lrcContent'] as String?;
+      return lrc;
+    }
+    return null;
   }
 
   /// 清除歌词

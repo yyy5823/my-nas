@@ -1,248 +1,259 @@
 import 'package:uuid/uuid.dart';
 
-/// 刮削源类型。
+/// 单端点配置：一次 HTTP 请求 + 一段解析脚本。
 ///
-/// 注意：本应用 **不内嵌任何 scrape 源**，所有源均由用户自行导入。
-enum ScrapeSourceType {
-  video, // 影视元数据
-  music, // 音乐元数据
-  lyric, // 歌词
-}
-
-ScrapeSourceType _parseType(String? raw) => switch (raw) {
-      'music' => ScrapeSourceType.music,
-      'lyric' => ScrapeSourceType.lyric,
-      _ => ScrapeSourceType.video,
-    };
-
-String _typeName(ScrapeSourceType t) => switch (t) {
-      ScrapeSourceType.video => 'video',
-      ScrapeSourceType.music => 'music',
-      ScrapeSourceType.lyric => 'lyric',
-    };
-
-/// 单条 HTTP 请求模板。`url` / `body` 内可以包含变量占位符：
-/// `{query}` / `{link}` / `{title}` / `{artist}` 等，由引擎在执行时替换。
-class ScrapeRequest {
-  ScrapeRequest({
+/// `url`、`bodyTemplate`、`params`、`headers` 中可以使用 `{{name}}` 占位符；
+/// 引擎按调用上下文（query / artist / id 等）替换。
+///
+/// `script` 是一段函数体 JS，运行时引擎会包成
+/// `(function(response, args){ <script> })(<resp>, <args>)`，
+/// 期望返回值结构由调用方决定（搜索返回数组、详情返回对象、歌词返回 `{ lrcContent, wordLevelLrc }` 等）。
+class EndpointConfig {
+  EndpointConfig({
     required this.url,
     this.method = 'GET',
-    this.body,
-    this.bodyType = 'form', // form | json | raw
-    this.responseType = 'html', // html | json
+    this.params,
+    this.headers,
+    this.bodyTemplate,
+    this.script = '',
   });
 
-  factory ScrapeRequest.fromJson(Map<String, dynamic> json) => ScrapeRequest(
+  factory EndpointConfig.fromJson(Map<String, dynamic> json) => EndpointConfig(
         url: json['url'] as String? ?? '',
         method: (json['method'] as String? ?? 'GET').toUpperCase(),
-        body: json['body'] as String?,
-        bodyType: json['bodyType'] as String? ?? 'form',
-        responseType: json['responseType'] as String? ?? 'html',
+        params: _stringMapOrNull(json['params']),
+        headers: _stringMapOrNull(json['headers']),
+        bodyTemplate: json['bodyTemplate'] as String?,
+        script: json['script'] as String? ?? '',
       );
 
   final String url;
   final String method;
-  final String? body;
-  final String bodyType;
-  final String responseType;
+  final Map<String, String>? params;
+  final Map<String, String>? headers;
+  final String? bodyTemplate;
+  final String script;
 
   Map<String, dynamic> toJson() => {
         'url': url,
         'method': method,
-        if (body != null) 'body': body,
-        'bodyType': bodyType,
-        'responseType': responseType,
+        if (params != null) 'params': params,
+        if (headers != null) 'headers': headers,
+        if (bodyTemplate != null) 'bodyTemplate': bodyTemplate,
+        'script': script,
       };
 }
 
-/// 字段提取规则。
-///
-/// 每个字段值是一个 selector 字符串，按前缀分发：
-/// - `xpath::xxx`  — XPath（HTML/XML 响应）
-/// - `json::$.x.y` — JSONPath（JSON 响应）
-/// - `regex::p`    — 正则（在响应纯文本上）
-/// - `css::a.cls`  — CSS 选择器（默认；前缀可省）
-///
-/// 前缀后再加 `@attr` 取属性，加 `@text` 取文本，加 `@html` 取 innerHTML。
-/// 例：`css::div.title@text`、`xpath:://img/@src`。
-class ScrapeFieldsRule {
-  ScrapeFieldsRule(this.fields);
-
-  factory ScrapeFieldsRule.fromJson(Map<String, dynamic> json) =>
-      ScrapeFieldsRule(
-        json.map((k, v) => MapEntry(k, v.toString())),
-      );
-
-  final Map<String, String> fields;
-
-  String? operator [](String key) => fields[key];
-
-  Map<String, dynamic> toJson() => Map<String, dynamic>.from(fields);
+Map<String, String>? _stringMapOrNull(dynamic v) {
+  if (v is! Map) return null;
+  return v.map((k, value) => MapEntry(k.toString(), value.toString()));
 }
 
-/// 刮削源实体。结构对齐 BookSource 的命名风格便于复用 UI 习惯。
-class JsScrapeSource {
-  JsScrapeSource({
+/// 用户导入的音乐元数据源配置。schema 与社区通用 JSON 模板对齐：
+/// 顶层若干元数据 + 4 个可选 endpoint（search/detail/cover/lyrics）+ capabilities。
+///
+/// 本应用 **不内嵌任何源**；启动时只从 Hive 读用户主动导入的内容。
+class ScraperConfig {
+  ScraperConfig({
     String? id,
     required this.name,
-    required this.type,
-    this.origin = '',
-    this.enabled = true,
+    this.version = 1,
+    this.icon,
+    this.color,
+    this.rateLimit,
     this.headers,
-    this.searchRequest,
-    this.searchListSelector = '',
-    this.searchItemRule,
-    this.detailRequest,
-    this.detailRule,
-    this.lyricRequest,
-    this.lyricContentSelector,
+    this.capabilities = const [],
+    this.sslTrustDomains,
+    this.cookie,
+    this.search,
+    this.detail,
+    this.cover,
+    this.lyrics,
+    this.secrets,
+    this.modifiedAt,
+    this.isDeleted,
+    this.deletedAt,
+    this.enabled = true,
     this.customOrder = 0,
-    this.lastUpdateTime = 0,
   }) : id = id ?? const Uuid().v4();
 
-  factory JsScrapeSource.fromJson(Map<String, dynamic> json) {
-    int parseIntSafe(dynamic v, [int d = 0]) {
+  factory ScraperConfig.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+      if (v is String) return DateTime.tryParse(v);
+      return null;
+    }
+
+    int? parseIntOrNull(dynamic v) {
       if (v is int) return v;
       if (v is num) return v.toInt();
-      if (v is String) return int.tryParse(v) ?? d;
-      return d;
+      if (v is String) return int.tryParse(v);
+      return null;
     }
 
-    bool parseBoolSafe(dynamic v, [bool d = true]) {
+    bool? parseBoolOrNull(dynamic v) {
       if (v is bool) return v;
-      if (v is String) return v.toLowerCase() == 'true' || v == '1';
       if (v is int) return v != 0;
-      return d;
+      if (v is String) {
+        final lower = v.toLowerCase();
+        if (lower == 'true' || lower == '1') return true;
+        if (lower == 'false' || lower == '0') return false;
+      }
+      return null;
     }
 
-    final headersRaw = json['headers'];
-    final headers = headersRaw is Map
-        ? headersRaw.map((k, v) => MapEntry(k.toString(), v.toString()))
-        : null;
+    EndpointConfig? readEndpoint(dynamic v) {
+      if (v is! Map) return null;
+      return EndpointConfig.fromJson(Map<String, dynamic>.from(v));
+    }
 
-    return JsScrapeSource(
+    final caps = (json['capabilities'] as List?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        const <String>[];
+
+    final ssl =
+        (json['sslTrustDomains'] as List?)?.map((e) => e.toString()).toList();
+
+    return ScraperConfig(
       id: json['id'] as String?,
       name: json['name'] as String? ?? '',
-      type: _parseType(json['type'] as String?),
-      origin: json['origin'] as String? ?? '',
-      enabled: parseBoolSafe(json['enabled'], true),
-      headers: headers,
-      searchRequest: json['searchRequest'] is Map
-          ? ScrapeRequest.fromJson(
-              Map<String, dynamic>.from(json['searchRequest'] as Map))
-          : null,
-      searchListSelector: json['searchListSelector'] as String? ?? '',
-      searchItemRule: json['searchItemRule'] is Map
-          ? ScrapeFieldsRule.fromJson(
-              Map<String, dynamic>.from(json['searchItemRule'] as Map))
-          : null,
-      detailRequest: json['detailRequest'] is Map
-          ? ScrapeRequest.fromJson(
-              Map<String, dynamic>.from(json['detailRequest'] as Map))
-          : null,
-      detailRule: json['detailRule'] is Map
-          ? ScrapeFieldsRule.fromJson(
-              Map<String, dynamic>.from(json['detailRule'] as Map))
-          : null,
-      lyricRequest: json['lyricRequest'] is Map
-          ? ScrapeRequest.fromJson(
-              Map<String, dynamic>.from(json['lyricRequest'] as Map))
-          : null,
-      lyricContentSelector: json['lyricContentSelector'] as String?,
-      customOrder: parseIntSafe(json['customOrder'], 0),
-      lastUpdateTime: parseIntSafe(json['lastUpdateTime'], 0),
+      version: parseIntOrNull(json['version']) ?? 1,
+      icon: json['icon'] as String?,
+      color: json['color'] as String?,
+      rateLimit: parseIntOrNull(json['rateLimit']),
+      headers: _stringMapOrNull(json['headers']),
+      capabilities: caps,
+      sslTrustDomains: ssl,
+      cookie: json['cookie'] as String?,
+      search: readEndpoint(json['search']),
+      detail: readEndpoint(json['detail']),
+      cover: readEndpoint(json['cover']),
+      lyrics: readEndpoint(json['lyrics']),
+      secrets: _stringMapOrNull(json['secrets']),
+      modifiedAt: parseDate(json['modifiedAt']),
+      isDeleted: parseBoolOrNull(json['isDeleted']),
+      deletedAt: parseDate(json['deletedAt']),
+      enabled: parseBoolOrNull(json['__enabled']) ?? true,
+      customOrder: parseIntOrNull(json['__customOrder']) ?? 0,
     );
   }
 
   final String id;
   String name;
-  ScrapeSourceType type;
-  String origin;
-  bool enabled;
+  int version;
+  String? icon;
+  String? color;
+  int? rateLimit;
   Map<String, String>? headers;
+  List<String> capabilities;
+  List<String>? sslTrustDomains;
+  String? cookie;
+  EndpointConfig? search;
+  EndpointConfig? detail;
+  EndpointConfig? cover;
+  EndpointConfig? lyrics;
+  Map<String, String>? secrets;
+  DateTime? modifiedAt;
+  bool? isDeleted;
+  DateTime? deletedAt;
 
-  ScrapeRequest? searchRequest;
-  String searchListSelector; // 选择条目数组的根节点
-  ScrapeFieldsRule? searchItemRule;
-
-  ScrapeRequest? detailRequest;
-  ScrapeFieldsRule? detailRule;
-
-  ScrapeRequest? lyricRequest;
-  String? lyricContentSelector;
-
+  // 应用本地状态（不写入对外导出的 JSON 顶层字段，前缀 __ 区分）
+  bool enabled;
   int customOrder;
-  int lastUpdateTime;
 
-  String get displayName => name.isEmpty ? origin : name;
+  String get displayName => name.isEmpty ? id : name;
 
-  JsScrapeSource copyWith({
-    String? id,
-    String? name,
-    ScrapeSourceType? type,
-    String? origin,
-    bool? enabled,
-    Map<String, String>? headers,
-    ScrapeRequest? searchRequest,
-    String? searchListSelector,
-    ScrapeFieldsRule? searchItemRule,
-    ScrapeRequest? detailRequest,
-    ScrapeFieldsRule? detailRule,
-    ScrapeRequest? lyricRequest,
-    String? lyricContentSelector,
-    int? customOrder,
-    int? lastUpdateTime,
-  }) =>
-      JsScrapeSource(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        type: type ?? this.type,
-        origin: origin ?? this.origin,
-        enabled: enabled ?? this.enabled,
-        headers: headers ?? this.headers,
-        searchRequest: searchRequest ?? this.searchRequest,
-        searchListSelector: searchListSelector ?? this.searchListSelector,
-        searchItemRule: searchItemRule ?? this.searchItemRule,
-        detailRequest: detailRequest ?? this.detailRequest,
-        detailRule: detailRule ?? this.detailRule,
-        lyricRequest: lyricRequest ?? this.lyricRequest,
-        lyricContentSelector:
-            lyricContentSelector ?? this.lyricContentSelector,
-        customOrder: customOrder ?? this.customOrder,
-        lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
-      );
+  bool hasCapability(String cap) => capabilities.contains(cap);
 
-  Map<String, dynamic> toJson() => {
+  /// 用于内部存储 / 跨设备同步的完整序列化（包含本地状态）。
+  Map<String, dynamic> toJson({bool includeSecrets = true}) => {
         'id': id,
         'name': name,
-        'type': _typeName(type),
-        'origin': origin,
-        'enabled': enabled,
+        'version': version,
+        if (icon != null) 'icon': icon,
+        if (color != null) 'color': color,
+        if (rateLimit != null) 'rateLimit': rateLimit,
         if (headers != null) 'headers': headers,
-        if (searchRequest != null) 'searchRequest': searchRequest!.toJson(),
-        'searchListSelector': searchListSelector,
-        if (searchItemRule != null) 'searchItemRule': searchItemRule!.toJson(),
-        if (detailRequest != null) 'detailRequest': detailRequest!.toJson(),
-        if (detailRule != null) 'detailRule': detailRule!.toJson(),
-        if (lyricRequest != null) 'lyricRequest': lyricRequest!.toJson(),
-        if (lyricContentSelector != null)
-          'lyricContentSelector': lyricContentSelector,
-        'customOrder': customOrder,
-        'lastUpdateTime': lastUpdateTime,
+        'capabilities': capabilities,
+        if (sslTrustDomains != null) 'sslTrustDomains': sslTrustDomains,
+        if (cookie != null) 'cookie': cookie,
+        if (search != null) 'search': search!.toJson(),
+        if (detail != null) 'detail': detail!.toJson(),
+        if (cover != null) 'cover': cover!.toJson(),
+        if (lyrics != null) 'lyrics': lyrics!.toJson(),
+        if (includeSecrets && secrets != null) 'secrets': secrets,
+        if (modifiedAt != null)
+          'modifiedAt': modifiedAt!.toUtc().toIso8601String(),
+        if (isDeleted != null) 'isDeleted': isDeleted,
+        if (deletedAt != null)
+          'deletedAt': deletedAt!.toUtc().toIso8601String(),
+        '__enabled': enabled,
+        '__customOrder': customOrder,
       };
+
+  /// 对外分享时移除 secrets / 本地状态 / 时间戳，得到「可分享」的快照。
+  Map<String, dynamic> toShareJson() {
+    final m = toJson(includeSecrets: false)
+      ..remove('__enabled')
+      ..remove('__customOrder')
+      ..remove('modifiedAt')
+      ..remove('isDeleted')
+      ..remove('deletedAt');
+    return m;
+  }
+
+  ScraperConfig copyWith({
+    String? id,
+    String? name,
+    int? version,
+    String? icon,
+    String? color,
+    int? rateLimit,
+    Map<String, String>? headers,
+    List<String>? capabilities,
+    List<String>? sslTrustDomains,
+    String? cookie,
+    EndpointConfig? search,
+    EndpointConfig? detail,
+    EndpointConfig? cover,
+    EndpointConfig? lyrics,
+    Map<String, String>? secrets,
+    DateTime? modifiedAt,
+    bool? isDeleted,
+    DateTime? deletedAt,
+    bool? enabled,
+    int? customOrder,
+  }) =>
+      ScraperConfig(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        version: version ?? this.version,
+        icon: icon ?? this.icon,
+        color: color ?? this.color,
+        rateLimit: rateLimit ?? this.rateLimit,
+        headers: headers ?? this.headers,
+        capabilities: capabilities ?? this.capabilities,
+        sslTrustDomains: sslTrustDomains ?? this.sslTrustDomains,
+        cookie: cookie ?? this.cookie,
+        search: search ?? this.search,
+        detail: detail ?? this.detail,
+        cover: cover ?? this.cover,
+        lyrics: lyrics ?? this.lyrics,
+        secrets: secrets ?? this.secrets,
+        modifiedAt: modifiedAt ?? this.modifiedAt,
+        isDeleted: isDeleted ?? this.isDeleted,
+        deletedAt: deletedAt ?? this.deletedAt,
+        enabled: enabled ?? this.enabled,
+        customOrder: customOrder ?? this.customOrder,
+      );
 }
 
-/// 搜索结果条目（统一 schema，按 type 解释）。
-class ScrapeItem {
-  ScrapeItem(this.fields);
-  final Map<String, String> fields;
-
-  String? get title => fields['title'];
-  String? get subtitle => fields['subtitle'];
-  String? get year => fields['year'];
-  String? get image => fields['image'];
-  String? get link => fields['link'];
-  String? get extraId => fields['id'];
-
-  Map<String, dynamic> toJson() => Map<String, dynamic>.from(fields);
+/// 标准 capability 常量（不强制约束，用户 JSON 可写其它字符串）。
+class ScraperCapability {
+  static const String metadata = 'metadata';
+  static const String cover = 'cover';
+  static const String lyrics = 'lyrics';
+  static const String lyricsWordLevel = 'lyricsWordLevel';
 }

@@ -15,7 +15,7 @@ class ScrapeSourcesPage extends StatefulWidget {
 }
 
 class _ScrapeSourcesPageState extends State<ScrapeSourcesPage> {
-  List<JsScrapeSource> _sources = const [];
+  List<ScraperConfig> _sources = const [];
   bool _loading = true;
 
   @override
@@ -49,12 +49,12 @@ class _ScrapeSourcesPageState extends State<ScrapeSourcesPage> {
     }
   }
 
-  Future<void> _toggle(JsScrapeSource s, bool v) async {
+  Future<void> _toggle(ScraperConfig s, bool v) async {
     await ScrapeSourceManager.instance.setEnabled(s.id, enabled: v);
     await _load();
   }
 
-  Future<void> _delete(JsScrapeSource s) async {
+  Future<void> _delete(ScraperConfig s) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -78,17 +78,19 @@ class _ScrapeSourcesPageState extends State<ScrapeSourcesPage> {
     }
   }
 
-  String _typeLabel(ScrapeSourceType t) => switch (t) {
-        ScrapeSourceType.video => '视频',
-        ScrapeSourceType.music => '音乐',
-        ScrapeSourceType.lyric => '歌词',
+  String _capLabel(String c) => switch (c) {
+        ScraperCapability.metadata => '元数据',
+        ScraperCapability.cover => '封面',
+        ScraperCapability.lyrics => '歌词',
+        ScraperCapability.lyricsWordLevel => '逐字歌词',
+        _ => c,
       };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('刮削源（脚本式）'),
+        title: const Text('音乐元数据源'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_rounded),
@@ -108,9 +110,39 @@ class _ScrapeSourcesPageState extends State<ScrapeSourcesPage> {
                   itemBuilder: (_, i) {
                     final s = _sources[i];
                     return ListTile(
+                      isThreeLine: s.capabilities.isNotEmpty,
                       title: Text(s.displayName),
-                      subtitle: Text(
-                        '${_typeLabel(s.type)} · ${s.origin.isEmpty ? "—" : s.origin}',
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('版本 ${s.version}'),
+                          if (s.capabilities.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Wrap(
+                                spacing: 4,
+                                runSpacing: 4,
+                                children: [
+                                  for (final c in s.capabilities)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .secondaryContainer,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        _capLabel(c),
+                                        style:
+                                            Theme.of(context).textTheme.labelSmall,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                       trailing: Wrap(
                         spacing: 4,
@@ -141,12 +173,12 @@ class _ScrapeSourcesPageState extends State<ScrapeSourcesPage> {
               const Icon(Icons.code_rounded, size: 48),
               const SizedBox(height: 12),
               Text(
-                '暂无刮削源',
+                '暂无音乐元数据源',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
               Text(
-                '本应用不内嵌任何 scrape 源。点击右上角「+」导入用户提供的 JSON 模板。',
+                '本应用不内嵌任何源。点击右上角「+」导入用户提供的 JSON 配置。',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -230,7 +262,7 @@ class _ImportSheetState extends State<_ImportSheet> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  '本应用仅提供 scrape 引擎，不内置、不分发任何刮削源。 '
+                  '本应用仅提供解析引擎，不内置、不分发任何音乐元数据源。 '
                   '导入的源由用户自行选择，您应确保来源合法、不侵犯第三方著作权。 '
                   '本应用不对所导入源的内容负责。',
                 ),

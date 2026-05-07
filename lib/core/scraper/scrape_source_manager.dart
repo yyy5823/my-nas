@@ -7,10 +7,10 @@ import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/scraper/scrape_source.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
-/// 用户导入的刮削源管理。
+/// 用户导入的音乐元数据源管理。
 ///
-/// **本应用不内嵌任何 scrape 源**。启动时只读 Hive 中用户主动导入的源，
-/// assets/ 不放任何 *.json scrape 模板。导入页面必须显示免责声明。
+/// **本应用不内嵌任何源**。启动时只读 Hive 中用户主动导入的源；assets/ 下不放
+/// 任何 *.json scrape 模板。导入页必须显示免责声明。
 class ScrapeSourceManager {
   ScrapeSourceManager._();
   static final ScrapeSourceManager instance = ScrapeSourceManager._();
@@ -19,7 +19,7 @@ class ScrapeSourceManager {
 
   Box<String>? _box;
   bool _initialized = false;
-  List<JsScrapeSource>? _cache;
+  List<ScraperConfig>? _cache;
 
   final _events = StreamController<void>.broadcast();
   Stream<void> get events => _events.stream;
@@ -35,13 +35,13 @@ class ScrapeSourceManager {
   }
 
   Future<void> _reload() async {
-    final list = <JsScrapeSource>[];
+    final list = <ScraperConfig>[];
     for (final key in _box!.keys) {
       final raw = _box!.get(key);
       if (raw == null) continue;
       try {
         final json = jsonDecode(raw) as Map<String, dynamic>;
-        list.add(JsScrapeSource.fromJson(json));
+        list.add(ScraperConfig.fromJson(json));
       } on Exception catch (e, st) {
         AppError.handle(e, st, 'scrapeSource.parse', {'key': key});
       }
@@ -50,17 +50,20 @@ class ScrapeSourceManager {
     _cache = list;
   }
 
-  Future<List<JsScrapeSource>> getAll() async {
+  Future<List<ScraperConfig>> getAll() async {
     if (!_initialized) await init();
     return List.unmodifiable(_cache ?? const []);
   }
 
-  Future<List<JsScrapeSource>> getByType(ScrapeSourceType type) async {
+  /// 按 capability 过滤启用的源。
+  Future<List<ScraperConfig>> getByCapability(String cap) async {
     final all = await getAll();
-    return all.where((s) => s.type == type && s.enabled).toList();
+    return all
+        .where((s) => s.enabled && s.hasCapability(cap) && s.isDeleted != true)
+        .toList();
   }
 
-  Future<JsScrapeSource?> getById(String id) async {
+  Future<ScraperConfig?> getById(String id) async {
     final all = await getAll();
     for (final s in all) {
       if (s.id == id) return s;
@@ -68,20 +71,18 @@ class ScrapeSourceManager {
     return null;
   }
 
-  Future<void> addOrUpdate(JsScrapeSource source) async {
+  Future<void> addOrUpdate(ScraperConfig source) async {
     if (!_initialized) await init();
-    final updated = source.copyWith(
-      lastUpdateTime: DateTime.now().millisecondsSinceEpoch,
-    );
+    final updated = source.copyWith(modifiedAt: DateTime.now());
     await _box!.put(updated.id, jsonEncode(updated.toJson()));
     await _reload();
     _events.add(null);
   }
 
-  Future<int> addMany(List<JsScrapeSource> sources) async {
+  Future<int> addMany(List<ScraperConfig> sources) async {
     if (!_initialized) await init();
     var added = 0;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
     var nextOrder = _cache?.fold<int>(
           0,
           (m, s) => s.customOrder > m ? s.customOrder : m,
@@ -92,7 +93,7 @@ class ScrapeSourceManager {
         nextOrder++;
         final entry = s.copyWith(
           customOrder: nextOrder,
-          lastUpdateTime: now,
+          modifiedAt: now,
         );
         await _box!.put(entry.id, jsonEncode(entry.toJson()));
         added++;
@@ -120,9 +121,10 @@ class ScrapeSourceManager {
     await addOrUpdate(s.copyWith(enabled: enabled));
   }
 
-  /// 远端拉取并解析 JSON。响应可以是单对象或数组。
-  /// 不在此方法内入库；调用方收到列表后再 [addMany]。
-  static Future<List<JsScrapeSource>> fetchFromUrl(String url) async {
+  // ============ 导入 / 导出 ============
+
+  /// 远端拉取并解析（与 [parseImport] 同样支持 4 种形态）。
+  static Future<List<ScraperConfig>> fetchFromUrl(String url) async {
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 20),
@@ -137,23 +139,106 @@ class ScrapeSourceManager {
     return parseImport(body);
   }
 
-  /// 解析用户粘贴的 JSON 文本。支持单对象或数组两种形式。
-  static List<JsScrapeSource> parseImport(String raw) {
-    final decoded = jsonDecode(raw);
-    if (decoded is List) {
-      return [
-        for (final e in decoded)
-          if (e is Map)
-            JsScrapeSource.fromJson(Map<String, dynamic>.from(e)),
-      ];
+  /// 解析用户提供的 JSON 文本。支持 4 种形态：
+  ///
+  /// 1. 单对象 `{...}`
+  /// 2. 数组 `[{...}, {...}]`
+  /// 3. 包裹 `{ "schema": N, "sources": [...] }`
+  /// 4. 多对象拼接 `{...}\n{...}` 或 `{...} {...}`
+  static List<ScraperConfig> parseImport(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return const [];
+
+    // 数组
+    if (text.startsWith('[')) {
+      final decoded = jsonDecode(text);
+      if (decoded is List) {
+        return [
+          for (final e in decoded)
+            if (e is Map) ScraperConfig.fromJson(Map<String, dynamic>.from(e)),
+        ];
+      }
+      return const [];
     }
-    if (decoded is Map) {
-      return [JsScrapeSource.fromJson(Map<String, dynamic>.from(decoded))];
+
+    if (text.startsWith('{')) {
+      // 先尝试当包裹对象解析
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is Map) {
+          final m = Map<String, dynamic>.from(decoded);
+          if (m['sources'] is List) {
+            // 包裹形态
+            final list = m['sources'] as List;
+            return [
+              for (final e in list)
+                if (e is Map)
+                  ScraperConfig.fromJson(Map<String, dynamic>.from(e)),
+            ];
+          }
+          // 单对象
+          return [ScraperConfig.fromJson(m)];
+        }
+      } on FormatException {
+        // 不是合法的单 JSON → 按多对象拼接处理
+        return _parseConcatenated(text);
+      }
     }
+
     return const [];
   }
 
-  /// 整体导出（便于备份与跨设备迁移）。
-  String exportAll(List<JsScrapeSource> sources) =>
-      jsonEncode(sources.map((s) => s.toJson()).toList());
+  /// 处理 `{...}{...}` / `{...}\n{...}` 形式。逐字符扫描花括号配平。
+  static List<ScraperConfig> _parseConcatenated(String text) {
+    final list = <ScraperConfig>[];
+    var depth = 0;
+    var start = -1;
+    var inStr = false;
+    var escape = false;
+    for (var i = 0; i < text.length; i++) {
+      final c = text[i];
+      if (inStr) {
+        if (escape) {
+          escape = false;
+        } else if (c == r'\') {
+          escape = true;
+        } else if (c == '"') {
+          inStr = false;
+        }
+        continue;
+      }
+      if (c == '"') {
+        inStr = true;
+        continue;
+      }
+      if (c == '{') {
+        if (depth == 0) start = i;
+        depth++;
+      } else if (c == '}') {
+        depth--;
+        if (depth == 0 && start >= 0) {
+          final chunk = text.substring(start, i + 1);
+          try {
+            final m = jsonDecode(chunk);
+            if (m is Map) {
+              list.add(ScraperConfig.fromJson(Map<String, dynamic>.from(m)));
+            }
+          } on FormatException catch (_) {
+            // 该 chunk 不是合法 JSON，跳过
+          }
+          start = -1;
+        }
+      }
+    }
+    return list;
+  }
+
+  /// 整体导出（用于备份 / 跨设备迁移）。包裹成 `{schema:1, sources:[...]}`。
+  String exportAll(List<ScraperConfig> sources, {bool includeSecrets = false}) =>
+      jsonEncode({
+        'schema': 1,
+        'sources': [
+          for (final s in sources) s.toJson(includeSecrets: includeSecrets),
+        ],
+      });
 }
