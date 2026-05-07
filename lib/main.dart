@@ -15,20 +15,23 @@ import 'package:my_nas/app/app.dart';
 import 'package:my_nas/core/di/injection.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/performance_mode_service.dart';
+import 'package:my_nas/core/sync/app_settings_sync_module.dart';
 import 'package:my_nas/core/sync/syncable_module.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/music/data/services/sync/favorites_sync_module.dart';
-import 'package:my_nas/features/music/data/services/sync/playlist_sync_module.dart';
-import 'package:my_nas/features/reading/data/services/sync/reading_progress_sync_module.dart';
-import 'package:my_nas/features/video/data/services/sync/video_favorites_sync_module.dart';
+import 'package:my_nas/features/book/data/services/sources/book_source_manager_service.dart';
+import 'package:my_nas/features/book/data/services/sync/book_sources_sync_module.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler_interface.dart';
 import 'package:my_nas/features/music/data/services/music_media_kit_handler.dart';
+import 'package:my_nas/features/music/data/services/sync/favorites_sync_module.dart';
+import 'package:my_nas/features/music/data/services/sync/music_settings_sync_module.dart';
+import 'package:my_nas/features/music/data/services/sync/playlist_sync_module.dart';
 import 'package:my_nas/features/music/presentation/pages/desktop_lyric_window.dart';
+import 'package:my_nas/features/reading/data/services/sync/reading_progress_sync_module.dart';
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
+import 'package:my_nas/features/video/data/services/sync/video_favorites_sync_module.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
-import 'package:my_nas/features/book/data/services/sources/book_source_manager_service.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -186,7 +189,10 @@ void _registerSyncModules() {
     ..register(PlaylistSyncModule())
     ..register(FavoritesSyncModule())
     ..register(VideoFavoritesSyncModule())
-    ..register(ReadingProgressSyncModule());
+    ..register(ReadingProgressSyncModule())
+    ..register(BookSourcesSyncModule())
+    ..register(MusicSettingsSyncModule())
+    ..register(AppSettingsSyncModule());
 }
 
 /// 注册第三方开源库的许可证
