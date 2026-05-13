@@ -27,7 +27,6 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/book/presentation/pages/book_settings_page.dart';
 import 'package:my_nas/features/book/presentation/pages/book_sources_page.dart';
-import 'package:my_nas/features/sources/presentation/pages/scrape_sources_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/service_sources_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -44,6 +43,9 @@ import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+/// 桌面端 mine 页选中的 section 索引（在 [_buildSections] 列表中）。
+final _selectedDesktopSectionProvider = StateProvider.autoDispose<int>((_) => 0);
+
 class MinePage extends ConsumerWidget {
   const MinePage({super.key});
 
@@ -56,340 +58,472 @@ class MinePage extends ConsumerWidget {
         .where((c) => c.status == SourceStatus.connected)
         .length;
 
+    final sections = _buildSections(context, ref, isDark);
+
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
       body: Column(
         children: [
-          // 固定的顶部头像区域
           _buildHeader(context, isDark, connectedCount, connections.length),
-          // 可滚动的设置列表
           Expanded(
-            child: ListView(
-              padding: AppSpacing.paddingMd,
-              children: [
-                // 连接设置
-                _buildSectionHeader(context, '连接', Icons.lan_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _buildSourcesTile(context, ref, isDark),
-                    _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.folder_special_rounded,
-                      iconColor: AppColors.accent,
-                      title: '媒体库',
-                      subtitle: '配置视频、音乐、漫画等目录',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 我的内容
-                _buildSectionHeader(context, '我的内容', Icons.bookmark_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.favorite_rounded,
-                      iconColor: AppColors.error,
-                      title: '我的收藏',
-                      subtitle: '已收藏的视频、照片、笔记、图书、漫画',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(builder: (_) => const FavoritesPage()),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 视频设置
-                _buildSectionHeader(context, '视频', Icons.movie_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.play_circle_rounded,
-                      iconColor: AppColors.primary,
-                      title: '播放器设置',
-                      subtitle: '清晰度、投屏、转码等',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(builder: (_) => const VideoPlayerSettingsPage()),
-                      ),
-                    ),
-                    _buildDivider(isDark),
-                    _VideoScraperSourcesTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _SubtitleSourcesTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _LanguagePreferenceTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _MediaTrackingTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _MediaManagementTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _DownloaderTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _LiveStreamingTile(isDark: isDark),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 音乐设置
-                _buildSectionHeader(context, '音乐', Icons.music_note_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.play_circle_rounded,
-                      iconColor: AppColors.primary,
-                      title: '播放器设置',
-                      subtitle: '播放引擎、音量、淡入淡出等',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(builder: (_) => const MusicPlayerSettingsPage()),
-                      ),
-                    ),
-                    _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.bar_chart_rounded,
-                      iconColor: AppColors.primary,
-                      title: '听歌统计',
-                      subtitle: '本周/本月/本年 Top 歌曲、艺术家、专辑',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const ListeningStatsPage(),
-                        ),
-                      ),
-                    ),
-                    _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.content_copy_rounded,
-                      iconColor: AppColors.primary,
-                      title: '重复歌曲',
-                      subtitle: '检测同首歌的多个版本（mp3 + flac 等）',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const DuplicateSongsPage(),
-                        ),
-                      ),
-                    ),
-                    _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.delete_outline_rounded,
-                      iconColor: AppColors.primary,
-                      title: '回收站',
-                      subtitle: '已删除的播放列表保留 30 天，可恢复',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const RecycleBinPage(),
-                        ),
-                      ),
-                    ),
-                    _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.cast_rounded,
-                      iconColor: AppColors.primary,
-                      title: 'Scrobble 上报',
-                      subtitle: 'Last.fm / ListenBrainz 听歌历史同步',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const ScrobbleSettingsPage(),
-                        ),
-                      ),
-                    ),
-                    _buildDivider(isDark),
-                    _MusicScraperSourcesTile(isDark: isDark),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 图书设置
-                _buildSectionHeader(context, '图书', Icons.auto_stories_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _BookSourcesTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _ScrapeSourcesTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _BookSettingsTile(isDark: isDark),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 站点
-                _buildSectionHeader(context, '站点', Icons.rss_feed_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _PTSitesTile(isDark: isDark),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 传输
-                _buildSectionHeader(context, '传输', Icons.swap_vert_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _TransferCard(isDark: isDark),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 外观设置
-                _buildSectionHeader(context, '外观', Icons.palette_outlined, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.palette_rounded,
-                      iconColor: Theme.of(context).colorScheme.primary,
-                      title: '外观设置',
-                      subtitle: '主题、配色、UI 风格',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const AppearanceSettingsPage(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 云同步
-                _buildSectionHeader(context, '云同步', Icons.cloud_sync_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.cloud_sync_rounded,
-                      iconColor: AppColors.primary,
-                      title: 'WebDAV 同步',
-                      subtitle: '跨设备同步歌单 / 阅读进度等',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const CloudSyncSettingsPage(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 关于
-                _buildSectionHeader(context, '关于', Icons.info_outline_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  uiStyle,
-                  children: [
-                    _VersionTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    CheckUpdateTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.article_rounded,
-                      iconColor: AppColors.info,
-                      title: '开源许可证',
-                      subtitle: '查看第三方开源库声明',
-                      onTap: () => _showOpenSourceLicenses(context),
-                    ),
-                  ],
-                ),
-                // 底部间距：使用统一的滚动底部间距，自动适配玻璃/经典模式和平台
-                SizedBox(height: context.scrollBottomPadding),
-              ],
-            ),
+            child: context.isDesktopLayout
+                ? _buildDesktopBody(context, ref, isDark, uiStyle, sections)
+                : _buildMobileBody(context, isDark, uiStyle, sections),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, bool isDark, int connectedCount, int totalCount) => Container(
-      padding: EdgeInsets.fromLTRB(20, context.padding.top + 20, 20, 20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [AppColors.darkSurface, AppColors.darkBackground]
-              : [AppColors.primary.withValues(alpha: 0.1), Colors.white],
+  // ===========================================================================
+  // 桌面端：左侧 section 列表 + 右侧选中 section 的 settings card
+  // ===========================================================================
+
+  Widget _buildDesktopBody(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    UIStyle uiStyle,
+    List<_MineSection> sections,
+  ) {
+    final selectedIndex = ref
+        .watch(_selectedDesktopSectionProvider)
+        .clamp(0, sections.length - 1);
+    final dividerColor = isDark
+        ? AppColors.darkOutline.withValues(alpha: 0.3)
+        : context.colorScheme.outlineVariant;
+    final masterWidth = context.screenWidth >= 1100 ? 220.0 : 180.0;
+    final selected = sections[selectedIndex];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: masterWidth,
+          child: _DesktopSectionList(
+            sections: sections,
+            selectedIndex: selectedIndex,
+            isDark: isDark,
+            onSelect: (i) =>
+                ref.read(_selectedDesktopSectionProvider.notifier).state = i,
+          ),
         ),
+        VerticalDivider(width: 1, thickness: 1, color: dividerColor),
+        Expanded(
+          child: _DesktopSectionDetail(
+            section: selected,
+            isDark: isDark,
+            uiStyle: uiStyle,
+            // ignore: avoid_types_on_closure_parameters
+            buildSettingsCard: ({required List<Widget> children}) =>
+                _buildSettingsCard(
+                  context,
+                  isDark,
+                  uiStyle,
+                  children: children,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ===========================================================================
+  // 移动端：原 ListView 形态，所有 sections 串联
+  // ===========================================================================
+
+  Widget _buildMobileBody(
+    BuildContext context,
+    bool isDark,
+    UIStyle uiStyle,
+    List<_MineSection> sections,
+  ) {
+    final children = <Widget>[];
+    for (var i = 0; i < sections.length; i++) {
+      final s = sections[i];
+      if (i > 0) {
+        children.add(const SizedBox(height: AppSpacing.lg));
+      }
+      children
+        ..add(_buildSectionHeader(context, s.title, s.icon, isDark))
+        ..add(const SizedBox(height: AppSpacing.sm))
+        ..add(Builder(
+          builder: (innerCtx) => s.useCardWrapper
+              ? _buildSettingsCard(
+                  innerCtx,
+                  isDark,
+                  uiStyle,
+                  children: s.tilesBuilder(innerCtx),
+                )
+              : Column(children: s.tilesBuilder(innerCtx)),
+        ));
+    }
+    children.add(SizedBox(height: context.scrollBottomPadding));
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.md,
       ),
+      children: children,
+    );
+  }
+
+  // ===========================================================================
+  // sections 元数据：标题 / 图标 / tiles 构造器
+  // ===========================================================================
+
+  List<_MineSection> _buildSections(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    return [
+      _MineSection(
+        title: '连接',
+        icon: Icons.lan_rounded,
+        tilesBuilder: (ctx) => [
+          _buildSourcesTile(context, ref, isDark),
+          _buildDivider(isDark),
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.folder_special_rounded,
+            iconColor: AppColors.accent,
+            title: '媒体库',
+            subtitle: '配置视频、音乐、漫画等目录',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
+            ),
+          ),
+        ],
+      ),
+      _MineSection(
+        title: '我的内容',
+        icon: Icons.bookmark_rounded,
+        tilesBuilder: (ctx) => [
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.favorite_rounded,
+            iconColor: AppColors.error,
+            title: '我的收藏',
+            subtitle: '已收藏的视频、照片、笔记、图书、漫画',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(builder: (_) => const FavoritesPage()),
+            ),
+          ),
+        ],
+      ),
+      _MineSection(
+        title: '视频',
+        icon: Icons.movie_rounded,
+        tilesBuilder: (ctx) => [
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.play_circle_rounded,
+            iconColor: AppColors.primary,
+            title: '播放器设置',
+            subtitle: '清晰度、投屏、转码等',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(
+                builder: (_) => const VideoPlayerSettingsPage(),
+              ),
+            ),
+          ),
+          _buildDivider(isDark),
+          _VideoScraperSourcesTile(isDark: isDark),
+          _buildDivider(isDark),
+          _SubtitleSourcesTile(isDark: isDark),
+          _buildDivider(isDark),
+          _LanguagePreferenceTile(isDark: isDark),
+          _buildDivider(isDark),
+          _MediaTrackingTile(isDark: isDark),
+          _buildDivider(isDark),
+          _MediaManagementTile(isDark: isDark),
+          _buildDivider(isDark),
+          _DownloaderTile(isDark: isDark),
+          _buildDivider(isDark),
+          _LiveStreamingTile(isDark: isDark),
+        ],
+      ),
+      _MineSection(
+        title: '音乐',
+        icon: Icons.music_note_rounded,
+        tilesBuilder: (ctx) => [
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.play_circle_rounded,
+            iconColor: AppColors.primary,
+            title: '播放器设置',
+            subtitle: '播放引擎、音量、淡入淡出等',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(
+                builder: (_) => const MusicPlayerSettingsPage(),
+              ),
+            ),
+          ),
+          _buildDivider(isDark),
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.bar_chart_rounded,
+            iconColor: AppColors.primary,
+            title: '听歌统计',
+            subtitle: '本周/本月/本年 Top 歌曲、艺术家、专辑',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(
+                builder: (_) => const ListeningStatsPage(),
+              ),
+            ),
+          ),
+          _buildDivider(isDark),
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.content_copy_rounded,
+            iconColor: AppColors.primary,
+            title: '重复歌曲',
+            subtitle: '检测同首歌的多个版本（mp3 + flac 等）',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(
+                builder: (_) => const DuplicateSongsPage(),
+              ),
+            ),
+          ),
+          _buildDivider(isDark),
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.delete_outline_rounded,
+            iconColor: AppColors.primary,
+            title: '回收站',
+            subtitle: '已删除的播放列表保留 30 天，可恢复',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(
+                builder: (_) => const RecycleBinPage(),
+              ),
+            ),
+          ),
+          _buildDivider(isDark),
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.cast_rounded,
+            iconColor: AppColors.primary,
+            title: 'Scrobble 上报',
+            subtitle: 'Last.fm / ListenBrainz 听歌历史同步',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(
+                builder: (_) => const ScrobbleSettingsPage(),
+              ),
+            ),
+          ),
+          _buildDivider(isDark),
+          _MusicScraperSourcesTile(isDark: isDark),
+        ],
+      ),
+      _MineSection(
+        title: '图书',
+        icon: Icons.auto_stories_rounded,
+        tilesBuilder: (ctx) => [
+          _BookSourcesTile(isDark: isDark),
+          _buildDivider(isDark),
+          _BookSettingsTile(isDark: isDark),
+        ],
+      ),
+      _MineSection(
+        title: '站点',
+        icon: Icons.rss_feed_rounded,
+        tilesBuilder: (ctx) => [
+          _PTSitesTile(isDark: isDark),
+        ],
+      ),
+      _MineSection(
+        title: '传输',
+        icon: Icons.swap_vert_rounded,
+        useCardWrapper: false,
+        tilesBuilder: (ctx) => [
+          _TransferCard(isDark: isDark),
+        ],
+      ),
+      _MineSection(
+        title: '外观',
+        icon: Icons.palette_outlined,
+        tilesBuilder: (ctx) => [
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.palette_rounded,
+            iconColor: Theme.of(context).colorScheme.primary,
+            title: '外观设置',
+            subtitle: '主题、配色、UI 风格',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(
+                builder: (_) => const AppearanceSettingsPage(),
+              ),
+            ),
+          ),
+        ],
+      ),
+      _MineSection(
+        title: '云同步',
+        icon: Icons.cloud_sync_rounded,
+        tilesBuilder: (ctx) => [
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.cloud_sync_rounded,
+            iconColor: AppColors.primary,
+            title: 'WebDAV 同步',
+            subtitle: '跨设备同步歌单 / 阅读进度等',
+            onTap: () => Navigator.push(
+              ctx,
+              MaterialPageRoute<void>(
+                builder: (_) => const CloudSyncSettingsPage(),
+              ),
+            ),
+          ),
+        ],
+      ),
+      _MineSection(
+        title: '关于',
+        icon: Icons.info_outline_rounded,
+        tilesBuilder: (ctx) => [
+          _VersionTile(isDark: isDark),
+          _buildDivider(isDark),
+          CheckUpdateTile(isDark: isDark),
+          _buildDivider(isDark),
+          _buildSettingsTile(
+            context,
+            isDark,
+            icon: Icons.article_rounded,
+            iconColor: AppColors.info,
+            title: '开源许可证',
+            subtitle: '查看第三方开源库声明',
+            onTap: () => _showOpenSourceLicenses(context),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  Widget _buildHeader(BuildContext context, bool isDark, int connectedCount, int totalCount) {
+    // 桌面端 header 更紧凑：48 头像、titleMedium 标题、padding 12+12。
+    final isDesktop = context.isDesktopLayout;
+    final avatarSize = isDesktop ? 40.0 : 64.0;
+    final avatarRadius = isDesktop ? 10.0 : 20.0;
+    final titleStyle = isDesktop
+        ? context.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)
+        : context.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold);
+    final verticalPadding = isDesktop ? 12.0 : 20.0;
+    final topPadding = isDesktop ? 12.0 : context.padding.top + 20;
+
+    // 桌面下用纯净 surface 色 + 底部细分隔线（macOS sidebar 风），
+    // 移动端保留原渐变。
+    final headerDecoration = isDesktop
+        ? BoxDecoration(
+            color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(
+                color: isDark
+                    ? AppColors.darkOutline.withValues(alpha: 0.3)
+                    : context.colorScheme.outlineVariant,
+              ),
+            ),
+          )
+        : BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDark
+                  ? [AppColors.darkSurface, AppColors.darkBackground]
+                  : [AppColors.primary.withValues(alpha: 0.1), Colors.white],
+            ),
+          );
+
+    // 桌面下精简：去掉 logo + "MyNAS"（NavigationRail 已显示），
+    // 只显示标题 "设置" + 连接状态 chip。
+    if (isDesktop) {
+      return Container(
+        padding: EdgeInsets.fromLTRB(20, topPadding, 16, verticalPadding),
+        decoration: headerDecoration,
+        child: Row(
+          children: [
+            Text(
+              '设置',
+              style: context.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
+            ),
+            const Spacer(),
+            // 连接状态 chip
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: (connectedCount > 0
+                        ? AppColors.success
+                        : Colors.grey)
+                    .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color:
+                          connectedCount > 0 ? AppColors.success : Colors.grey,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    connectedCount > 0
+                        ? '$connectedCount / $totalCount 已连接'
+                        : '未连接',
+                    style: context.textTheme.bodySmall?.copyWith(
+                      color: connectedCount > 0
+                          ? AppColors.success
+                          : (isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : AppColors.lightOnSurfaceVariant),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 移动端保留原 header（含 logo + 头像 + 大标题 + 状态行）
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, topPadding, 20, verticalPadding),
+      decoration: headerDecoration,
       child: Row(
         children: [
-          // 头像
           Container(
-            width: 64,
-            height: 64,
+            width: avatarSize,
+            height: avatarSize,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(avatarRadius),
               boxShadow: [
                 BoxShadow(
                   color: AppColors.primary.withValues(alpha: 0.3),
@@ -399,11 +533,11 @@ class MinePage extends ConsumerWidget {
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(avatarRadius),
               child: Image.asset(
                 'assets/logo.png',
-                width: 64,
-                height: 64,
+                width: avatarSize,
+                height: avatarSize,
                 fit: BoxFit.cover,
               ),
             ),
@@ -415,8 +549,7 @@ class MinePage extends ConsumerWidget {
               children: [
                 Text(
                   'MyNAS',
-                  style: context.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+                  style: titleStyle?.copyWith(
                     color: isDark ? AppColors.darkOnSurface : null,
                   ),
                 ),
@@ -450,6 +583,7 @@ class MinePage extends ConsumerWidget {
         ],
       ),
     );
+  }
 
   Widget _buildSectionHeader(BuildContext context, String title, IconData icon, bool isDark) => Row(
       children: [
@@ -484,10 +618,11 @@ class MinePage extends ConsumerWidget {
     required List<Widget> children,
   }) {
     // 使用自适应玻璃容器 - 自动根据平台选择原生/Flutter实现
+    // 桌面下圆角缩小到 10（macOS 风），手机保留 20（iOS 风）。
     return AdaptiveGlassContainer(
       uiStyle: uiStyle,
       isDark: isDark,
-      cornerRadius: 20,
+      cornerRadius: context.isDesktopLayout ? 10 : 20,
       child: Column(children: children),
     );
   }
@@ -502,28 +637,38 @@ class MinePage extends ConsumerWidget {
     Color? titleColor,
     bool showChevron = true,
     VoidCallback? onTap,
-  }) => Material(
+  }) {
+    // 桌面下用更紧凑的密度：图标 32、垂直 padding 8、标题 bodyMedium。
+    final isDesktop = context.isDesktopLayout;
+    final iconBox = isDesktop ? 32.0 : 40.0;
+    final iconSize = isDesktop ? 18.0 : 20.0;
+    final verticalPadding = isDesktop ? AppSpacing.sm : AppSpacing.md;
+    final titleStyle = isDesktop
+        ? context.textTheme.bodyMedium
+        : context.textTheme.bodyLarge;
+
+    return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(
+          padding: EdgeInsets.symmetric(
             horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
+            vertical: verticalPadding,
           ),
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: iconBox,
+                height: iconBox,
                 decoration: BoxDecoration(
                   color: iconColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(isDesktop ? 8 : 12),
                 ),
                 child: Icon(
                   icon,
                   color: iconColor,
-                  size: 20,
+                  size: iconSize,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -533,7 +678,7 @@ class MinePage extends ConsumerWidget {
                   children: [
                     Text(
                       title,
-                      style: context.textTheme.bodyLarge?.copyWith(
+                      style: titleStyle?.copyWith(
                         color: titleColor ??
                             (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
                         fontWeight: FontWeight.w500,
@@ -555,7 +700,9 @@ class MinePage extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (showChevron && onTap != null)
+              // 桌面下不显示 chevron：macOS 系统设置的 sidebar 子项均无
+              // chevron，靠 hover 高亮提示可点击。
+              if (showChevron && onTap != null && !isDesktop)
                 Icon(
                   Icons.chevron_right_rounded,
                   color: isDark
@@ -568,6 +715,7 @@ class MinePage extends ConsumerWidget {
         ),
       ),
     );
+  }
 
   Widget _buildDivider(bool isDark) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -2361,79 +2509,242 @@ class _BookSettingsTile extends StatelessWidget {
   }
 }
 
-/// 刮削源（脚本式）入口
-class _ScrapeSourcesTile extends StatelessWidget {
-  const _ScrapeSourcesTile({required this.isDark});
+// =============================================================================
+// 桌面 master-detail 实现
+// =============================================================================
 
+/// mine 页 section 元数据。
+class _MineSection {
+  const _MineSection({
+    required this.title,
+    required this.icon,
+    required this.tilesBuilder,
+    this.useCardWrapper = true,
+  });
+
+  final String title;
+  final IconData icon;
+  /// 接收实际渲染 tiles 的 navigator 内 context，使内部 inline
+  /// `Navigator.push(context, ...)` 在桌面下进入嵌套 detail navigator，
+  /// 移动下进入 main shell navigator。
+  final List<Widget> Function(BuildContext context) tilesBuilder;
+
+  /// 是否要用 [AdaptiveGlassContainer] 包裹 tiles。
+  /// 部分 section（如 "传输"）的内容本身就是 card，不需要再包一层。
+  final bool useCardWrapper;
+}
+
+/// 桌面 mine 页左侧 section 列表。
+class _DesktopSectionList extends StatelessWidget {
+  const _DesktopSectionList({
+    required this.sections,
+    required this.selectedIndex,
+    required this.isDark,
+    required this.onSelect,
+  });
+
+  final List<_MineSection> sections;
+  final int selectedIndex;
   final bool isDark;
+  final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute<void>(builder: (_) => const ScrapeSourcesPage()),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.md,
+      ),
+      itemCount: sections.length,
+      itemBuilder: (context, index) {
+        final section = sections[index];
+        final isSelected = index == selectedIndex;
+        final color = isSelected
+            ? AppColors.primary
+            : (isDark
+                ? AppColors.darkOnSurfaceVariant
+                : context.colorScheme.onSurfaceVariant);
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => onSelect(index),
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: isSelected
+                      ? AppColors.primary.withValues(alpha: isDark ? 0.18 : 0.1)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  Icons.code_rounded,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Text(
-                      '音乐元数据源',
-                      style: context.textTheme.bodyLarge?.copyWith(
-                        color: isDark
-                            ? AppColors.darkOnSurface
-                            : AppColors.lightOnSurface,
-                        fontWeight: FontWeight.w500,
+                    Icon(section.icon, size: 20, color: color),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        section.title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: color,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '导入用户提供的 JSON 配置（元数据 / 封面 / 歌词）',
-                      style: context.textTheme.bodySmall?.copyWith(
-                        color: isDark
-                            ? AppColors.darkOnSurfaceVariant
-                            : AppColors.lightOnSurfaceVariant,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: isDark
-                    ? AppColors.darkOnSurfaceVariant
-                    : AppColors.lightOnSurfaceVariant,
-                size: 22,
-              ),
-            ],
+            ),
           ),
+        );
+      },
+    );
+  }
+}
+
+/// 桌面 mine 页右侧详情面板：标题 + 当前选中 section 的 tiles。
+/// 桌面 mine 页右侧详情面板。
+///
+/// 内嵌一个 [Navigator]，section 内容是该 navigator 的 root route。
+/// 这样 settings tile 的 `Navigator.push(ctx, ...)` 会 push 到这个嵌套
+/// navigator——子页只覆盖右侧 panel，不会覆盖左侧 NavigationRail 与
+/// section 列表。
+///
+/// section 切换时清空栈，pushAndRemoveUntil 到新 section root route。
+class _DesktopSectionDetail extends StatefulWidget {
+  const _DesktopSectionDetail({
+    required this.section,
+    required this.isDark,
+    required this.uiStyle,
+    required this.buildSettingsCard,
+  });
+
+  final _MineSection section;
+  final bool isDark;
+  final UIStyle uiStyle;
+
+  /// 复用 mine_page 的 _buildSettingsCard 逻辑（保持视觉一致）。
+  final Widget Function({required List<Widget> children}) buildSettingsCard;
+
+  @override
+  State<_DesktopSectionDetail> createState() => _DesktopSectionDetailState();
+}
+
+class _DesktopSectionDetailState extends State<_DesktopSectionDetail> {
+  final _navKey = GlobalKey<NavigatorState>();
+
+  @override
+  void didUpdateWidget(covariant _DesktopSectionDetail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.section.title != widget.section.title) {
+      // 切换到新 section：清栈、显示新 root 路由。
+      _navKey.currentState?.pushAndRemoveUntil(
+        _buildRootRoute(),
+        (_) => false,
+      );
+    }
+  }
+
+  /// section 切换时使用无过渡动画的 PageRoute，避免 slide-in 让用户感觉
+  /// "进入了新页面"。push 二级 settings 子页仍走默认 slide 动画。
+  PageRoute<void> _buildRootRoute() => PageRouteBuilder<void>(
+        pageBuilder: (_, __, ___) => _DesktopSectionRootContent(
+          section: widget.section,
+          isDark: widget.isDark,
+          uiStyle: widget.uiStyle,
+          buildSettingsCard: widget.buildSettingsCard,
         ),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    // 限宽 800 + 居中：detail panel 内容（含 section root 与所有
+    // push 进来的 settings 子页）在大屏下不再被拉伸到全宽。
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: Navigator(
+          key: _navKey,
+          onGenerateInitialRoutes: (_, __) => [_buildRootRoute()],
+        ),
+      ),
+    );
+  }
+}
+
+/// detail navigator 的根路由内容：section 标题 + tiles 卡片。
+class _DesktopSectionRootContent extends StatelessWidget {
+  const _DesktopSectionRootContent({
+    required this.section,
+    required this.isDark,
+    required this.uiStyle,
+    required this.buildSettingsCard,
+  });
+
+  final _MineSection section;
+  final bool isDark;
+  final UIStyle uiStyle;
+  final Widget Function({required List<Widget> children}) buildSettingsCard;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.md,
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md, left: 4),
+            child: Row(
+              children: [
+                Icon(
+                  section.icon,
+                  size: 22,
+                  color: isDark
+                      ? AppColors.darkOnSurface
+                      : context.colorScheme.onSurface,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  section.title,
+                  style: context.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? AppColors.darkOnSurface
+                        : context.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // section.tilesBuilder 接收 root route 内 context；
+          // tile 内 Navigator.push(ctx, ...) 会进入嵌套 detail navigator。
+          Builder(builder: (innerCtx) {
+            final tiles = section.tilesBuilder(innerCtx);
+            return section.useCardWrapper
+                ? buildSettingsCard(children: tiles)
+                : Column(children: tiles);
+          }),
+          SizedBox(height: context.scrollBottomPadding),
+        ],
       ),
     );
   }

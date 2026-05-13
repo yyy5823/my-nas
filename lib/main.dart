@@ -14,6 +14,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:my_nas/app/app.dart';
 import 'package:my_nas/core/di/injection.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/core/services/desktop_window_service.dart';
 import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/sync/app_settings_sync_module.dart';
 import 'package:my_nas/core/sync/syncable_module.dart';
@@ -68,8 +69,14 @@ Future<void> main(List<String> args) async {
   // 设置全局错误处理
   _setupGlobalErrorHandling();
 
-  // Initialize dependencies
-  await _initApp();
+  // Initialize dependencies。任何子步骤抛异常都不应阻塞 runApp，否则用户
+  // 看到的是黑屏而非错误界面。每个步骤内部已经各自 try-catch，这里再加
+  // 一层 fallback 兜底。
+  try {
+    await _initApp();
+  } on Object catch (e, st) {
+    logger.f('App initialization failed, continuing to runApp', e, st);
+  }
 
   runApp(
     const ProviderScope(
@@ -124,6 +131,10 @@ Future<void> _initApp() async {
 
   // Initialize Hive for local storage
   await Hive.initFlutter();
+
+  // 初始化桌面窗口管理（仅 macOS / Windows / Linux）
+  // 必须在显示任何 UI 之前完成，以正确恢复用户上次的窗口尺寸 / 位置。
+  await DesktopWindowService.instance.initialize();
 
   // 初始化原生 Tab Bar 服务（iOS）
   // 必须在 UI 启动前初始化，以便接收原生 Tab 事件

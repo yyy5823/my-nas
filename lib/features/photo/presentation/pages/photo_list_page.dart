@@ -1294,6 +1294,17 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
   }
 }
 
+/// 计算照片 grid 列数。
+///
+/// - 移动端：固定 3 列。
+/// - 桌面端：按窗宽动态，每约 220 宽一列，钳制在 5..10，
+///   避免大屏照片显得稀疏、小窗口又拥挤。
+int _photoGridCrossAxisCount(BuildContext context) {
+  if (!context.isDesktopLayout) return 3;
+  final raw = (context.screenWidth / 220).floor();
+  return raw.clamp(5, 10);
+}
+
 class PhotoListPage extends ConsumerStatefulWidget {
   const PhotoListPage({super.key});
 
@@ -1453,20 +1464,24 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             : AppColors.success.withValues(alpha: 0.08))
         : null;
 
+    final isDesktop = context.isDesktopLayout;
     return AdaptiveGlassHeader(
-      height: 72,
+      // 桌面下用紧凑高度 + 较小 padding，让顶部条不过分占据屏幕。
+      height: isDesktop ? 56 : 72,
       backgroundColor: uiStyle.isGlass
           ? tintColor
           : (isDark
               ? const Color(0xFF1A2E1A) // 深绿色调
               : AppColors.success.withValues(alpha: 0.08)),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.appBarHorizontalPadding,
-          AppSpacing.appBarVerticalPadding,
-          AppSpacing.appBarHorizontalPadding,
-          AppSpacing.lg,
-        ),
+        padding: isDesktop
+            ? const EdgeInsets.fromLTRB(16, 6, 16, 6)
+            : EdgeInsets.fromLTRB(
+                AppSpacing.appBarHorizontalPadding,
+                AppSpacing.appBarVerticalPadding,
+                AppSpacing.appBarHorizontalPadding,
+                AppSpacing.lg,
+              ),
         child: switch ((
           _showSearch,
           isSelectMode,
@@ -1527,6 +1542,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     PhotoListState state,
   ) {
     final photoCount = state is PhotoListLoaded ? state.displayPhotos.length : 0;
+    final isDesktop = context.isDesktopLayout;
 
     return Row(
       children: [
@@ -1537,13 +1553,16 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             children: [
               Text(
                 _getGreeting(),
-                style: context.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
+                style: (isDesktop
+                        ? context.textTheme.titleMedium
+                        : context.textTheme.headlineSmall)
+                    ?.copyWith(
+                  fontWeight: isDesktop ? FontWeight.w600 : FontWeight.bold,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-              const SizedBox(height: 4),
-              if (photoCount > 0)
+              if (!isDesktop) const SizedBox(height: 4),
+              if (photoCount > 0 && !isDesktop)
                 Row(
                   children: [
                     Icon(
@@ -2789,7 +2808,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     bool isDark,
   ) {
     final photos = state.filteredPhotos;
-    final crossAxisCount = context.isDesktop ? 6 : 3;
+    final crossAxisCount = _photoGridCrossAxisCount(context);
 
     return SliverPadding(
       padding: const EdgeInsets.all(4),
@@ -2835,7 +2854,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     PhotoListLoaded state,
     bool isDark,
   ) {
-    final crossAxisCount = context.isDesktop ? 6 : 3;
+    final crossAxisCount = _photoGridCrossAxisCount(context);
     final allPhotos = state.filteredPhotos;
     final timelineItems = state.computeTimelineItems(crossAxisCount);
     final screenWidth = MediaQuery.of(context).size.width;

@@ -6,20 +6,27 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/router/routes.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/downloader/presentation/pages/downloader_list_page.dart';
+import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
+import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
 import 'package:my_nas/shared/providers/bottom_nav_visibility_provider.dart';
 import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/services/native_tab_bar_service.dart';
 import 'package:my_nas/shared/services/update_service.dart';
+import 'package:my_nas/shared/widgets/desktop_shortcuts.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 
 class MainScaffold extends ConsumerStatefulWidget {
-  const MainScaffold({required this.child, super.key});
+  const MainScaffold({required this.navigationShell, super.key});
 
-  final Widget child;
+  /// StatefulShellRoute 注入的 shell，提供 currentIndex / goBranch / 各
+  /// branch 的 Navigator。
+  final StatefulNavigationShell navigationShell;
 
   @override
   ConsumerState<MainScaffold> createState() => _MainScaffoldState();
@@ -151,16 +158,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     Routes.mine,
   };
 
-  int _getCurrentIndex(BuildContext context) {
-    final location = GoRouterState.of(context).uri.path;
-    for (var i = 0; i < _destinations.length; i++) {
-      if (location.startsWith(_destinations[i].route)) {
-        return i;
-      }
-    }
-    return 0;
-  }
-
   /// 判断当前 GoRouter 路由是否是主 Tab 页面
   bool _isMainTabRoute(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
@@ -171,12 +168,17 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     if (_isHandlingTabChange) return;
 
     _isHandlingTabChange = true;
-    
+
     // 切换到主 Tab 页面时，重置底部导航栏可见性
     // 这确保从详情页直接切换 Tab 时导航栏能正确显示
     ref.read(bottomNavVisibleProvider.notifier).reset();
-    
-    context.go(_destinations[index].route);
+
+    // 再次点击当前 tab 时回到该 branch 的初始路由（清空内部栈），
+    // 与一般 tab 应用的"双击 Tab 回顶"语义一致。
+    widget.navigationShell.goBranch(
+      index,
+      initialLocation: index == widget.navigationShell.currentIndex,
+    );
 
     // 延迟重置标志
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -186,7 +188,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _getCurrentIndex(context);
+    final currentIndex = widget.navigationShell.currentIndex;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final uiStyle = ref.watch(uiStyleProvider);
     final glassStyle = GlassTheme.getNavBarStyle(uiStyle, isDark: isDark);
@@ -204,41 +206,137 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     // 处理 UI 风格变化时的原生 Tab Bar 订阅
     _handleUiStyleChange(uiStyle, useNativeTabBar, currentIndex, bottomNavVisible);
 
-    // Use NavigationRail for desktop, NavigationBar for mobile
-    if (context.isDesktop) {
-      return Scaffold(
+    // Shell 布局判断：桌面平台始终走 Rail；移动平台始终走底栏；Web 按宽度。
+    // 与 context.isDesktop（屏宽≥1200）解耦，避免桌面端缩窗口时退化为手机布局。
+    final Widget scaffold;
+    if (context.isDesktopLayout) {
+      // 桌面下统一覆盖各 page 的 AppBar 主题：高度 48（vs 56）、字号略减、
+      // 去掉默认 elevation，使用扁平边框分隔。各 page 自己用 AppBar()
+      // 都会自动应用，无需逐个改。自定义 Container 顶部条不受影响（需要
+      // 各 page 自行响应 isDesktopLayout）。
+      final desktopTheme = Theme.of(context).copyWith(
+        appBarTheme: Theme.of(context).appBarTheme.copyWith(
+              toolbarHeight: 48,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              titleTextStyle: context.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppColors.darkOnSurface
+                    : context.colorScheme.onSurface,
+              ),
+              shape: Border(
+                bottom: BorderSide(
+                  color: isDark
+                      ? AppColors.darkOutline.withValues(alpha: 0.3)
+                      : context.colorScheme.outlineVariant,
+                ),
+              ),
+            ),
+        // 桌面下 ListTile 默认 dense，整体信息密度提升一档。
+        listTileTheme: Theme.of(context).listTileTheme.copyWith(
+              dense: true,
+              minVerticalPadding: 6,
+              visualDensity: VisualDensity.compact,
+            ),
+        // 桌面下 IconButton 视觉密度紧凑。
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        // 桌面下 OutlinedButton / FilledButton 默认 padding 紧凑。
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+        ),
+        // 整体页面默认走更高视觉密度（让 Material 自身的 ListTile /
+        // TextField / Switch / Checkbox 等都跟着变紧凑）。
+        visualDensity: VisualDensity.compact,
+        // 桌面 SnackBar：floating + 圆角 + 限宽，避免在大屏全宽铺满。
+        snackBarTheme: Theme.of(context).snackBarTheme.copyWith(
+              behavior: SnackBarBehavior.floating,
+              width: 480,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+        // 桌面 Dialog：稍紧凑的圆角 + 默认 elevation 减小。
+        dialogTheme: Theme.of(context).dialogTheme.copyWith(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 12,
+            ),
+      );
+      scaffold = Scaffold(
         backgroundColor: isDark ? AppColors.darkBackground : null,
         body: Row(
           children: [
             _buildDesktopNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
-            Expanded(child: widget.child),
+            Expanded(
+              child: Theme(
+                data: desktopTheme,
+                // 移除手机刘海预留的顶部 padding。各 page 内
+                // `MediaQuery.padding.top` 在桌面下会变 0，避免浪费空间。
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeTop: true,
+                  child: widget.navigationShell,
+                ),
+              ),
+            ),
           ],
+        ),
+      );
+    } else if (useNativeTabBar) {
+      // iOS 玻璃风格：使用原生 UITabBar
+      scaffold = Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : null,
+        body: widget.navigationShell,
+      );
+    } else {
+      // 其他情况: 使用 Flutter 底部导航栏
+      // 只有在主 Tab 路由且 provider 允许时才显示底栏
+      final showBottomNav = isMainTabRoute && bottomNavVisible;
+
+      scaffold = Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : null,
+        // 始终让内容延伸到导航栏下方，确保动画平滑
+        extendBody: true,
+        body: widget.navigationShell,
+        // 始终渲染导航栏，使用 AnimatedSlide 实现平滑过渡
+        bottomNavigationBar: _AnimatedBottomNav(
+          visible: showBottomNav,
+          child: _buildMobileNav(
+            context,
+            currentIndex,
+            isDark,
+            optimizedStyle,
+            enableGlass,
+          ),
         ),
       );
     }
 
-    // iOS 玻璃风格：使用原生 UITabBar
-    if (useNativeTabBar) {
-      return Scaffold(
-        backgroundColor: isDark ? AppColors.darkBackground : null,
-        body: widget.child,
-      );
-    }
-
-    // 其他情况: 使用 Flutter 底部导航栏
-    // 只有在主 Tab 路由且 provider 允许时才显示底栏
-    final showBottomNav = isMainTabRoute && bottomNavVisible;
-
-    return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : null,
-      // 始终让内容延伸到导航栏下方，确保动画平滑
-      extendBody: true,
-      body: widget.child,
-      // 始终渲染导航栏，使用 AnimatedSlide 实现平滑过渡
-      bottomNavigationBar: _AnimatedBottomNav(
-        visible: showBottomNav,
-        child: _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
-      ),
+    // 桌面 / Web 注册全局快捷键（Cmd+1..5 切 tab、Esc pop）；
+    // iOS / Android 直接返回 scaffold，DesktopShortcuts 内部会判断并 no-op。
+    return DesktopShortcuts(
+      onSwitchTab: (index) {
+        widget.navigationShell.goBranch(
+          index,
+          initialLocation: index == widget.navigationShell.currentIndex,
+        );
+      },
+      child: scaffold,
     );
   }
 
@@ -299,7 +397,9 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     GlassStyle glassStyle,
     bool enableGlass,
   ) {
-    final isExtended = context.screenWidth > 1400;
+    // ≥1100 显示带文字的 220px 展开 Rail；更小则用 72px 仅图标。
+    // 原 1400 偏高，1316 这种 Retina 半屏窗口会一直显示窄版。
+    final isExtended = context.screenWidth >= 1100;
 
     // 计算背景色
     final bgColor = enableGlass
@@ -313,7 +413,8 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
             : context.colorScheme.outlineVariant);
 
     Widget navContent = Container(
-      width: isExtended ? 220 : 72,
+      // 桌面 Rail 比手机版本更窄一点：扩展 200（vs 220）、紧凑 64（vs 72）。
+      width: isExtended ? 200 : 64,
       decoration: BoxDecoration(
         color: bgColor,
         border: Border(
@@ -322,28 +423,33 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       ),
       child: Column(
         children: [
-          // Logo
+          // Logo / 应用名
           Padding(
-            padding: EdgeInsets.all(isExtended ? 20 : 16),
+            padding: EdgeInsets.fromLTRB(
+              isExtended ? 14 : 8,
+              14,
+              isExtended ? 14 : 8,
+              10,
+            ),
             child: Row(
               mainAxisAlignment:
                   isExtended ? MainAxisAlignment.start : MainAxisAlignment.center,
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                   child: Image.asset(
                     'assets/logo.png',
-                    width: isExtended ? 40 : 36,
-                    height: isExtended ? 40 : 36,
+                    width: isExtended ? 28 : 28,
+                    height: isExtended ? 28 : 28,
                     fit: BoxFit.cover,
                   ),
                 ),
                 if (isExtended) ...[
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Text(
                     'MyNAS',
-                    style: context.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                    style: context.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
                       color: isDark
                           ? AppColors.darkOnSurface
                           : context.colorScheme.onSurface,
@@ -353,73 +459,30 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
               ],
             ),
           ),
-          const SizedBox(height: 8),
 
-          // Navigation items
+          // 主导航 + 工具区（仅桌面 Rail 可见的快捷入口）
           Expanded(
-            child: ListView.builder(
+            child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: _destinations.length,
-              itemBuilder: (context, index) {
-                final dest = _destinations[index];
-                final isSelected = currentIndex == index;
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => _onDestinationSelected(context, index),
-                      borderRadius: BorderRadius.circular(12),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isExtended ? 16 : 0,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppColors.primary.withValues(alpha: isDark ? 0.2 : 0.1)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: isExtended
-                              ? MainAxisAlignment.start
-                              : MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              isSelected ? dest.selectedIcon : dest.icon,
-                              color: isSelected
-                                  ? AppColors.primary
-                                  : isDark
-                                      ? AppColors.darkOnSurfaceVariant
-                                      : context.colorScheme.onSurfaceVariant,
-                              size: 24,
-                            ),
-                            if (isExtended) ...[
-                              const SizedBox(width: 12),
-                              Text(
-                                dest.label,
-                                style: TextStyle(
-                                  color: isSelected
-                                      ? AppColors.primary
-                                      : isDark
-                                          ? AppColors.darkOnSurfaceVariant
-                                          : context.colorScheme.onSurfaceVariant,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
+              children: [
+                ..._buildPrimaryRailEntries(
+                  context,
+                  currentIndex,
+                  isDark,
+                  isExtended,
+                ),
+                const SizedBox(height: 12),
+                Divider(
+                  height: 1,
+                  color: isDark
+                      ? AppColors.darkOutline.withValues(alpha: 0.3)
+                      : context.colorScheme.outlineVariant,
+                  indent: 8,
+                  endIndent: 8,
+                ),
+                const SizedBox(height: 12),
+                ..._buildToolRailEntries(context, isDark, isExtended),
+              ],
             ),
           ),
         ],
@@ -440,6 +503,76 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     }
 
     return navContent;
+  }
+
+  /// 主 tab 入口（5 个）。
+  List<Widget> _buildPrimaryRailEntries(
+    BuildContext context,
+    int currentIndex,
+    bool isDark,
+    bool isExtended,
+  ) =>
+      List.generate(_destinations.length, (index) {
+        final dest = _destinations[index];
+        final isSelected = currentIndex == index;
+        return _RailEntry(
+          icon: dest.icon,
+          selectedIcon: dest.selectedIcon,
+          label: dest.label,
+          isSelected: isSelected,
+          isDark: isDark,
+          isExtended: isExtended,
+          onTap: () => _onDestinationSelected(context, index),
+        );
+      });
+
+  /// 桌面端工具区入口：下载 / 任务 / 连接，点击 push 到当前 branch
+  /// navigator，覆盖右侧内容区但保留 NavigationRail 可见。
+  /// 移动端不会渲染（mobile 走 _buildMobileNav 完全不调此方法）。
+  List<Widget> _buildToolRailEntries(
+    BuildContext context,
+    bool isDark,
+    bool isExtended,
+  ) {
+    void pushOnCurrentBranch(Widget page) {
+      final currentIndex = widget.navigationShell.currentIndex;
+      final key = currentIndex >= 0 && currentIndex < branchNavigatorKeys.length
+          ? branchNavigatorKeys[currentIndex]
+          : null;
+      final navigator = key?.currentState ?? rootNavigatorKey.currentState;
+      navigator?.push<void>(MaterialPageRoute<void>(builder: (_) => page));
+    }
+
+    return [
+      _RailEntry(
+        icon: Icons.download_rounded,
+        selectedIcon: Icons.download_rounded,
+        label: '下载',
+        isSelected: false,
+        isDark: isDark,
+        isExtended: isExtended,
+        onTap: () => pushOnCurrentBranch(const DownloaderListPage()),
+      ),
+      _RailEntry(
+        icon: Icons.swap_horiz_rounded,
+        selectedIcon: Icons.swap_horiz_rounded,
+        label: '任务',
+        isSelected: false,
+        isDark: isDark,
+        isExtended: isExtended,
+        onTap: () =>
+            pushOnCurrentBranch(const TransferManagerPage()),
+      ),
+      _RailEntry(
+        icon: Icons.lan_rounded,
+        selectedIcon: Icons.lan_rounded,
+        label: '连接',
+        isSelected: false,
+        isDark: isDark,
+        isExtended: isExtended,
+        onTap: () => pushOnCurrentBranch(const SourcesPage()),
+      ),
+    ];
   }
 
   Widget _buildMobileNav(
@@ -565,6 +698,85 @@ class _Destination {
   final String label;
   final String route;
   final String? sfSymbol;
+}
+
+/// 桌面 NavigationRail 的单个入口。同时被主 tab 和工具区复用，
+/// 主 tab 通过 [isSelected] 高亮，工具区始终未选中。
+class _RailEntry extends StatelessWidget {
+  const _RailEntry({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.isSelected,
+    required this.isDark,
+    required this.isExtended,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final bool isSelected;
+  final bool isDark;
+  final bool isExtended;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = AppColors.primary;
+    final inactiveColor = isDark
+        ? AppColors.darkOnSurfaceVariant
+        : context.colorScheme.onSurfaceVariant;
+    final color = isSelected ? activeColor : inactiveColor;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: EdgeInsets.symmetric(
+              horizontal: isExtended ? 12 : 0,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? activeColor.withValues(alpha: isDark ? 0.18 : 0.1)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: isExtended
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isSelected ? selectedIcon : icon,
+                  color: color,
+                  size: 18,
+                ),
+                if (isExtended) ...[
+                  const SizedBox(width: 10),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: color,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// 带动画的底部导航栏包装器
